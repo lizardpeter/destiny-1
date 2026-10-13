@@ -493,6 +493,7 @@ void gpu_init() {
     cb.window_width = st.window_width;
     cb.window_height = st.window_height;
     cb.fullscreen = st.fullscreen;
+    cb.overlay = st.overlay;
     cb.present_mode = st.vsync == "on" ? "Fifo" : st.vsync == "off-tearing" ? "Immediate" : "Mailbox";
     g_gpu_real = render::init(cb);
     if (!g_gpu_real) log("GPU: null GPU (nothing is drawn)");

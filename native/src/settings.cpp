@@ -36,6 +36,9 @@ fullscreen = false             # [D1_FULLSCREEN=1]
 #   off-tearing present immediately (lowest latency, may tear)
 vsync = off                    # [D1_VSYNC]
 
+# Stats overlay (FPS, render/window resolution, v-sync, GPU). F3 toggles it while running.
+overlay = false                # [D1_OVERLAY=1]
+
 # Frame-rate target. 0 keeps the game's own 30 fps.
 fps = 0                        # [D1_FPS]
 
@@ -58,6 +61,7 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "window_height") s.window_height = std::atoi(v.c_str());
     else if (key == "fullscreen") s.fullscreen = truthy(v);
     else if (key == "vsync") s.vsync = v;
+    else if (key == "overlay") s.overlay = truthy(v);
     else if (key == "fps") s.fps = std::atoi(v.c_str());
     else if (key == "discord") s.discord = truthy(v);
     else if (key == "discord_app_id") s.discord_app_id = v;
@@ -92,6 +96,7 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_FULLSCREEN")) s.fullscreen = truthy(v);
     if (const char* v = getenv("D1_VSYNC")) s.vsync = v;
     if (const char* v = getenv("D1_FPS")) s.fps = std::atoi(v);
+    if (const char* v = getenv("D1_OVERLAY")) s.overlay = truthy(v);
     if (const char* v = getenv("D1_DISCORD")) s.discord = truthy(v);
     if (const char* v = getenv("D1_DISCORD_APP_ID")) s.discord_app_id = v;
     log("settings: %s (game %s, backend %s, window %dx%d%s, vsync %s, fps %s, discord %s)", g_path.c_str(), s.game_dir.c_str(), s.backend.c_str(), s.window_width,

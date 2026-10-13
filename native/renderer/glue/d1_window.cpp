@@ -173,6 +173,10 @@ Frontend::WindowSDL* open(int width, int height, bool fullscreen) {
 }
 }  // namespace window
 
+static std::atomic<bool> g_overlay{false};
+bool overlay_enabled() { return g_overlay.load(std::memory_order_relaxed); }
+void set_overlay(bool on) { g_overlay = on; }
+
 bool window_active() {
     return g_window != nullptr;
 }
@@ -196,6 +200,7 @@ void run_window_loop() {
                 if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) update_drawable_size();
                 break;
             case SDL_KEYDOWN:
+                if (!e.key.repeat && e.key.keysym.sym == SDLK_F3) set_overlay(!overlay_enabled());
                 if (!e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||
                                       (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)))) {
                     const bool fs = SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;

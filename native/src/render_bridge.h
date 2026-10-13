@@ -25,6 +25,7 @@ struct Callbacks {
     int window_width, window_height;           // initial window size in pixels
     bool fullscreen;                           // borderless fullscreen on the current display
     const char* present_mode;                  // Vulkan present mode: "Fifo", "Mailbox" or "Immediate"
+    bool overlay;                              // stats overlay shown at start (F3 toggles)
 };
 
 // Creates the Vulkan device, the command processor and the rasterizer. Returns false (and
@@ -65,6 +66,10 @@ struct PadState {
     uint32_t buttons;
     uint8_t lx, ly, rx, ry, l2, r2;
 };
+// Stats overlay (FPS, resolutions, v-sync, GPU, game state); F3 toggles it.
+bool overlay_enabled();
+void set_overlay(bool on);
+
 bool window_active();
 bool read_pad(PadState& out);  // false when there is no window: caller keeps its own input
 void run_window_loop();        // main thread; returns when the window is closed

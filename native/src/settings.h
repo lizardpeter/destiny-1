@@ -20,6 +20,8 @@ struct Settings {
     bool fullscreen = false;
     // "on" (vsync, Fifo), "off" (Mailbox: no vsync wait, no tearing), "off-tearing" (Immediate)
     std::string vsync = "off";
+    // stats overlay (FPS, resolutions, v-sync, GPU) shown at start; F3 toggles it in game
+    bool overlay = false;
     // frame-rate target for the game's own limiter; 0 = the game's default (30)
     int fps = 0;
     // Discord Rich Presence

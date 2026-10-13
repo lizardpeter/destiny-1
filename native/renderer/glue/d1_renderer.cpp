@@ -5,6 +5,8 @@
 // The Gnm command builders below follow shadPS4's libSceGnmDriver (GPL-2.0-or-later).
 
 #include <atomic>
+#include <chrono>
+#include <vector>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -26,7 +28,6 @@
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
-#include "video_core/renderer_vulkan/vk_swapchain.h"
 #include "video_core/texture_cache/texture_cache.h"
 
 #include "../../src/os.h"
@@ -39,10 +40,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBIW_WINDOWS_UTF8
 #include "stb_image_write.h"
+#include "d1_present.h"
 #include "d1_window.h"
 
 namespace d1 {
 void log(const char* fmt, ...);
+const char* game_state();
 }
 
 namespace d1::render {
@@ -61,7 +64,12 @@ struct State {
     std::unique_ptr<Vulkan::Runtime> runtime;
     std::unique_ptr<Vulkan::Rasterizer> rasterizer;
     Frontend::WindowSDL* window{};  // null: offscreen only
-    std::unique_ptr<Vulkan::Swapchain> swapchain;
+    std::unique_ptr<Presenter> presenter;
+    // stats overlay
+    std::chrono::steady_clock::time_point stats_t0 = std::chrono::steady_clock::now();
+    u64 stats_flips0 = 0;
+    double fps = 0, frame_ms = 0;
+    std::string gpu_name;
     std::mutex submit_mutex;
     bool send_init_packet{true};
     BufferAttributeGroup group{};
@@ -138,16 +146,41 @@ void capture(s32 index) {
 }
 
 // Blit the displayed buffer into the window, letterboxed. Runs on the GPU thread.
+void update_stats() {
+    const auto now = std::chrono::steady_clock::now();
+    const double dt = std::chrono::duration<double>(now - g->stats_t0).count();
+    if (dt < 0.5) return;
+    const u64 n = g->flips.load();
+    g->fps = double(n - g->stats_flips0) / dt;
+    g->frame_ms = g->fps > 0 ? 1000.0 / g->fps : 0;
+    g->stats_t0 = now;
+    g->stats_flips0 = n;
+}
+
+std::vector<std::string> overlay_lines(s32 iw, s32 ih) {
+    char b[160];
+    std::vector<std::string> l;
+    l.push_back("Destiny  d1-native          F3: hide");
+    std::snprintf(b, sizeof b, "FPS %5.1f   frame %5.2f ms", g->fps, g->frame_ms);
+    l.push_back(b);
+    const auto e = g->presenter->Extent();
+    std::snprintf(b, sizeof b, "render %dx%d  ->  window %ux%u", iw, ih, e.width, e.height);
+    l.push_back(b);
+    std::snprintf(b, sizeof b, "v-sync %s", g->presenter->ModeName());
+    l.push_back(b);
+    l.push_back("GPU " + g->gpu_name.substr(0, 60));
+    const char* st = d1::game_state();
+    l.push_back(std::string("state ") + (st ? st : "starting"));
+    return l;
+}
+
 void present(s32 index) {
-    if (!g->swapchain || index < 0 || !g->vo_buffers[index]) return;
-    auto& sc = *g->swapchain;
+    if (!g->presenter || index < 0 || !g->vo_buffers[index]) return;
+    update_stats();
+    auto& pr = *g->presenter;
     const u32 ww = u32(g->window->GetWidth()), wh = u32(g->window->GetHeight());
-    if (ww == 0 || wh == 0) return;
-    if (ww != sc.GetWidth() || wh != sc.GetHeight()) sc.Recreate(ww, wh);
-    if (!sc.AcquireNextImage()) {
-        sc.Recreate(ww, wh);
-        if (!sc.AcquireNextImage()) return;
-    }
+    if (!pr.Acquire(ww, wh)) return;
+    const vk::Extent2D ext = pr.Extent();
     auto& tc = g->rasterizer->GetTextureCache();
     auto desc = VideoCore::TextureCache::ImageDesc{g->group, g->vo_buffers[index]};
     const auto id = tc.FindImage(desc);
@@ -168,31 +201,35 @@ void present(s32 index) {
         .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
         .oldLayout = vk::ImageLayout::eUndefined,
         .newLayout = vk::ImageLayout::eTransferDstOptimal,
-        .image = sc.Image(),
+        .image = pr.Image(),
         .subresourceRange = range,
     };
     cmdbuf.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_dst});
     const vk::ClearColorValue black{std::array<float, 4>{0.f, 0.f, 0.f, 1.f}};
-    cmdbuf.clearColorImage(sc.Image(), vk::ImageLayout::eTransferDstOptimal, black, range);
+    cmdbuf.clearColorImage(pr.Image(), vk::ImageLayout::eTransferDstOptimal, black, range);
     // fit the game image into the window, keeping its aspect ratio
-    s32 dw = s32(ww), dh = s32(int64_t(ww) * ih / iw);
-    if (dh > s32(wh)) dh = s32(wh), dw = s32(int64_t(wh) * iw / ih);
-    const s32 dx = (s32(ww) - dw) / 2, dy = (s32(wh) - dh) / 2;
+    s32 dw = s32(ext.width), dh = s32(int64_t(ext.width) * ih / iw);
+    if (dh > s32(ext.height)) dh = s32(ext.height), dw = s32(int64_t(ext.height) * iw / ih);
+    const s32 dx = (s32(ext.width) - dw) / 2, dy = (s32(ext.height) - dh) / 2;
     const vk::ImageBlit blit{
         .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
         .srcOffsets = std::array{vk::Offset3D{0, 0, 0}, vk::Offset3D{iw, ih, 1}},
         .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
         .dstOffsets = std::array{vk::Offset3D{dx, dy, 0}, vk::Offset3D{dx + dw, dy + dh, 1}},
     };
-    const vk::MemoryBarrier2 clear_done{
+    const vk::MemoryBarrier2 transfer_done{
         .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
         .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
         .dstStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
         .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
     };
-    cmdbuf.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &clear_done});
-    cmdbuf.blitImage(image.GetImage(), vk::ImageLayout::eTransferSrcOptimal, sc.Image(),
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &transfer_done});
+    cmdbuf.blitImage(image.GetImage(), vk::ImageLayout::eTransferSrcOptimal, pr.Image(),
                      vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
+    if (overlay_enabled()) {
+        cmdbuf.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &transfer_done});
+        pr.RecordOverlay(cmdbuf, overlay_lines(iw, ih));
+    }
     const vk::ImageMemoryBarrier2 to_present{
         .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
         .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
@@ -200,15 +237,15 @@ void present(s32 index) {
         .dstAccessMask = vk::AccessFlagBits2::eNone,
         .oldLayout = vk::ImageLayout::eTransferDstOptimal,
         .newLayout = vk::ImageLayout::ePresentSrcKHR,
-        .image = sc.Image(),
+        .image = pr.Image(),
         .subresourceRange = range,
     };
     cmdbuf.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_present});
     Vulkan::SubmitInfo info{};
-    info.AddWait(sc.GetImageAcquiredSemaphore());
-    info.AddSignal(sc.GetPresentReadySemaphore());
+    info.AddWait(pr.AcquiredSemaphore());
+    info.AddSignal(pr.ReadySemaphore());
     g->scheduler->Flush(info);
-    sc.Present();
+    pr.Present();
 }
 
 void flip_on_gpu(s32 index, s64 arg) {
@@ -340,9 +377,11 @@ bool init(const Callbacks& cb) {
         g->scheduler = std::make_unique<Vulkan::Scheduler>(*g->instance);
         g->runtime = std::make_unique<Vulkan::Runtime>(*g->instance, *g->scheduler);
         g->rasterizer = std::make_unique<Vulkan::Rasterizer>(*g->instance, *g->scheduler, *g->runtime, g->liverpool.get());
+        g->gpu_name = std::string(g->instance->GetModelName());
+        set_overlay(cb.overlay);
         if (g->window) {
-            g->swapchain = std::make_unique<Vulkan::Swapchain>(*g->instance, *g->window);
-            d1::log("renderer: present mode %s", EmulatorSettings.GetPresentMode().c_str());
+            g->presenter = std::make_unique<Presenter>(*g->instance, *g->window, EmulatorSettings.GetPresentMode());
+            d1::log("renderer: present mode %s", g->presenter->ModeName());
         }
     } catch (const std::exception& e) {
         if (g->window) {  // someone is looking at a window: say why nothing will appear, then stop
