@@ -32,6 +32,12 @@ use axum::{body::Bytes, extract::State, http::HeaderMap};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
+/// Session keys handed to the client in success fields 2 and 3 (kept at +0x2539 / +0x2549 of
+/// the BAP connection). BAP uses them to protect the secure hello response: AES-128-CBC with
+/// the first, HMAC-SHA256 with the second (0xB34F70).
+pub const SESSION_AES_KEY: [u8; 16] = [0x22; 16];
+pub const SESSION_HMAC_KEY: [u8; 16] = [0x33; 16];
+
 pub async fn sign_on(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Vec<u8> {
     let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("?");
     info!("signon: request via {host}, {} bytes\n{}", body.len(), pb::dump(&body, 2));
@@ -41,8 +47,8 @@ pub async fn sign_on(State(st): State<Shared>, headers: HeaderMap, body: Bytes) 
     let ip = u32::from_le_bytes(st.public_ip.octets());
     let success = pb::Msg::new()
         .bytes(1, &[0x11; 16])
-        .bytes(2, &[0x22; 16])
-        .bytes(3, &[0x33; 16])
+        .bytes(2, &SESSION_AES_KEY)
+        .bytes(3, &SESSION_HMAC_KEY)
         .bytes(4, b"d1-backend-security-token")
         .int(5, (now + 86400) as i64)
         .uint(6, u64::from(ip))
