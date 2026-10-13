@@ -111,11 +111,22 @@ pub fn membership(players: &[Value]) -> Vec<u8> {
 /// char[64] @0x14, i32 @0x54, u32 @0x58, u32 @0x5C, details @0x60. The activity manager
 /// waits for "instantiation" (0x2998F0) until valid is set and @1 is clear.
 pub const HOST_INSTANCE: u32 = 1;
-/// Scenario (named tag) to load for an activity index. Only the new-character prologue is
-/// known so far; the activity definitions in content hold the rest.
-pub fn scenario_for(activity_index: i32) -> Option<&'static str> {
+/// Scenario to load for an activity index: the named tag (e.g. "act_cosmo_m0_highway") and
+/// its checksum, the u32 at +0xC of that tag's data, which the client compares with the
+/// instance's +0x5C after loading (0x299B00, "activity checksum mismatch"). Only the
+/// new-character prologue is known so far; the activity definitions in content hold the rest.
+/// `bubbles` is the bubble (zone) count at +0x48 of the tag data, which must match the
+/// instance's +0x10 (0x2A0D20, "invalid host activity state").
+pub struct Scenario {
+    pub name: &'static str,
+    pub checksum: u32,
+    pub bubbles: u32,
+}
+
+pub fn scenario_for(activity_index: i32) -> Option<Scenario> {
     match activity_index {
-        164 => Some("act_cosmo_m0_highway"), // prologue, activity 0x6E0DAE89
+        // prologue, activity 0x6E0DAE89
+        164 => Some(Scenario { name: "act_cosmo_m0_highway", checksum: 0x8FE0_7299, bubbles: 22 }),
         _ => None,
     }
 }
@@ -124,7 +135,7 @@ const TYPE_INSTANCE: &str = "0x80800e76";
 /// Details (0x80800CC5 @0x60): ..., @0x628 char[40] activity (scenario) name: the named tag
 /// the client loads (e.g. "act_cosmo_m0_highway"; looked up across package named tables by
 /// 0xD8970). The prologue loader reads it through 0x29A5E0 / 0x75F040.
-pub fn instance(activity_name: &str, activity_index: i32, insertion_point: i32) -> Vec<u8> {
+pub fn instance(activity_name: &str, checksum: u32, bubbles: u32, activity_index: i32, insertion_point: i32) -> Vec<u8> {
     let name: Vec<Option<Value>> = activity_name.bytes().take(39).map(|c| Some(Value::Int(c as i64))).collect();
     // @0x620 u16 activity index (read back by 0x78DF40), @0x622 u16 insertion point
     let mut details = vec![None; 10];
@@ -132,7 +143,12 @@ pub fn instance(activity_name: &str, activity_index: i32, insertion_point: i32) 
     details[8] = Some(Value::Int(insertion_point as i64));
     details.push(Some(Value::Struct(vec![Some(Value::Array(name))])));
     let mut fields = vec![Some(Value::Bool(true)), Some(Value::Bool(false)), Some(Value::Bool(false))];
-    fields.resize(9, None);
+    // @0x10 bubble count, @0x14 per-bubble state (-1 = default, 0x2A0D20)
+    fields.push(Some(Value::Int(0))); // @8
+    fields.push(Some(Value::Int(bubbles as i64)));
+    fields.push(Some(Value::Array((0..bubbles).map(|_| Some(Value::Int(-1))).collect())));
+    fields.resize(8, None);
+    fields.push(Some(Value::Int(checksum as i64))); // @0x5C
     fields.push(Some(Value::Struct(details)));
     let state = Value::Struct(fields);
     let mut w = BitWriter::default();
@@ -192,11 +208,13 @@ impl Host {
 impl Host {
     fn instance(&self) -> Vec<u8> {
         let (index, insertion) = self.activity.unwrap_or((-1, -1));
-        let name = scenario_for(index).unwrap_or_else(|| {
-            warn!("activity host: no scenario known for activity index {index}");
-            ""
-        });
-        instance(name, index, insertion)
+        match scenario_for(index) {
+            Some(sc) => instance(sc.name, sc.checksum, sc.bubbles, index, insertion),
+            None => {
+                warn!("activity host: no scenario known for activity index {index}");
+                instance("", 0, 0, index, insertion)
+            }
+        }
     }
 }
 
@@ -246,7 +264,7 @@ mod instance_tests {
 
     #[test]
     fn instance_name_roundtrip() {
-        let bytes = instance("act_cosmo_m0_highway", 164, -1);
+        let bytes = instance("act_cosmo_m0_highway", 0x8FE0_7299, 22, 164, -1);
         let v = invest::decode(&mut BitReader::new(&bytes), TYPE_INSTANCE);
         let s = invest::show(&v);
         assert!(s.contains("\"act_cosmo_m0_highway\""), "{s}");
