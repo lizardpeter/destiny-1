@@ -73,11 +73,93 @@ Presenter::Presenter(const Vulkan::Instance& instance, const Frontend::WindowSDL
 Presenter::~Presenter() {
     Destroy();
     const auto device = instance_.GetDevice();
+    for (auto& r : raw_) {
+        if (r.image) device.destroyImage(r.image);
+        if (r.memory) device.freeMemory(r.memory);
+    }
     for (auto& s : staging_) {
         device.destroyBuffer(s.buffer);
         device.freeMemory(s.memory);
     }
     instance_.GetInstance().destroySurfaceKHR(surface_);
+}
+
+static vk::Format unorm_twin(vk::Format f) {
+    switch (f) {
+    case vk::Format::eR8G8B8A8Srgb: return vk::Format::eR8G8B8A8Unorm;
+    case vk::Format::eB8G8R8A8Srgb: return vk::Format::eB8G8R8A8Unorm;
+    case vk::Format::eA8B8G8R8SrgbPack32: return vk::Format::eA8B8G8R8UnormPack32;
+    default: return vk::Format::eUndefined;  // not an sRGB format: blit it directly
+    }
+}
+
+vk::Image Presenter::RawView(vk::CommandBuffer cmd, vk::Image src, vk::Format fmt, uint32_t w, uint32_t h) {
+    const vk::Format twin = unorm_twin(fmt);
+    if (twin == vk::Format::eUndefined) return src;
+    const auto device = instance_.GetDevice();
+    Raw& r = raw_[image_ % raw_.size()];
+    if (!r.image || r.format != twin || r.w != w || r.h != h) {
+        if (r.image) {
+            (void)device.waitIdle();
+            device.destroyImage(r.image);
+            device.freeMemory(r.memory);
+        }
+        r.image = device.createImage({
+            .imageType = vk::ImageType::e2D,
+            .format = twin,
+            .extent = {w, h, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = vk::SampleCountFlagBits::e1,
+            .tiling = vk::ImageTiling::eOptimal,
+            .usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
+        }).value;
+        const auto req = device.getImageMemoryRequirements(r.image);
+        const auto props = instance_.GetPhysicalDevice().getMemoryProperties();
+        uint32_t type = 0;
+        for (uint32_t i = 0; i < props.memoryTypeCount; ++i)
+            if ((req.memoryTypeBits & (1u << i)) &&
+                (props.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
+                type = i;
+                break;
+            }
+        r.memory = device.allocateMemory({.allocationSize = req.size, .memoryTypeIndex = type}).value;
+        (void)device.bindImageMemory(r.image, r.memory, 0);
+        r.format = twin;
+        r.w = w;
+        r.h = h;
+    }
+    const vk::ImageSubresourceRange range{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+    const vk::ImageMemoryBarrier2 to_dst{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .srcAccessMask = vk::AccessFlagBits2::eTransferRead,
+        .dstStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eTransferDstOptimal,
+        .image = r.image,
+        .subresourceRange = range,
+    };
+    cmd.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_dst});
+    // Copies between formats of the same size class move bits unchanged (no sRGB decode).
+    const vk::ImageCopy copy{
+        .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .extent = {w, h, 1},
+    };
+    cmd.copyImage(src, vk::ImageLayout::eTransferSrcOptimal, r.image, vk::ImageLayout::eTransferDstOptimal, copy);
+    const vk::ImageMemoryBarrier2 to_src{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eAllTransfer,
+        .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+        .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+        .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+        .image = r.image,
+        .subresourceRange = range,
+    };
+    cmd.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_src});
+    return r.image;
 }
 
 const char* Presenter::ModeName() const {

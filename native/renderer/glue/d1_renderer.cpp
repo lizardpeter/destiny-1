@@ -248,7 +248,8 @@ void present(s32 index) {
         .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
     };
     cmdbuf.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &transfer_done});
-    cmdbuf.blitImage(image.GetImage(), vk::ImageLayout::eTransferSrcOptimal, pr.Image(),
+    const vk::Image src = pr.RawView(cmdbuf, image.GetImage(), image.info.pixel_format, u32(iw), u32(ih));
+    cmdbuf.blitImage(src, vk::ImageLayout::eTransferSrcOptimal, pr.Image(),
                      vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
     if (overlay_enabled()) {
         cmdbuf.pipelineBarrier2(vk::DependencyInfo{.memoryBarrierCount = 1, .pMemoryBarriers = &transfer_done});

@@ -33,6 +33,13 @@ public:
     // Record a copy of text (one string per line) into the top-left of the acquired image.
     void RecordOverlay(vk::CommandBuffer cmd, const std::vector<std::string>& lines);
 
+    // The video-out buffers are sRGB-encoded bytes, but the texture cache may hold them as
+    // an sRGB *or* a UNORM image (the game uses both). A blit from an sRGB image converts to
+    // linear on the way (darker), so alternating buffers pulsed in brightness. This copies
+    // the raw bytes into a UNORM image of the same layout first; blit from what it returns.
+    // `src` must be in TRANSFER_SRC_OPTIMAL; the result is in TRANSFER_SRC_OPTIMAL.
+    vk::Image RawView(vk::CommandBuffer cmd, vk::Image src, vk::Format fmt, uint32_t w, uint32_t h);
+
     const char* ModeName() const;
     uint32_t Rebuilds() const { return rebuilds_; }
     uint64_t presented_ = 0, suboptimal_ = 0, failed_ = 0;  // diagnostics
@@ -60,6 +67,13 @@ private:
     };
     static constexpr uint32_t kOverlayW = 640, kOverlayH = 16 * 8 + 8;
     std::vector<Staging> staging_;
+    struct Raw {
+        vk::Image image{};
+        vk::DeviceMemory memory{};
+        vk::Format format{};
+        uint32_t w = 0, h = 0;
+    };
+    std::array<Raw, 4> raw_{};  // one per swapchain image slot (in flight independently)
 };
 
 }  // namespace d1::render
