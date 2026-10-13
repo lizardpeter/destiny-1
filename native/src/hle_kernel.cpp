@@ -408,6 +408,10 @@ static void note_read(int fd, int64_t off, uint64_t n) {
     std::lock_guard lk(g_fdpath_mutex);
     auto it = g_fdpath.find(fd);
     if (it == g_fdpath.end()) return;
+    if (file_log_level() >= 3) {  // D1_FILE_LOG=3: every read
+        log("read %s @%#llx +%#llx", it->second.first.c_str(), (unsigned long long)off, (unsigned long long)n);
+        return;
+    }
     for (uint64_t w = uint64_t(off) >> 20; w <= (uint64_t(off) + (n ? n - 1 : 0)) >> 20; ++w)
         if (it->second.second.insert(w).second)
             log("read %s @%#llx +%#llx", it->second.first.c_str(), off, n);
@@ -445,6 +449,26 @@ static int32_t sceKernelClose(int fd) {
     return close(fd) == 0 ? SCE_OK : sce_err(to_ps4_errno(errno));
 }
 HLE("sceKernelClose", sceKernelClose)
+// POSIX close: files, directories and sockets share one descriptor space for the game.
+static int ps4_close(int fd) {
+    if (net_is_socket(fd)) return net_close_socket(fd) == 0 ? 0 : -1;
+    const int32_t r = sceKernelClose(fd);
+    if (r == SCE_OK) return 0;
+    errno = int(uint32_t(r) & 0xFF);
+    return -1;
+}
+HLE("close", ps4_close)
+// fcntl: only O_NONBLOCK on sockets matters (F_GETFL 3, F_SETFL 4, FreeBSD O_NONBLOCK 4).
+static int ps4_fcntl(int fd, int cmd, int64_t arg) {
+    if (!net_is_socket(fd)) return 0;
+    if (cmd == 3) return 2;  // O_RDWR
+    if (cmd == 4) {
+        extern bool net_set_nonblocking(int, bool);
+        net_set_nonblocking(fd, (arg & 4) != 0);
+    }
+    return 0;
+}
+HLE("fcntl", ps4_fcntl)
 // A kernel read into a page the GPU has write-protected (to notice CPU writes) fails with
 // EFAULT instead of faulting. Touch the destination so the fault handler unprotects it,
 // then retry.

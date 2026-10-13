@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "hle.h"
 #include "runtime.h"
@@ -187,6 +188,54 @@ static D1_SYSV void* heap_alloc_hook(void* heap, uint64_t size, uint32_t id, cha
     return g_heap_alloc_orig(heap, size, id, halt);
 }
 
+// ---- bap_signin sub-steps (eboot+0x799A70: handler update; sub-step index at handler+0x30)
+// Every sub-step change of the bap_signin handler is logged.
+using HandlerUpdateFn = D1_SYSV void (*)(void*);
+static HandlerUpdateFn g_bap_update_orig = nullptr;
+static D1_SYSV void bap_update_hook(void* h) {
+    auto* step = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + 0x30);
+    const int32_t before = *step;
+    g_bap_update_orig(h);
+    if (*step != before) log("bootflow: bap_signin step %d -> %d", before, *step);
+}
+
+// ---- call counters (research): D1_COUNT=off,off,... (eboot offsets, hex). Each function
+// start jumps to a stub that does `lock inc qword [counter]` and continues in the original.
+// Counts are printed by the watchdog (print_call_counts).
+struct CallCounter { uint64_t off; uint64_t* count; };
+static std::vector<CallCounter> g_counters;
+static void install_call_counters(const char* list) {
+    const Module& exe = rt().modules[0];
+    for (const char* p = list; *p;) {
+        char* end;
+        const uint64_t off = std::strtoull(p, &end, 16);
+        p = *end == ',' ? end + 1 : end;
+        if (!off) {
+            if (end == p) break;
+            continue;
+        }
+        uint8_t* stub = near_alloc(48);
+        if (!stub) break;
+        auto* counter = reinterpret_cast<uint64_t*>(stub + 32);
+        *counter = 0;
+        // lock inc qword ptr [rip + disp]   (disp from the end of this 8-byte instruction)
+        const int32_t disp = int32_t(reinterpret_cast<uint8_t*>(counter) - (stub + 8));
+        stub[0] = 0xF0; stub[1] = 0x48; stub[2] = 0xFF; stub[3] = 0x05;
+        std::memcpy(stub + 4, &disp, 4);
+        void* tramp = hook_function(exe.base + off, stub);
+        if (!tramp) continue;
+        const uint8_t jmp[6] = {0xFF, 0x25, 0, 0, 0, 0};  // jmp [rip+0]; dq tramp
+        std::memcpy(stub + 8, jmp, 6);
+        const uint64_t t = reinterpret_cast<uint64_t>(tramp);
+        std::memcpy(stub + 14, &t, 8);
+        g_counters.push_back({off, counter});
+    }
+    log("hooks: %zu call counters", g_counters.size());
+}
+void print_call_counts() {
+    for (auto& c : g_counters) log("count eboot+%#llx: %llu", (unsigned long long)c.off, (unsigned long long)*c.count);
+}
+
 void install_game_hooks() {
     const Module& exe = rt().modules[0];
     g_job_context = reinterpret_cast<JobContextFn>(exe.base + 0xFC520);
@@ -195,6 +244,18 @@ void install_game_hooks() {
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "prereq")) {
         g_prereq_orig = reinterpret_cast<PrereqFn>(hook_function(exe.base + 0x792ED0, reinterpret_cast<const void*>(&prereq_bypass)));
         log("hooks: bootflow prerequisite bypass %s", g_prereq_orig ? "on" : "FAILED");
+    }
+    // Global resource loads (eboot+0x34A1D0): with a simulation queue present the request is
+    // sent as simulation event 0x4E to the session (bb1a40) and loaded when the session applies
+    // it; without one it is loaded locally. Solo play has no session to apply it, so
+    // D1_BYPASS=localres takes the local path: `call 0x300be0` (queue exists?) -> xor eax,eax.
+    if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "localres")) {
+        auto* p = reinterpret_cast<uint8_t*>(exe.base + 0x34A278);
+        if (p[0] == 0xE8) {
+            const uint8_t patch[5] = {0x31, 0xC0, 0x0F, 0x1F, 0x00};  // xor eax,eax; nop3
+            std::memcpy(p, patch, 5);
+            log("hooks: global resources load locally (localres)");
+        }
     }
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "transport")) {
         replace_function(exe.base + 0x2EB340, reinterpret_cast<const void*>(&transport_started));
@@ -216,6 +277,12 @@ void install_game_hooks() {
         *reinterpret_cast<volatile uint8_t*>(exe.base + 0x18DC974) = 0;
         log("hooks: content manifest signature check off (D1_BACKEND)");
     }
+    {  // bap_signin sub-step trace: cheap (logs only on change), always on
+        g_bap_update_orig = reinterpret_cast<HandlerUpdateFn>(
+            hook_function(exe.base + 0x799A70, reinterpret_cast<const void*>(&bap_update_hook)));
+        log("hooks: bootflow trace %s", g_bap_update_orig ? "on" : "FAILED");
+    }
+    if (const char* c = getenv("D1_COUNT")) install_call_counters(c);
     if (const char* a = getenv("D1_ALLOC_LOG")) {
         g_alloc_log_min = std::strtoull(a, nullptr, 10) << 20;
         g_heap_alloc_orig = reinterpret_cast<HeapAllocFn>(

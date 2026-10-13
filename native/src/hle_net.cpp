@@ -17,8 +17,11 @@
 #include <cstring>
 #include <mutex>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
+
+#include "os.h"
 
 #include "hle.h"
 
@@ -183,6 +186,26 @@ static void to_guest(const sockaddr_in& h, void* a, uint32_t* len) {
     if (len) *len = sizeof *p;
 }
 
+// Sockets handed to the game, so `close` (shared with files) knows what it is closing.
+static std::mutex g_sock_mutex;
+static std::set<int> g_sockets;
+static void note_socket(int fd) {
+    std::lock_guard lk(g_sock_mutex);
+    g_sockets.insert(fd);
+}
+bool net_set_nonblocking(int fd, bool on) { return net::set_nonblocking(fd, on); }
+bool net_is_socket(int fd) {
+    std::lock_guard lk(g_sock_mutex);
+    return g_sockets.count(fd) != 0;
+}
+int net_close_socket(int fd) {
+    {
+        std::lock_guard lk(g_sock_mutex);
+        g_sockets.erase(fd);
+    }
+    return net::close(fd);
+}
+
 static int32_t sceNetSocket(const char* name, int family, int type, int proto) {
     if (!net_link()) {
         log("net: socket(%s) refused: no network link (D1_NET=link to allow)", name ? name : "?");
@@ -191,11 +214,12 @@ static int32_t sceNetSocket(const char* name, int family, int type, int proto) {
     int ht = (type == 1 || type == 10) ? SOCK_STREAM : SOCK_DGRAM;  // 6/10 = P2P variants
     int fd = int(socket(AF_INET, ht, 0));
     if (fd < 0) return net_fail(net::error());
+    note_socket(fd);
     log("net: socket(%s, %s) -> %d", name ? name : "?", ht == SOCK_STREAM ? "tcp" : "udp", fd);
     return fd;
 }
 HLE("sceNetSocket", sceNetSocket)
-static int32_t sceNetSocketClose(int fd) { return net::close(fd) == 0 ? SCE_OK : net_fail(net::error()); }
+static int32_t sceNetSocketClose(int fd) { return net_close_socket(fd) == 0 ? SCE_OK : net_fail(net::error()); }
 HLE("sceNetSocketClose", sceNetSocketClose)
 static int32_t sceNetBind(int fd, const void* a, uint32_t) {
     sockaddr_in h = to_host(a);
@@ -251,6 +275,11 @@ HLE("sceNetSendmsg", sceNetSendmsg)
 static bool would_block(int fd, int flags) {
     if (!(flags & 0x80)) return false;
     pollfd p{decltype(pollfd::fd)(fd), POLLIN, 0};
+    return net::poll(&p, 1, 0) == 0;
+}
+static bool would_block_write(int fd, int flags) {
+    if (!(flags & 0x80)) return false;
+    pollfd p{decltype(pollfd::fd)(fd), POLLOUT, 0};
     return net::poll(&p, 1, 0) == 0;
 }
 static int32_t sceNetRecv(int fd, void* b, uint64_t n, int flags) {
@@ -381,6 +410,166 @@ static int32_t sceNetEpollWait(int ep, NetEpollEvent* evs, int max, int timeout_
     return out;
 }
 HLE("sceNetEpollWait", sceNetEpollWait)
+
+// ------------------------------------------------------------------ POSIX sockets (libkernel)
+// The BAP connection and DemonWare use these rather than sceNet*: return -1 and set errno
+// (FreeBSD numbering) on failure. FreeBSD constants: SOCK_STREAM 1, SOCK_DGRAM 2;
+// SOL_SOCKET 0xFFFF; MSG_DONTWAIT 0x80; F_GETFL 3, F_SETFL 4, O_NONBLOCK 4; FIONBIO 0x8004667E.
+static int px_fail(int e) {
+    errno = to_ps4_errno(e);
+    return -1;
+}
+static int px_socket(int domain, int type, int proto) {
+    if (!net_link()) return px_fail(ENETDOWN);
+    if (domain != 2) return px_fail(EAFNOSUPPORT);
+    const int t = type & 0xF;
+    int fd = int(socket(AF_INET, t == 1 ? SOCK_STREAM : SOCK_DGRAM, 0));
+    if (fd < 0) return px_fail(net::error());
+    note_socket(fd);
+    if (type & 0x20000000) net::set_nonblocking(fd, true);  // SOCK_NONBLOCK
+    log("net: socket(posix, %s) -> %d", t == 1 ? "tcp" : "udp", fd);
+    return fd;
+}
+HLE("socket", px_socket)
+static int px_bind(int fd, const void* a, uint32_t) {
+    sockaddr_in h = to_host(a);
+    return bind(fd, reinterpret_cast<sockaddr*>(&h), sizeof h) == 0 ? 0 : px_fail(net::error());
+}
+HLE("bind", px_bind)
+static int px_connect(int fd, const void* a, uint32_t) {
+    sockaddr_in h = to_host(a);
+    char ip[32];
+    inet_ntop(AF_INET, &h.sin_addr, ip, sizeof ip);
+    log("net: connect(posix %d, %s:%u)", fd, ip, ntohs(h.sin_port));
+    if (connect(fd, reinterpret_cast<sockaddr*>(&h), sizeof h) == 0) return 0;
+    const int e = net::error();
+    return px_fail(e == EAGAIN ? EINPROGRESS : e);
+}
+HLE("connect", px_connect)
+static int px_listen(int fd, int backlog) { return listen(fd, backlog) == 0 ? 0 : px_fail(net::error()); }
+HLE("listen", px_listen)
+static int px_accept(int fd, void* a, uint32_t* len) {
+    sockaddr_in h{};
+    socklen_t l = sizeof h;
+    int r = int(accept(fd, reinterpret_cast<sockaddr*>(&h), &l));
+    if (r < 0) return px_fail(net::error());
+    note_socket(r);
+    to_guest(h, a, len);
+    return r;
+}
+HLE("accept", px_accept)
+static int64_t px_send(int fd, const void* b, uint64_t n, int flags) {
+    if (would_block_write(fd, flags)) return px_fail(EAGAIN);
+    auto r = send(fd, static_cast<const char*>(b), int(n), MSG_NOSIGNAL);
+    return r < 0 ? px_fail(net::error()) : int64_t(r);
+}
+HLE("send", px_send)
+static int64_t px_sendto(int fd, const void* b, uint64_t n, int flags, const void* a, uint32_t alen) {
+    if (!a) return px_send(fd, b, n, flags);
+    sockaddr_in h = to_host(a);
+    auto r = sendto(fd, static_cast<const char*>(b), int(n), MSG_NOSIGNAL, reinterpret_cast<sockaddr*>(&h), sizeof h);
+    return r < 0 ? px_fail(net::error()) : int64_t(r);
+}
+HLE("sendto", px_sendto)
+static int64_t px_recv(int fd, void* b, uint64_t n, int flags) {
+    if (would_block(fd, flags)) return px_fail(EAGAIN);
+    auto r = recv(fd, static_cast<char*>(b), int(n), 0);
+    return r < 0 ? px_fail(net::error()) : int64_t(r);
+}
+HLE("recv", px_recv)
+static int64_t px_recvfrom(int fd, void* b, uint64_t n, int flags, void* a, uint32_t* len) {
+    if (would_block(fd, flags)) return px_fail(EAGAIN);
+    sockaddr_in h{};
+    socklen_t l = sizeof h;
+    auto r = recvfrom(fd, static_cast<char*>(b), int(n), 0, reinterpret_cast<sockaddr*>(&h), &l);
+    if (r < 0) return px_fail(net::error());
+    to_guest(h, a, len);
+    return int64_t(r);
+}
+HLE("recvfrom", px_recvfrom)
+static int px_setsockopt(int fd, int level, int opt, const void* val, uint32_t len) {
+    const int32_t r = sceNetSetsockopt(fd, level, opt, val, len);
+    if (r == SCE_OK) return 0;
+    errno = int(uint32_t(r) & 0xFF);
+    return -1;
+}
+HLE("setsockopt", px_setsockopt)
+static int px_getsockopt(int fd, int level, int opt, void* val, uint32_t* len) {
+    sceNetGetsockopt(fd, level, opt, val, len);
+    return 0;
+}
+HLE("getsockopt", px_getsockopt)
+static int px_getsockname(int fd, void* a, uint32_t* len) {
+    sockaddr_in h{};
+    socklen_t l = sizeof h;
+    if (getsockname(fd, reinterpret_cast<sockaddr*>(&h), &l) != 0) return px_fail(net::error());
+    to_guest(h, a, len);
+    return 0;
+}
+HLE("getsockname", px_getsockname)
+static int px_getpeername(int fd, void* a, uint32_t* len) {
+    sockaddr_in h{};
+    socklen_t l = sizeof h;
+    if (getpeername(fd, reinterpret_cast<sockaddr*>(&h), &l) != 0) return px_fail(net::error());
+    to_guest(h, a, len);
+    return 0;
+}
+HLE("getpeername", px_getpeername)
+static int px_shutdown(int fd, int how) { return shutdown(fd, how) == 0 ? 0 : px_fail(net::error()); }
+HLE("shutdown", px_shutdown)
+
+// select(): FreeBSD fd_set is a bit array of 64-bit words; the timeout a 64-bit timeval.
+static int px_select(int nfds, uint64_t* rd, uint64_t* wr, uint64_t* ex, const GuestTimeval* tv) {
+    std::vector<pollfd> fds;
+    auto bit = [](const uint64_t* set, int fd) { return set && (set[fd / 64] >> (fd % 64) & 1); };
+    for (int fd = 0; fd < nfds; ++fd) {
+        short ev = short((bit(rd, fd) ? POLLIN : 0) | (bit(wr, fd) ? POLLOUT : 0));
+        if (ev || bit(ex, fd)) fds.push_back({decltype(pollfd::fd)(fd), ev, 0});
+    }
+    const int ms = tv ? int(tv->tv_sec * 1000 + (tv->tv_usec + 999) / 1000) : -1;
+    if (fds.empty()) {
+        if (ms > 0) os::sleep_us(uint64_t(ms) * 1000);
+        return 0;
+    }
+    int n = net::poll(fds.data(), unsigned(fds.size()), ms);
+    if (n < 0) return px_fail(net::error());
+    const size_t words = (size_t(nfds) + 63) / 64;
+    if (rd) std::memset(rd, 0, words * 8);
+    if (wr) std::memset(wr, 0, words * 8);
+    if (ex) std::memset(ex, 0, words * 8);
+    int ready = 0;
+    for (auto& p : fds) {
+        const int fd = int(p.fd);
+        bool any = false;
+        if (rd && (p.revents & (POLLIN | POLLHUP | POLLERR))) rd[fd / 64] |= 1ull << (fd % 64), any = true;
+        if (wr && (p.revents & (POLLOUT | POLLERR | POLLHUP))) wr[fd / 64] |= 1ull << (fd % 64), any = true;
+        if (ex && (p.revents & POLLERR)) ex[fd / 64] |= 1ull << (fd % 64), any = true;
+        ready += any;
+    }
+    return ready;
+}
+HLE("select", px_select)
+// FreeBSD struct pollfd matches the host layout (int fd; short events; short revents) on
+// Linux; Winsock's SOCKET fd is 64-bit, so convert.
+struct GuestPollfd { int32_t fd; int16_t events, revents; };
+static int px_poll(GuestPollfd* g, uint32_t n, int timeout_ms) {
+    std::vector<pollfd> fds(n);
+    for (uint32_t i = 0; i < n; ++i)
+        fds[i] = {decltype(pollfd::fd)(g[i].fd), short(g[i].events & (POLLIN | POLLOUT)), 0};
+    int r = net::poll(fds.data(), n, timeout_ms);
+    if (r < 0) return px_fail(net::error());
+    for (uint32_t i = 0; i < n; ++i) g[i].revents = int16_t(fds[i].revents);
+    return r;
+}
+HLE("poll", px_poll)
+static int px_ioctl(int fd, uint64_t req, int* arg) {
+    if (req == 0x8004667E && arg) {  // FIONBIO
+        net::set_nonblocking(fd, *arg != 0);
+        return 0;
+    }
+    return px_fail(ENOTTY);
+}
+HLE("ioctl", px_ioctl)
 
 // ------------------------------------------------------------------ DNS: backend names only
 static int32_t sceNetResolverCreate(const char*, int, int) { return 1; }

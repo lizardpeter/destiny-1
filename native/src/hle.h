@@ -67,6 +67,10 @@ bool gpu_on_fault(void* ucontext, void* addr);
 const char* backend_host();
 bool backend_route(const char* host, uint32_t* addr_be);
 
+// Sockets the game opened (hle_net.cpp): `close` routes them to the network layer.
+bool net_is_socket(int fd);
+int net_close_socket(int fd);
+
 // Current world-controller state name (e.g. "bootflow:start"), or null (hooks.cpp).
 const char* game_state();
 

@@ -26,8 +26,10 @@ use tracing::info;
 
 pub const MANIFEST_GUID: &str = "d1b00000-0000-4000-8000-000000000001";
 
-/// One patchable package: the newest generation of each package id (English only for
-/// localized packages).
+/// One patchable package file. Every generation of a package is listed: a newer
+/// generation's block table points into older generation files (block `patch_id`), e.g.
+/// ps4_client_bootstrap_patchabl_0172_5 keeps its first entry in ..._0172_0.pkg, and the
+/// loader only opens files the manifest registered (English only for localized packages).
 pub struct Package {
     pub file: String,
     pub id: u16,
@@ -38,7 +40,8 @@ pub struct Package {
 /// Parses a `packages.txt` listing (one `.pkg` file name per line) and reads each chosen
 /// package's header from `dir` (only the first 0x140 bytes are needed).
 pub fn load_packages(list: &str, dir: &std::path::Path) -> Vec<Package> {
-    let mut newest: BTreeMap<String, (u32, String, u16)> = BTreeMap::new();
+    // (package id, generation) -> file name
+    let mut files: BTreeMap<(u16, u32), String> = BTreeMap::new();
     for line in list.lines().map(str::trim).filter(|l| l.ends_with(".pkg")) {
         let stem = &line[..line.len() - 4];
         let Some((base, generation)) = stem.rsplit_once('_') else { continue };
@@ -55,14 +58,11 @@ pub fn load_packages(list: &str, dir: &std::path::Path) -> Vec<Package> {
         let Some(id) = parts.last().and_then(|p| u16::from_str_radix(p, 16).ok().filter(|_| p.len() == 4)) else {
             continue; // unpatchable bootstrap packages have no id and ship on disc
         };
-        let e = newest.entry(base.to_string()).or_insert((generation, line.to_string(), id));
-        if generation >= e.0 {
-            *e = (generation, line.to_string(), id);
-        }
+        files.insert((id, generation), line.to_string());
     }
-    newest
-        .into_values()
-        .filter_map(|(_, file, id)| {
+    files
+        .into_iter()
+        .filter_map(|((id, _), file)| {
             use std::io::Read;
             let mut h = [0u8; 0x10];
             let mut f = std::fs::File::open(dir.join(&file)).map_err(|e| tracing::warn!("{file}: {e}")).ok()?;
@@ -86,6 +86,9 @@ pub async fn manifest(State(st): State<Shared>) -> Vec<u8> {
             .uint(4, p.key);
         m = m.msg(3, entry);
     }
-    info!("content: manifest requested ({} packages)", st.packages.len());
+    if st.packages.len() > 1500 {
+        tracing::warn!("content: {} package files, the client takes 1500", st.packages.len());
+    }
+    info!("content: manifest requested ({} package files)", st.packages.len());
     m.str(5, MANIFEST_GUID).into_bytes()
 }

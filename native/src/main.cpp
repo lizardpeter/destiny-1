@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 
+#include "net_compat.h"
 #include "os.h"
 
 #include "hle.h"
@@ -39,6 +40,7 @@ void register_guest_thread(const char* name);
 void dump_all_threads();
 void print_gpu_summary();
 void install_game_hooks();
+void print_call_counts();
 struct Thread;
 Thread* ensure_self(const char* name);
 }  // namespace d1
@@ -118,6 +120,22 @@ static void set_env(const char* k, const std::string& v) {
 }
 static bool file_exists(const std::string& p) { return access(p.c_str(), F_OK) == 0; }
 
+// True once something accepts TCP connections on 127.0.0.1:port.
+static bool wait_for_port(uint16_t port, int seconds) {
+    for (int i = 0; i < seconds * 10; ++i) {
+        int s = int(socket(AF_INET, SOCK_STREAM, 0));
+        sockaddr_in a{};
+        a.sin_family = AF_INET;
+        a.sin_port = htons(port);
+        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        const bool ok = connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0;
+        net::close(s);
+        if (ok) return true;
+        os::sleep_us(100000);
+    }
+    return false;
+}
+
 // Lower-cased, '/'-separated full path, for the "data folder inside the game folder" check.
 static std::string canonical(std::string p) {
 #if D1_WINDOWS
@@ -178,7 +196,10 @@ int main(int argc, char** argv) {
             os::spawn_child(backend_exe, "--packages-dir \"" + app0 + "/packages\"", folder + "/backend.log")) {
             log("backend: started %s", backend_exe.c_str());
             set_env("D1_BACKEND", "127.0.0.1");
-            os::sleep_us(300000);  // let it open its ports
+            // It reads every package header before listening; wait until it answers (the
+            // game gives up on the first failed sign-on).
+            if (wait_for_port(8080, 30)) log("backend: ready");
+            else log("backend: not answering on port 8080 after 30 s; check backend.log");
         } else {
             log("backend: %s not found or not started; playing offline", backend_exe.c_str());
         }
@@ -232,6 +253,7 @@ int main(int argc, char** argv) {
                 }
             }
             dump_all_threads();
+            print_call_counts();
             print_import_summary();
             print_gpu_summary();
             _exit(0);

@@ -8,7 +8,8 @@
 //!       1,2,3 bytes[16]  (2 and 3 are kept as session keys)
 //!       4     bytes[<=512] security token
 //!       5     int64  token expiry (absolute, seconds) — or 11: relative seconds
-//!       6     uint32 IPv4 of the next server (host order; stored big-endian)
+//!       6     uint32 IPv4 of the next server: the address bytes as a little-endian u32
+//!             (127.0.0.1 = 0x0100007F)
 //!       7     uint32 port of the next server
 //!       9     msg {1,2,3 float}
 //!  3  msg     denial (0x15BA200): reason, message[256], ...
@@ -35,7 +36,9 @@ pub async fn sign_on(State(st): State<Shared>, headers: HeaderMap, body: Bytes) 
     let host = headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("?");
     info!("signon: request via {host}, {} bytes\n{}", body.len(), pb::dump(&body, 2));
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let ip = u32::from(st.public_ip);
+    // The client stores field 6 as the address's bytes in memory order (127.0.0.1 must be
+    // sent as 0x0100007F; 0x7F000001 shows up as 1.0.0.127 in its BAP status).
+    let ip = u32::from_le_bytes(st.public_ip.octets());
     let success = pb::Msg::new()
         .bytes(1, &[0x11; 16])
         .bytes(2, &[0x22; 16])

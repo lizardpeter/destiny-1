@@ -2,7 +2,7 @@
 //! yet known: for now accept connections and log what the client sends.
 
 use crate::pb;
-use tokio::{io::AsyncReadExt, net::TcpListener};
+use tokio::{io::AsyncReadExt, net::{TcpListener, UdpSocket}};
 use tracing::{info, warn};
 
 pub async fn serve(listener: TcpListener) {
@@ -25,5 +25,18 @@ pub async fn serve(listener: TcpListener) {
                 }
             }
         });
+    }
+}
+
+/// UDP side of the same port: the client's BAP status counts datagrams ("packets").
+pub async fn serve_udp(sock: UdpSocket) {
+    let mut buf = vec![0u8; 65536];
+    let mut seen = 0u64;
+    loop {
+        let Ok((n, peer)) = sock.recv_from(&mut buf).await else { continue };
+        seen += 1;
+        if seen <= 50 || seen % 100 == 0 {
+            warn!("bap/udp: #{seen} {n} bytes from {peer} (unhandled): {}", pb::hex(&buf[..n.min(256)]));
+        }
     }
 }

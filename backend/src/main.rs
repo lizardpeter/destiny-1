@@ -80,8 +80,10 @@ async fn main() {
     });
     info!("{} patchable packages in the content manifest", st.packages.len());
     let bap = tokio::net::TcpListener::bind(format!("{}:{}", args.bind, args.bap_port)).await.expect("bind bap");
-    info!("d1-backend BAP (stub) on {}:{}", args.bind, args.bap_port);
+    info!("d1-backend BAP (stub) on {}:{} tcp+udp", args.bind, args.bap_port);
     tokio::spawn(bap::serve(bap));
+    let bap_udp = tokio::net::UdpSocket::bind(format!("{}:{}", args.bind, args.bap_port)).await.expect("bind bap udp");
+    tokio::spawn(bap::serve_udp(bap_udp));
 
     let app = Router::new()
         .route("/2.0/oauth/token", any(psn::oauth_token))

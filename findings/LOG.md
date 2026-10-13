@@ -737,3 +737,35 @@ response; nothing has connected to it yet).
   with the other AppContent / PlayGo / DiscMap calls that return results through pointers.
 - LLVM's `__builtin_setjmp` restores a wrong frame pointer with the Win64 frame layout;
   thread exit uses a small assembly entry/exit pair instead (`d1_call_guest_exitable`).
+
+## 2026-10-12 — bap_signin: package generations, POSIX sockets, BAP transport
+
+- **bap_signin** (handler vtable 0x1945D90, update 0x799A70, sub-step at handler+0x30) runs
+  21 steps: unload bootstrap-unpatchable, load the package sets "client_bootstrap_patchable"
+  (3), "client_startup_globals", "investment_assets"/"investment_globals" (6, 7) through the
+  package manager at 0x26C93B4 (8 x {state, handle, tag}; 0x752F10 request, 0x7536F0 status),
+  then connects to BAP (0x799FA0). Sub-steps are logged ("bootflow: bap_signin step a -> b").
+- **Stuck at step 12** (loading set 3, tag 0x80AE4000): newer package generations keep
+  blocks in older generation files (block `patch_id`): ps4_client_bootstrap_patchabl_0172_5
+  has 150 blocks in _5 and 46 in _0/_1/_2/_4, its first entry in _0. The loader only opens
+  files the content manifest registered, and the backend listed only the newest generation.
+  Listing every generation (English + neutral: 1392 of the client's 1500 slots) fixes it;
+  steps 12-21 then complete. (Global resource loads go through the simulation queue as event
+  0x4E, applied by 0x34B920; D1_BYPASS=localres forces the local path at 0x34A278 but is not
+  needed.)
+- **BAP address**: sign-on field 2.6 is the IPv4 bytes as a little-endian u32 (127.0.0.1 =
+  0x0100007F); big-endian showed up as 1.0.0.127.
+- **POSIX sockets**: BAP (c_network_server_bap_connection, 0xB2Exxx-0xB33xxx) and DemonWare
+  use libkernel `socket/connect/select/recv/send/setsockopt/close`, which were logging stubs
+  returning 0. Implemented (FreeBSD constants, BSD sockaddr, fd_set of 64-bit words; `close`
+  routes sockets to the network layer).
+- **BAP transport** (states: _acquiring_server, _connecting, _listening, _channel_starting,
+  _authenticating, _setup_primary_register_subscriber, _setup_primary_register_relay_client,
+  _connected): TCP; every message is an envelope `u8 version (1), u8 kind (1 = plain,
+  0/2 = signed/encrypted), u32 big-endian size` (0xB2FA10), then a signature (0xB2FC70)
+  and payload. In _channel_starting the client queues a channel-startup request (0xB336F0:
+  type 5, message 0x1E, a key "DESTIN\x94\x15" + 120 random bytes) and polls recv(6) for
+  envelopes; nothing is sent yet (update_sending 0xB2F3D0). Next: the send path and the
+  server's first message.
+- Research tools: D1_COUNT=<offsets> counts calls to game functions; D1_FILE_LOG=3 logs
+  every read; d1-native waits for the backend's port before booting.
