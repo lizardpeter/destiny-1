@@ -27,9 +27,17 @@ Presenter::Presenter(const Vulkan::Instance& instance, const Frontend::WindowSDL
     const auto pd = instance.GetPhysicalDevice();
     // Requested mode if the driver has it, else FIFO (always available).
     const auto [mr, modes] = pd.getSurfacePresentModesKHR(surface_);
+    // v-sync off prefers Mailbox (no tearing), then Immediate; Intel drivers on Windows
+    // usually have only FIFO and Immediate.
     const auto want = parse_mode(mode);
-    mode_ = std::find(modes.begin(), modes.end(), want) != modes.end() ? want : vk::PresentModeKHR::eFifo;
-    if (mode_ != want) d1::log("present: %s not supported by this driver, using FIFO (v-sync)", mode.c_str());
+    auto has = [&](vk::PresentModeKHR m) { return std::find(modes.begin(), modes.end(), m) != modes.end(); };
+    mode_ = vk::PresentModeKHR::eFifo;
+    if (has(want)) mode_ = want;
+    else if (want == vk::PresentModeKHR::eMailbox && has(vk::PresentModeKHR::eImmediate)) mode_ = vk::PresentModeKHR::eImmediate;
+    std::string avail;
+    for (auto m : modes) avail += " " + vk::to_string(m);
+    d1::log("present: requested %s, using %s (driver offers:%s)", mode.c_str(), vk::to_string(mode_).c_str(),
+            avail.c_str());
     const auto [fr, formats] = pd.getSurfaceFormatsKHR(surface_);
     format_ = formats.empty() ? vk::SurfaceFormatKHR{vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear}
                               : formats[0];
@@ -152,10 +160,13 @@ bool Presenter::Acquire(uint32_t ww, uint32_t wh) {
     if (!chain_ || out_of_date_ || ww != want_w_ || wh != want_h_) Create(ww, wh);
     if (!chain_) return false;
     const auto r = instance_.GetDevice().acquireNextImageKHR(chain_, UINT64_MAX, acquired_[frame_], nullptr, &image_);
+    if (r == vk::Result::eSuboptimalKHR) ++suboptimal_;
     if (r == vk::Result::eErrorOutOfDateKHR || r == vk::Result::eErrorSurfaceLostKHR) {
         out_of_date_ = true;
+        ++failed_;
         return false;
     }
+    if (r != vk::Result::eSuccess && r != vk::Result::eSuboptimalKHR) ++failed_;
     return r == vk::Result::eSuccess || r == vk::Result::eSuboptimalKHR;
 }
 
@@ -169,6 +180,9 @@ void Presenter::Present() {
     };
     const auto r = instance_.GetPresentQueue().presentKHR(info);
     if (r == vk::Result::eErrorOutOfDateKHR || r == vk::Result::eErrorSurfaceLostKHR) out_of_date_ = true;
+    if (r == vk::Result::eSuboptimalKHR) ++suboptimal_;
+    else if (r != vk::Result::eSuccess) ++failed_;
+    ++presented_;
     frame_ = (frame_ + 1) % uint32_t(acquired_.size());
 }
 
@@ -182,7 +196,7 @@ void Presenter::RecordOverlay(vk::CommandBuffer cmd, const std::vector<std::stri
     const uint32_t x0 = 12, y0 = 12;
     if (x0 + w > extent_.width || y0 + h > extent_.height) return;
     const bool bgra = format_.format == vk::Format::eB8G8R8A8Unorm || format_.format == vk::Format::eB8G8R8A8Srgb;
-    uint8_t* px = staging_[frame_ % staging_.size()].data;
+    uint8_t* px = staging_[image_ % staging_.size()].data;
     for (uint32_t y = 0; y < h; ++y)
         for (uint32_t x = 0; x < w; ++x) {
             uint32_t cov = 0;
@@ -209,7 +223,7 @@ void Presenter::RecordOverlay(vk::CommandBuffer cmd, const std::vector<std::stri
         .imageOffset = {int32_t(x0), int32_t(y0), 0},
         .imageExtent = {w, h, 1},
     };
-    cmd.copyBufferToImage(staging_[frame_ % staging_.size()].buffer, Image(), vk::ImageLayout::eTransferDstOptimal,
+    cmd.copyBufferToImage(staging_[image_ % staging_.size()].buffer, Image(), vk::ImageLayout::eTransferDstOptimal,
                           region);
 }
 

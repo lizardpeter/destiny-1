@@ -35,6 +35,7 @@ public:
 
     const char* ModeName() const;
     uint32_t Rebuilds() const { return rebuilds_; }
+    uint64_t presented_ = 0, suboptimal_ = 0, failed_ = 0;  // diagnostics
 
 private:
     void Create(uint32_t w, uint32_t h);

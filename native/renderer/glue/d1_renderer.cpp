@@ -69,6 +69,10 @@ struct State {
     std::chrono::steady_clock::time_point stats_t0 = std::chrono::steady_clock::now();
     u64 stats_flips0 = 0;
     double fps = 0, frame_ms = 0;
+    // presentation diagnostics (logged every 5 s): image identity per video-out buffer
+    std::chrono::steady_clock::time_point diag_t0 = std::chrono::steady_clock::now();
+    u64 last_image_id[16]{};
+    u64 image_changes = 0, presents = 0, skipped = 0;
     std::string gpu_name;
     std::mutex submit_mutex;
     bool send_init_packet{true};
@@ -77,6 +81,7 @@ struct State {
     // frame capture
     std::string frames_dir;
     u64 frame_every{60};
+    u64 frame_start{0};  // D1_FRAME_START: capture from this flip on (every flip)
     std::atomic<u64> flips{0};
     std::atomic<u64> submits{0};
     std::atomic<u64> saved{0};
@@ -119,7 +124,7 @@ void write_png(const std::string& path, const u8* rgba, u32 w, u32 h, vk::Format
 void capture(s32 index) {
     if (g->frames_dir.empty() || index < 0 || !g->vo_buffers[index]) return;
     const u64 n = g->flips.load();
-    if (n != 1 && n % g->frame_every != 0) return;
+    if (g->frame_start ? (n < g->frame_start || n > g->frame_start + 64) : (n != 1 && n % g->frame_every != 0)) return;
     auto& tc = g->rasterizer->GetTextureCache();
     auto desc = VideoCore::TextureCache::ImageDesc{g->group, g->vo_buffers[index]};
     const auto id = tc.FindImage(desc);
@@ -179,7 +184,10 @@ void present(s32 index) {
     update_stats();
     auto& pr = *g->presenter;
     const u32 ww = u32(g->window->GetWidth()), wh = u32(g->window->GetHeight());
-    if (!pr.Acquire(ww, wh)) return;
+    if (!pr.Acquire(ww, wh)) {
+        ++g->skipped;
+        return;
+    }
     const vk::Extent2D ext = pr.Extent();
     auto& tc = g->rasterizer->GetTextureCache();
     auto desc = VideoCore::TextureCache::ImageDesc{g->group, g->vo_buffers[index]};
@@ -187,6 +195,22 @@ void present(s32 index) {
     tc.UpdateImage(id);
     auto& image = tc.GetImage(id);
     const s32 iw = s32(image.info.size.width), ih = s32(image.info.size.height);
+    // A video-out buffer that maps to a different cached image than last time means the
+    // texture cache rebuilt it (from guest memory, without the GPU's rendering): a likely
+    // cause of flicker. Counted and logged.
+    const u64 key = u64(id.index) + 1;
+    if (g->last_image_id[index] && g->last_image_id[index] != key) ++g->image_changes;
+    g->last_image_id[index] = key;
+    ++g->presents;
+    if (const auto now = std::chrono::steady_clock::now(); now - g->diag_t0 > std::chrono::seconds(5)) {
+        d1::log("present: last 5 s: %llu presents, %llu skipped, %llu image changes, swapchain %llu suboptimal, "
+                "%llu failed, %u rebuilds, %.1f fps",
+                (unsigned long long)g->presents, (unsigned long long)g->skipped, (unsigned long long)g->image_changes,
+                (unsigned long long)pr.suboptimal_, (unsigned long long)pr.failed_, pr.Rebuilds(), g->fps);
+        g->presents = g->skipped = g->image_changes = 0;
+        pr.suboptimal_ = pr.failed_ = 0;
+        g->diag_t0 = now;
+    }
 
     g->scheduler->EndRendering();
     g->runtime->Transit(&image, vk::ImageLayout::eTransferSrcOptimal, vk::PipelineStageFlagBits2::eBlit,
@@ -367,6 +391,7 @@ bool init(const Callbacks& cb) {
         d1::os::make_dirs(d);
     }
     if (const char* e = std::getenv("D1_FRAME_EVERY")) g->frame_every = std::max(1L, std::atol(e));
+    if (const char* e = std::getenv("D1_FRAME_START")) g->frame_start = std::strtoull(e, nullptr, 10);
     try {
         g->liverpool = std::make_unique<Liverpool>();
         static Frontend::WindowSDL headless;  // window system "Headless": no surface, offscreen only
