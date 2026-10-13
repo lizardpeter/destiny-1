@@ -13,6 +13,12 @@ _None recovered (retail build stripped most asserts)._
 
 | VA | name | class | evidence | pseudo-C | role |
 |---|---|---|---|---|---|
+| `0x72240` | bitstream_init |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`72240_bitstream_init.c`](decompiled/72240_bitstream_init.c) | Initialises a bitstream over (data, length). |
+| `0x73430` | bitstream_read_bit |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`73430_bitstream_read_bit.c`](decompiled/73430_bitstream_read_bit.c) | Reads one bit (MSB first, 64-bit refill). |
+| `0x2a4ac0` | type_decode_from_bits |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`2a4ac0_type_decode_from_bits.c`](decompiled/2a4ac0_type_decode_from_bits.c) | Decodes an engine-type value from a bitstream (0x2C9A90) and checks it fit the buffer. |
+| `0x2c8340` | type_decode_members |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`2c8340_type_decode_members.c`](decompiled/2c8340_type_decode_members.c) | Resolves the type descriptor and runs the member reader 0x101EB30 (mode 1) or 0x101F1D0. |
+| `0x2c9a90` | type_decode |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`2c9a90_type_decode.c`](decompiled/2c9a90_type_decode.c) | Plain engine-type decode (0x2C9110). |
+| `0x2c9ae0` | type_decode_update |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`2c9ae0_type_decode_update.c`](decompiled/2c9ae0_type_decode_update.c) | Update decode: one 'present' bit (0x73430), then the type through 0x2C8340 recording changed members; used for membership. |
 | `0x3527d0` | engine_configuration_register |  | CONFIRMED_BINARY (decompiled data flow); names are HYPOTHESIS | [`3527d0_engine_configuration_register.c`](decompiled/3527d0_engine_configuration_register.c) | Registers named global block 'Engine Configuration' (0x3330 bytes, align 4) via sub_23e010 into g_2693DF8. |
 
 ## Classes (145)

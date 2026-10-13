@@ -17,7 +17,13 @@
    "role": "allocators, containers, threading, crash reporting, input converters, character action_impl classes",
    "source_files": [],
    "functions": [
-    "0x3527d0"
+    "0x3527d0",
+    "0x2a4ac0",
+    "0x2c9a90",
+    "0x2c9ae0",
+    "0x2c8340",
+    "0x72240",
+    "0x73430"
    ],
    "classes": [
     {
@@ -3303,7 +3309,11 @@
    "path_evidence": "HYPOTHESIS",
    "role": "resource loading, contexts, defrag (log 'resourcerer:*')",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x10c500",
+    "0x1072c0",
+    "0x106bf0"
+   ],
    "classes": [
     {
      "name": "c_bslib_unshippable_allocator",
@@ -15087,7 +15097,11 @@
     "d:\\bungie\\evil\\shared\\engine\\source\\omaha\\game\\game.cpp",
     "d:\\bungie\\evil\\shared\\engine\\source\\omaha\\game\\game_engine.cpp"
    ],
-   "functions": [],
+   "functions": [
+    "0x923430",
+    "0x923790",
+    "0x6e7e20"
+   ],
    "classes": [
     {
      "name": "c_action_system_game_system",
@@ -15652,7 +15666,31 @@
    "source_files": [],
    "functions": [
     "0xadec40",
-    "0xadf6c0"
+    "0xadf6c0",
+    "0x299e30",
+    "0x595db0",
+    "0x595fc0",
+    "0x5956a0",
+    "0x595690",
+    "0x299d10",
+    "0x1018e30",
+    "0x29c710",
+    "0x1018800",
+    "0x1018990",
+    "0x29d950",
+    "0x29d130",
+    "0x29ddf0",
+    "0x10193e0",
+    "0x29d960",
+    "0x29de50",
+    "0x29d400",
+    "0x2998f0",
+    "0x299b00",
+    "0x298aa0",
+    "0x29a5e0",
+    "0x2a0d20",
+    "0x2a5520",
+    "0x2a2c60"
    ],
    "classes": [
     {
@@ -16993,7 +17031,28 @@
    "path_evidence": "HYPOTHESIS",
    "role": "BAP connection/message queues, investment BAP messages",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0xb2fa10",
+    "0xb323f0",
+    "0xb2e860",
+    "0xb2e830",
+    "0xb2e840",
+    "0xb2e850",
+    "0xb333a0",
+    "0x559c30",
+    "0x55abc0",
+    "0x55aa80",
+    "0x567540",
+    "0x564300",
+    "0x565290",
+    "0x565db0",
+    "0x55d370",
+    "0x560590",
+    "0x55e3d0",
+    "0x55f2c0",
+    "0x55f8a0",
+    "0x55bd10"
+   ],
    "classes": [
     {
      "name": "c_activity_client_messaging_interface_bap",
@@ -18872,7 +18931,24 @@
    "path_evidence": "HYPOTHESIS",
    "role": "activity/state/slice_set/matchmaking managers, bootflow (log 'world_controller:*')",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x761b50",
+    "0x75fb20",
+    "0x75f210",
+    "0x75f040",
+    "0x78df40",
+    "0x7ae9b0",
+    "0x7a8dd0",
+    "0x780e60",
+    "0x778d60",
+    "0x782a80",
+    "0x3454c0",
+    "0x343a90",
+    "0x792ed0",
+    "0x7958c0",
+    "0x7969a0",
+    "0x7965a0"
+   ],
    "classes": [
     {
      "name": "c_activity_client",
@@ -20117,7 +20193,14 @@
    "path_evidence": "HYPOTHESIS",
    "role": "simulation queue, replication, determinism",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x906f70",
+    "0x300b90",
+    "0x3007e0",
+    "0xbb4690",
+    "0xbad260",
+    "0xbb1c10"
+   ],
    "classes": [
     {
      "name": "c_cinematic_video_playback_complete_simulation_queue_definition",
@@ -27080,7 +27163,11 @@
    "path_evidence": "HYPOTHESIS",
    "role": "items, vendors, talent grids, rewards",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x5505c0",
+    "0x28e590",
+    "0x28e530"
+   ],
    "classes": [
     {
      "name": "c_activity_complete_incident_metadata_investment_interface",

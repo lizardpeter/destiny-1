@@ -361,5 +361,1045 @@
   "role": "Calls 0xADEC40, derives 1000/config[+0x5A0+0x18] frame-time limit, resets stale 28-byte entries at mirror+0x6F8.",
   "size_bytes": 177,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:network_config_frame_update:adf6c0"
+ },
+ {
+  "va": "0xb2fa10",
+  "name": "bap_envelope_header_read",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b2fa10_bap_envelope_header_read.c",
+  "role": "Reads the 6-byte BAP envelope header (u8 version must be 1, u8 kind, u32 BE length) into connection +0x16D0; kind 0/2 = plaintext, 1 = encrypted (connection state +0x16C8 = 3 / 2).",
+  "size_bytes": 599,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_envelope_header_read:b2fa10",
+  "calls": []
+ },
+ {
+  "va": "0xb323f0",
+  "name": "bap_connection_receive",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b323f0_bap_connection_receive.c",
+  "role": "Socket receive for a BAP connection: on bytes received stores the receive timestamp at connection +0x1EF8 (read by the activity host lost-connection check) and feeds the receive buffer.",
+  "size_bytes": 540,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_connection_receive:b323f0",
+  "calls": []
+ },
+ {
+  "va": "0xb2e860",
+  "name": "bap_connection_last_receive_time",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b2e860_bap_connection_last_receive_time.c",
+  "role": "Returns connection +0x1EF8, the time of the last received bytes.",
+  "size_bytes": 8,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_connection_last_receive_time:b2e860",
+  "calls": []
+ },
+ {
+  "va": "0xb2e830",
+  "name": "bap_connection_is_idle",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b2e830_bap_connection_is_idle.c",
+  "role": "Connection state (+0x1144) == 0.",
+  "size_bytes": 11,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_connection_is_idle:b2e830",
+  "calls": []
+ },
+ {
+  "va": "0xb2e840",
+  "name": "bap_connection_is_connected",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b2e840_bap_connection_is_connected.c",
+  "role": "Connection state (+0x1144) == 8 (_connected).",
+  "size_bytes": 11,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_connection_is_connected:b2e840",
+  "calls": []
+ },
+ {
+  "va": "0xb2e850",
+  "name": "bap_connection_is_state3",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b2e850_bap_connection_is_state3.c",
+  "role": "Connection state (+0x1144) == 3.",
+  "size_bytes": 11,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_connection_is_state3:b2e850",
+  "calls": []
+ },
+ {
+  "va": "0xb333a0",
+  "name": "bap_connection_get",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "b333a0_bap_connection_get.c",
+  "role": "Connection object by index: index * 0x2560 + g_282D9B8.",
+  "size_bytes": 21,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_connection_get:b333a0",
+  "calls": []
+ },
+ {
+  "va": "0x559c30",
+  "name": "bap_service_connection_state",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "559c30_bap_service_connection_state.c",
+  "role": "Service-table entry (g_26B9968 + 8 + i*0x18) -> connection state class: 1 idle, 3 connected, 2 state 3, else 4|...; 0 if the entry is unused.",
+  "size_bytes": 120,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_service_connection_state:559c30",
+  "calls": [
+   "0xb333a0",
+   "0xb2e830",
+   "0xb2e840",
+   "0xb2e850"
+  ]
+ },
+ {
+  "va": "0x55abc0",
+  "name": "bap_service_last_receive_time",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55abc0_bap_service_last_receive_time.c",
+  "role": "Last-receive time of the connection behind a BAP service index, -1 if none.",
+  "size_bytes": 58,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_service_last_receive_time:55abc0",
+  "calls": [
+   "0xb333a0",
+   "0xb2e860"
+  ]
+ },
+ {
+  "va": "0x55aa80",
+  "name": "bap_service_send",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55aa80_bap_service_send.c",
+  "role": "Sends message kind `param_2` (index into policy table 0x193BD50, whose vtable +0x10 gives the BAP message type) on BAP service `param_1`, copying the 9-qword routing header.",
+  "size_bytes": 279,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_service_send:55aa80",
+  "calls": [
+   "0x567540"
+  ]
+ },
+ {
+  "va": "0x567540",
+  "name": "bap_message_enqueue",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "567540_bap_message_enqueue.c",
+  "role": "Encodes a message with its codec (0x55AF60) into a 0x20068-byte queue slot and enqueues it on the service's connection; logs on encode/queue failure.",
+  "size_bytes": 1003,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_message_enqueue:567540",
+  "calls": [
+   "0x567940"
+  ]
+ },
+ {
+  "va": "0x564300",
+  "name": "bap_handle_message_internal",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "564300_bap_handle_message_internal.c",
+  "role": "Received-message dispatch: decodes with the codec for the message type (0x55AF60) and calls the push-policy handler (0x565290 table) +0x28; logs decode failures.",
+  "size_bytes": 657,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_handle_message_internal:564300",
+  "calls": [
+   "0x565290"
+  ]
+ },
+ {
+  "va": "0x565290",
+  "name": "bap_push_policy_lookup",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "565290_bap_push_policy_lookup.c",
+  "role": "Finds the push-policy handler object for a BAP message type in the 13-entry table 0x193DB30.",
+  "size_bytes": 76,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_push_policy_lookup:565290",
+  "calls": []
+ },
+ {
+  "va": "0x565db0",
+  "name": "bap_push_activity_host_to_client",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "565db0_bap_push_activity_host_to_client.c",
+  "role": "Push policy for activity_host_to_client (100): reads the service index from header @6 and relays the payload as kind 9 (bap_to_client) to that service when it is connected. The client therefore only relays 100; activity host messages must arrive as 9.",
+  "size_bytes": 217,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_push_activity_host_to_client:565db0",
+  "calls": [
+   "0x559c30",
+   "0x55aa80"
+  ]
+ },
+ {
+  "va": "0x55d370",
+  "name": "bap_header_class_get",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55d370_bap_header_class_get.c",
+  "role": "Header-class object by id (table 0x193B540).",
+  "size_bytes": 15,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_header_class_get:55d370",
+  "calls": []
+ },
+ {
+  "va": "0x560590",
+  "name": "bap_message_policy_get",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "560590_bap_message_policy_get.c",
+  "role": "Message policy object by kind (table 0x193BD50); vtable +0x10 returns the BAP message type.",
+  "size_bytes": 15,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_message_policy_get:560590",
+  "calls": []
+ },
+ {
+  "va": "0x55e3d0",
+  "name": "bap_header6_decode",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55e3d0_bap_header6_decode.c",
+  "role": "Header class 6 (32 bytes) decode: base header, then byte-swaps u64 @6 and u64 @0xE and the u64 at +0x18.",
+  "size_bytes": 131,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_header6_decode:55e3d0",
+  "calls": []
+ },
+ {
+  "va": "0x55f2c0",
+  "name": "bap_activity_host_payload_decode",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55f2c0_bap_activity_host_payload_decode.c",
+  "role": "Decodes activity-host message payloads (100 / 9): u8 kind 1, u64 BE host id, u32 BE type, u32 BE length <= 0x1DF00, data.",
+  "size_bytes": 813,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_activity_host_payload_decode:55f2c0",
+  "calls": []
+ },
+ {
+  "va": "0x55f8a0",
+  "name": "bap_activity_host_message_decode",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55f8a0_bap_activity_host_message_decode.c",
+  "role": "Codec decode slot for messages 9/100; forwards to 0x55F2C0.",
+  "size_bytes": 24,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_activity_host_message_decode:55f8a0",
+  "calls": [
+   "0x55f2c0"
+  ]
+ },
+ {
+  "va": "0x55bd10",
+  "name": "bap_activity_host_manager_request_encode",
+  "subsystem": "omaha.networking.bap",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "55bd10_bap_activity_host_manager_request_encode.c",
+  "role": "Encodes client_to_activity_host_manager_request (6): kind 3 = 0xE0C-byte host-startup struct (two length-prefixed blobs, u16 lengths byte-swapped at +0 and +0x202), kind 1 = 0x100E bytes; padded to 0x100F.",
+  "size_bytes": 119,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_activity_host_manager_request_encode:55bd10",
+  "calls": []
+ },
+ {
+  "va": "0x299e30",
+  "name": "activity_client_dispatch_host_message",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "299e30_activity_client_dispatch_host_message.c",
+  "role": "Dispatches a host message by type through the 17-entry table 0x1910480 (type, handler); logs unknown types and handler failures.",
+  "size_bytes": 642,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_dispatch_host_message:299e30",
+  "calls": []
+ },
+ {
+  "va": "0x595db0",
+  "name": "activity_client_bap_startup_response",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "595db0_activity_client_bap_startup_response.c",
+  "role": "Messaging-interface callback for the host-startup response (7): passes the 0x88-byte body to the activity client as host message type 10.",
+  "size_bytes": 184,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_bap_startup_response:595db0",
+  "calls": [
+   "0x299e30"
+  ]
+ },
+ {
+  "va": "0x595fc0",
+  "name": "activity_client_bap_proxy_response",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "595fc0_activity_client_bap_proxy_response.c",
+  "role": "Messaging-interface callback for the activity-host proxy response (17, 16 bytes): stores the AH address (u32 IPv4 + port) and logs 'AH IP resolution successful'.",
+  "size_bytes": 348,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_bap_proxy_response:595fc0",
+  "calls": []
+ },
+ {
+  "va": "0x5956a0",
+  "name": "activity_client_bap_send",
+  "subsystem": "omaha.networking",
+  "class": "c_activity_client_messaging_interface_bap",
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "5956a0_activity_client_bap_send.c",
+  "role": "Sends an activity message to the host as client_to_activity_host 8: builds [1][u32 type][u32 len][u32 0][data] and sends kind 0x11 via the AC's BAP service (+0x7C). (vtable 0x1941B40 slot 6)",
+  "size_bytes": 342,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_bap_send:5956a0",
+  "calls": [
+   "0x55aa80"
+  ]
+ },
+ {
+  "va": "0x595690",
+  "name": "activity_client_bap_last_receive_time",
+  "subsystem": "omaha.networking",
+  "class": "c_activity_client_messaging_interface_bap",
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "595690_activity_client_bap_last_receive_time.c",
+  "role": "Messaging interface +0x28: last-receive time of the AC's BAP service. (vtable 0x1941B40 slot 5)",
+  "size_bytes": 8,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_bap_last_receive_time:595690",
+  "calls": [
+   "0x55abc0"
+  ]
+ },
+ {
+  "va": "0x299d10",
+  "name": "activity_client_send_to_host",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "299d10_activity_client_send_to_host.c",
+  "role": "Encodes an engine-type payload and sends it to the host with a client message type.",
+  "size_bytes": 275,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_send_to_host:299d10",
+  "calls": []
+ },
+ {
+  "va": "0x1018e30",
+  "name": "activity_client_on_join_result",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "1018e30_activity_client_on_join_result.c",
+  "role": "Host message 4: decodes 0x80800A58 (join result) and calls 0x29C710.",
+  "size_bytes": 298,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_join_result:1018e30",
+  "calls": [
+   "0x29c710"
+  ]
+ },
+ {
+  "va": "0x29c710",
+  "name": "activity_client_apply_join_result",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29c710_activity_client_apply_join_result.c",
+  "role": "Join result: nonce must match the request (+0x173*8); result 0 copies the 0x1A8-byte result, keeps u16 @0x196/@0x198, marks the client joined (+0x130 bit 5).",
+  "size_bytes": 1353,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_apply_join_result:29c710",
+  "calls": []
+ },
+ {
+  "va": "0x1018800",
+  "name": "activity_client_on_entity_indices",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "1018800_activity_client_on_entity_indices.c",
+  "role": "Host message 0: ORs a 384-word entity-index bitmask into the client's set (+0x5EA8) and sets +0x64AA (indices received).",
+  "size_bytes": 394,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_entity_indices:1018800",
+  "calls": []
+ },
+ {
+  "va": "0x1018990",
+  "name": "activity_client_on_instance_state",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "1018990_activity_client_on_instance_state.c",
+  "role": "Host message 1: decodes the 0x6B0-byte instance state (0x80800E76) and hands it to the simulation (vtable +0x360 -> event 0x17); sets +0x130 bit 6.",
+  "size_bytes": 869,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_instance_state:1018990",
+  "calls": []
+ },
+ {
+  "va": "0x29d950",
+  "name": "activity_client_on_membership",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29d950_activity_client_on_membership.c",
+  "role": "Host message 11: forwards to 0x29D130.",
+  "size_bytes": 13,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_membership:29d950",
+  "calls": [
+   "0x29d130"
+  ]
+ },
+ {
+  "va": "0x29d130",
+  "name": "activity_client_apply_membership",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29d130_activity_client_apply_membership.c",
+  "role": "Applies a membership update: copies the current 0x5038-byte membership, decodes the message over it with 0x2C9AE0 (present bit + 0x808009ED), stores it (+0xE70), marks the client established (+0x131 bit 0) and finds the local player's slot.",
+  "size_bytes": 596,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_apply_membership:29d130",
+  "calls": [
+   "0x2c9ae0"
+  ]
+ },
+ {
+  "va": "0x29ddf0",
+  "name": "activity_client_on_host_event",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29ddf0_activity_client_on_host_event.c",
+  "role": "Host message 5: passes the raw payload to the simulation (vtable +0x338 -> 0xBB1C10); error bit +0x131|2 on failure.",
+  "size_bytes": 84,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_host_event:29ddf0",
+  "calls": []
+ },
+ {
+  "va": "0x10193e0",
+  "name": "activity_client_on_sync_token",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "10193e0_activity_client_on_sync_token.c",
+  "role": "Host message 27: stores an i32 token at +0x64AC; the client echoes it in its message 28 (0x29D960).",
+  "size_bytes": 272,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_sync_token:10193e0",
+  "calls": []
+ },
+ {
+  "va": "0x29d960",
+  "name": "activity_client_send_sync_token",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29d960_activity_client_send_sync_token.c",
+  "role": "Sends client message 28 with the token from +0x64AC.",
+  "size_bytes": 120,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_send_sync_token:29d960",
+  "calls": [
+   "0x299d10"
+  ]
+ },
+ {
+  "va": "0x29de50",
+  "name": "activity_client_on_debug_update",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29de50_activity_client_on_debug_update.c",
+  "role": "Host message 38: decodes 0x808052E5 plus up to 8000 raw bytes; the result is not applied (verification/debug only).",
+  "size_bytes": 290,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_debug_update:29de50",
+  "calls": []
+ },
+ {
+  "va": "0x29d400",
+  "name": "activity_client_time_since_receive",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29d400_activity_client_time_since_receive.c",
+  "role": "Time since the messaging interface last received anything (used by the 20 s lost-host check).",
+  "size_bytes": 63,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_time_since_receive:29d400",
+  "calls": [
+   "0x595690"
+  ]
+ },
+ {
+  "va": "0x2998f0",
+  "name": "activity_client_ready_for_instantiation",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2998f0_activity_client_ready_for_instantiation.c",
+  "role": "True when the instance state is valid (+0x50B0[0] set, [1] clear), entity indices arrived (+0x64AA) and the client is established (+0x131 bit 0).",
+  "size_bytes": 166,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_ready_for_instantiation:2998f0",
+  "calls": []
+ },
+ {
+  "va": "0x299b00",
+  "name": "activity_client_check_activity_checksum",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "299b00_activity_client_check_activity_checksum.c",
+  "role": "Compares instance +0x5C with the u32 at +0xC of the loaded activity tag; mismatch fails the world transition ('activity checksum mismatch').",
+  "size_bytes": 337,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_check_activity_checksum:299b00",
+  "calls": []
+ },
+ {
+  "va": "0x298aa0",
+  "name": "activity_client_init",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "298aa0_activity_client_init.c",
+  "role": "Activity client construction: messaging interface (+0xE50), instance object (+0xE58), local machine id (+0xE68), clears entity indices, tokens, membership.",
+  "size_bytes": 779,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_init:298aa0",
+  "calls": []
+ },
+ {
+  "va": "0x29a5e0",
+  "name": "activity_client_instance_details",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "29a5e0_activity_client_instance_details.c",
+  "role": "Pointer to the instance details (+0x50B0 + 0x60) once the instance state arrived (+0x130 bit 6).",
+  "size_bytes": 43,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_instance_details:29a5e0",
+  "calls": []
+ },
+ {
+  "va": "0x2a0d20",
+  "name": "activity_instance_validate_and_load_bubbles",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2a0d20_activity_instance_validate_and_load_bubbles.c",
+  "role": "World transition: instance bubble count (+0x10) must equal the activity tag's count (+0x48), then registers each bubble's selected slice set (+0x14[i], 0 = first) in the world slice table via 0x343A90.",
+  "size_bytes": 1505,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_instance_validate_and_load_bubbles:2a0d20",
+  "calls": [
+   "0x343a90"
+  ]
+ },
+ {
+  "va": "0x2a5520",
+  "name": "membership_find_machine",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2a5520_membership_find_machine.c",
+  "role": "Finds the slot whose machine id matches, among the valid-slot mask (+0x502C).",
+  "size_bytes": 95,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:membership_find_machine:2a5520",
+  "calls": []
+ },
+ {
+  "va": "0x2a2c60",
+  "name": "activity_instance_set_state",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2a2c60_activity_instance_set_state.c",
+  "role": "Copies a 0x6B0-byte instance state into +0x50B0 and sets +0x50A8.",
+  "size_bytes": 40,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_instance_set_state:2a2c60",
+  "calls": []
+ },
+ {
+  "va": "0x2a4ac0",
+  "name": "type_decode_from_bits",
+  "subsystem": "engine.core",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2a4ac0_type_decode_from_bits.c",
+  "role": "Decodes an engine-type value from a bitstream (0x2C9A90) and checks it fit the buffer.",
+  "size_bytes": 163,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:type_decode_from_bits:2a4ac0",
+  "calls": [
+   "0x2c9a90"
+  ]
+ },
+ {
+  "va": "0x2c9a90",
+  "name": "type_decode",
+  "subsystem": "engine.core",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2c9a90_type_decode.c",
+  "role": "Plain engine-type decode (0x2C9110).",
+  "size_bytes": 13,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:type_decode:2c9a90",
+  "calls": []
+ },
+ {
+  "va": "0x2c9ae0",
+  "name": "type_decode_update",
+  "subsystem": "engine.core",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2c9ae0_type_decode_update.c",
+  "role": "Update decode: one 'present' bit (0x73430), then the type through 0x2C8340 recording changed members; used for membership.",
+  "size_bytes": 548,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:type_decode_update:2c9ae0",
+  "calls": [
+   "0x2c8340"
+  ]
+ },
+ {
+  "va": "0x2c8340",
+  "name": "type_decode_members",
+  "subsystem": "engine.core",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "2c8340_type_decode_members.c",
+  "role": "Resolves the type descriptor and runs the member reader 0x101EB30 (mode 1) or 0x101F1D0.",
+  "size_bytes": 192,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:type_decode_members:2c8340",
+  "calls": []
+ },
+ {
+  "va": "0x72240",
+  "name": "bitstream_init",
+  "subsystem": "engine.core",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "72240_bitstream_init.c",
+  "role": "Initialises a bitstream over (data, length).",
+  "size_bytes": 76,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bitstream_init:72240",
+  "calls": []
+ },
+ {
+  "va": "0x73430",
+  "name": "bitstream_read_bit",
+  "subsystem": "engine.core",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "73430_bitstream_read_bit.c",
+  "role": "Reads one bit (MSB first, 64-bit refill).",
+  "size_bytes": 204,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bitstream_read_bit:73430",
+  "calls": []
+ },
+ {
+  "va": "0x761b50",
+  "name": "activity_manager_update_instance",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "761b50_activity_manager_update_instance.c",
+  "role": "Activity manager per-instance state machine (startup, join, entity indices, instantiation, ...); logs 'waiting for ...' and times out each sub-state.",
+  "size_bytes": 4727,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_manager_update_instance:761b50",
+  "calls": []
+ },
+ {
+  "va": "0x75fb20",
+  "name": "activity_manager_check_host_connection",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "75fb20_activity_manager_check_host_connection.c",
+  "role": "Fails the instance with 'Lost connection to activity host' when nothing was received for 20 s (+0.5 s) unless +0x134 is set.",
+  "size_bytes": 1688,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_manager_check_host_connection:75fb20",
+  "calls": [
+   "0x29d400"
+  ]
+ },
+ {
+  "va": "0x75f210",
+  "name": "world_fireteam_from_player",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "75f210_world_fireteam_from_player.c",
+  "role": "Finds a player's fireteam id in the activity membership (properties block +0xA0).",
+  "size_bytes": 387,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_fireteam_from_player:75f210",
+  "calls": []
+ },
+ {
+  "va": "0x75f040",
+  "name": "world_current_activity_name",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "75f040_world_current_activity_name.c",
+  "role": "Current activity (scenario) name: instance details +0x628 (char[40]).",
+  "size_bytes": 43,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_current_activity_name:75f040",
+  "calls": [
+   "0x29a5e0"
+  ]
+ },
+ {
+  "va": "0x78df40",
+  "name": "world_current_activity_index",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "78df40_world_current_activity_index.c",
+  "role": "Current activity index: instance details +0x620 (u16).",
+  "size_bytes": 63,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_current_activity_index:78df40",
+  "calls": []
+ },
+ {
+  "va": "0x7ae9b0",
+  "name": "prologue_intro_loading_resolve_activity",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "7ae9b0_prologue_intro_loading_resolve_activity.c",
+  "role": "prologue_intro_loading: takes the activity name and checks it names a loadable named tag ('Unable to obtain activity_name').",
+  "size_bytes": 566,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:prologue_intro_loading_resolve_activity:7ae9b0",
+  "calls": [
+   "0x75f040"
+  ]
+ },
+ {
+  "va": "0x7a8dd0",
+  "name": "world_transition_check_prerequisites",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "7a8dd0_world_transition_check_prerequisites.c",
+  "role": "activity_world_transition: refuses activities with unpurchased prerequisites (0x5505A0) -> 'World-transition requires DLC'.",
+  "size_bytes": 1753,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_transition_check_prerequisites:7a8dd0",
+  "calls": [
+   "0x5505a0"
+  ]
+ },
+ {
+  "va": "0x5505c0",
+  "name": "activity_unpurchased_prerequisite",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "5505c0_activity_unpurchased_prerequisite.c",
+  "role": "Evaluates the activity's purchase prerequisites (unlock expressions, 0x28E530) and returns the first unmet one or -1.",
+  "size_bytes": 424,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_unpurchased_prerequisite:5505c0",
+  "calls": [
+   "0x28e530"
+  ]
+ },
+ {
+  "va": "0x780e60",
+  "name": "slice_set_transition_update",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "780e60_slice_set_transition_update.c",
+  "role": "Slice-set transition: waits until the target region is loaded and has host-tabulated data including this player ('...not yet have valid host-tabulated data').",
+  "size_bytes": 3370,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:slice_set_transition_update:780e60",
+  "calls": []
+ },
+ {
+  "va": "0x778d60",
+  "name": "slice_set_process_pah_region_data",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "778d60_slice_set_process_pah_region_data.c",
+  "role": "Reads the membership's host-tabulated region table (@0x2E48, 40 x 0xD8, -1 terminated) and matches entries to the current/target region and this player's transition token (+0x38+slot).",
+  "size_bytes": 3177,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:slice_set_process_pah_region_data:778d60",
+  "calls": []
+ },
+ {
+  "va": "0x782a80",
+  "name": "slice_set_find_region",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "782a80_slice_set_find_region.c",
+  "role": "Looks up a region in the world slice table (0x3454C0); 'Region ... cannot be found'.",
+  "size_bytes": 2400,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:slice_set_find_region:782a80",
+  "calls": [
+   "0x3454c0"
+  ]
+ },
+ {
+  "va": "0x3454c0",
+  "name": "world_slice_state",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "3454c0_world_slice_state.c",
+  "role": "Region slot state: 5 not found, 2/4/6/7 loading states, else loaded.",
+  "size_bytes": 274,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_slice_state:3454c0",
+  "calls": []
+ },
+ {
+  "va": "0x343a90",
+  "name": "world_slice_set_register",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "343a90_world_slice_set_register.c",
+  "role": "Registers (activity tag, slice-set entry) for a world slice slot (bubble*8 + set), or clears it with -1.",
+  "size_bytes": 246,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_slice_set_register:343a90",
+  "calls": []
+ },
+ {
+  "va": "0x792ed0",
+  "name": "world_state_prerequisite_check",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "792ed0_world_state_prerequisite_check.c",
+  "role": "Bootflow/state prerequisite switch (0..0x25): returns 0 met, 1 waiting, 2 failed.",
+  "size_bytes": 1280,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_state_prerequisite_check:792ed0",
+  "calls": []
+ },
+ {
+  "va": "0x7958c0",
+  "name": "initial_slice_set_loading_init",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "7958c0_initial_slice_set_loading_init.c",
+  "role": "Sets up the 11-task graph of activity:initial_slice_set_loading (callbacks 0x795A60..0x7966E0 with dependency masks); done mask 0x7FF.",
+  "size_bytes": 416,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:initial_slice_set_loading_init:7958c0",
+  "calls": []
+ },
+ {
+  "va": "0x7969a0",
+  "name": "initial_slice_set_loading_update",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "7969a0_initial_slice_set_loading_update.c",
+  "role": "Runs the loading task graph; when completed (+0x1A8) == required (+0x198) moves on.",
+  "size_bytes": 65,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:initial_slice_set_loading_update:7969a0",
+  "calls": []
+ },
+ {
+  "va": "0x7965a0",
+  "name": "initial_slice_set_loading_task_player_ready",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "7965a0_initial_slice_set_loading_task_player_ready.c",
+  "role": "Task 9: waits for the local player's unit object (with its definition) and a positive activity-mode byte (client reference 0x10, +0x1AC); returns 1 waiting / 2 done.",
+  "size_bytes": 306,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:initial_slice_set_loading_task_player_ready:7965a0",
+  "calls": [
+   "0x10c500"
+  ]
+ },
+ {
+  "va": "0x10c500",
+  "name": "activity_mode_value",
+  "subsystem": "engine.resourcerer",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "10c500_activity_mode_value.c",
+  "role": "Byte +0x1AC of client reference type 0x10 (the current activity mode tag); false when missing or -1.",
+  "size_bytes": 187,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_mode_value:10c500",
+  "calls": [
+   "0x1072c0"
+  ]
+ },
+ {
+  "va": "0x1072c0",
+  "name": "client_reference_lookup",
+  "subsystem": "engine.resourcerer",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "1072c0_client_reference_lookup.c",
+  "role": "Looks up a client reference (type, index) in the client reference manager (types at +0x2BD1C, slots +0x2A51C, entries +0x520).",
+  "size_bytes": 178,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:client_reference_lookup:1072c0",
+  "calls": []
+ },
+ {
+  "va": "0x106bf0",
+  "name": "client_reference_manager_create",
+  "subsystem": "engine.resourcerer",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "106bf0_client_reference_manager_create.c",
+  "role": "Allocates the client_reference_manager (0x2BE20 bytes).",
+  "size_bytes": 181,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:client_reference_manager_create:106bf0",
+  "calls": []
+ },
+ {
+  "va": "0x906f70",
+  "name": "simulation_is_remote_client",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "906f70_simulation_is_remote_client.c",
+  "role": "True when this machine is a simulation client (game globals in progress and *g_273DCD8 set); false = local authority.",
+  "size_bytes": 45,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_is_remote_client:906f70",
+  "calls": []
+ },
+ {
+  "va": "0x300b90",
+  "name": "simulation_queue_insert",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "300b90_simulation_queue_insert.c",
+  "role": "Enqueues a simulation event unless this machine is a remote client (0x240E60).",
+  "size_bytes": 63,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_queue_insert:300b90",
+  "calls": []
+ },
+ {
+  "va": "0x3007e0",
+  "name": "simulation_queue_apply",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "3007e0_simulation_queue_apply.c",
+  "role": "Applies queued simulation events through the registered callback (g_2689548 = 0xBB4690).",
+  "size_bytes": 235,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_queue_apply:3007e0",
+  "calls": []
+ },
+ {
+  "va": "0xbb4690",
+  "name": "simulation_event_apply",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "bb4690_simulation_event_apply.c",
+  "role": "Applies one simulation-queue element by type (1..0x3D), e.g. 0xC player update (0xBAD260).",
+  "size_bytes": 828,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_event_apply:bb4690",
+  "calls": [
+   "0xbad260"
+  ]
+ },
+ {
+  "va": "0xbad260",
+  "name": "simulation_apply_player_update",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "bad260_simulation_apply_player_update.c",
+  "role": "Decodes a player-update event and applies it (players apply-added / remove / swap).",
+  "size_bytes": 446,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_apply_player_update:bad260",
+  "calls": [
+   "0xba9330"
+  ]
+ },
+ {
+  "va": "0xbb1c10",
+  "name": "simulation_insert_host_event",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "bb1c10_simulation_insert_host_event.c",
+  "role": "Host message 5 payload -> simulation event 0x13 when this machine is the authority.",
+  "size_bytes": 236,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_insert_host_event:bb1c10",
+  "calls": [
+   "0x906f70",
+   "0x300b90"
+  ]
+ },
+ {
+  "va": "0x923430",
+  "name": "player_set_unit_index",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "923430_player_set_unit_index.c",
+  "role": "Assigns a unit to a player (player table g_273EB80 +0xC0 + i*4), keeps unit count +0xBC and the per-unit player mask.",
+  "size_bytes": 340,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_set_unit_index:923430",
+  "calls": []
+ },
+ {
+  "va": "0x923790",
+  "name": "local_player_has_unit",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "923790_local_player_has_unit.c",
+  "role": "0 if player 0 has a unit, else -1.",
+  "size_bytes": 25,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:local_player_has_unit:923790",
+  "calls": []
+ },
+ {
+  "va": "0x6e7e20",
+  "name": "game_local_player_unit",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "6e7e20_game_local_player_unit.c",
+  "role": "Simulation interface +0x138: the local player's unit index or -1.",
+  "size_bytes": 41,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:game_local_player_unit:6e7e20",
+  "calls": [
+   "0x923790"
+  ]
+ },
+ {
+  "va": "0x28e590",
+  "name": "unlock_expression_eval",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "28e590_unlock_expression_eval.c",
+  "role": "Unlock-expression stack VM: op 1 push flag, 2 NOT, 3 OR, 4 AND, 10 push counter, 11 literal, 0x15 negate.",
+  "size_bytes": 1088,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:unlock_expression_eval:28e590",
+  "calls": []
+ },
+ {
+  "va": "0x28e530",
+  "name": "unlock_expression_test",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS",
+  "file": "28e530_unlock_expression_test.c",
+  "role": "Evaluates an unlock expression against the flag store.",
+  "size_bytes": 38,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:unlock_expression_test:28e530",
+  "calls": [
+   "0x28e590"
+  ]
  }
 ]

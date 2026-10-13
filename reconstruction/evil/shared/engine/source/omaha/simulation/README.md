@@ -11,7 +11,14 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x3007e0` | simulation_queue_apply |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`3007e0_simulation_queue_apply.c`](decompiled/3007e0_simulation_queue_apply.c) | Applies queued simulation events through the registered callback (g_2689548 = 0xBB4690). |
+| `0x300b90` | simulation_queue_insert |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`300b90_simulation_queue_insert.c`](decompiled/300b90_simulation_queue_insert.c) | Enqueues a simulation event unless this machine is a remote client (0x240E60). |
+| `0x906f70` | simulation_is_remote_client |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`906f70_simulation_is_remote_client.c`](decompiled/906f70_simulation_is_remote_client.c) | True when this machine is a simulation client (game globals in progress and *g_273DCD8 set); false = local authority. |
+| `0xbad260` | simulation_apply_player_update |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`bad260_simulation_apply_player_update.c`](decompiled/bad260_simulation_apply_player_update.c) | Decodes a player-update event and applies it (players apply-added / remove / swap). |
+| `0xbb1c10` | simulation_insert_host_event |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`bb1c10_simulation_insert_host_event.c`](decompiled/bb1c10_simulation_insert_host_event.c) | Host message 5 payload -> simulation event 0x13 when this machine is the authority. |
+| `0xbb4690` | simulation_event_apply |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`bb4690_simulation_event_apply.c`](decompiled/bb4690_simulation_event_apply.c) | Applies one simulation-queue element by type (1..0x3D), e.g. 0xC player update (0xBAD260). |
 
 ## Classes (142)
 

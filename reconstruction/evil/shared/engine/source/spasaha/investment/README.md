@@ -11,7 +11,11 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x28e530` | unlock_expression_test |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`28e530_unlock_expression_test.c`](decompiled/28e530_unlock_expression_test.c) | Evaluates an unlock expression against the flag store. |
+| `0x28e590` | unlock_expression_eval |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`28e590_unlock_expression_eval.c`](decompiled/28e590_unlock_expression_eval.c) | Unlock-expression stack VM: op 1 push flag, 2 NOT, 3 OR, 4 AND, 10 push counter, 11 literal, 0x15 negate. |
+| `0x5505c0` | activity_unpurchased_prerequisite |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`5505c0_activity_unpurchased_prerequisite.c`](decompiled/5505c0_activity_unpurchased_prerequisite.c) | Evaluates the activity's purchase prerequisites (unlock expressions, 0x28E530) and returns the first unmet one or -1. |
 
 ## Classes (109)
 

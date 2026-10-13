@@ -64,11 +64,21 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
 - 9 Bungie source files named in the binary (all placeholders, nothing reconstructed yet).
 - ~2,350 RTTI classes placed across 37 folders; the renderer is mostly invisible
   to RTTI, so `engine/graphics` is thin until functions are traced.
-- 33 decompiled functions: TFX VM and extern ABI, Frame extern, auto-exposure,
-  Engine Configuration snapshot, the global channel store (alloc / defaults /
-  get / set / find / per-frame copy into the render context), and
-  `c_sun_manager` (3 virtual slots + 3 non-virtual updates).
-- Class attachment: only `c_sun_manager` methods are attached so far. The other
+- 114 decompiled functions:
+  - 33 from the graphics work: the TFX VM and extern ABI, the Frame extern, auto-exposure, the
+    Engine Configuration snapshot, the global channel store, and `c_sun_manager`.
+  - 81 from the online work (2026-10-13), spread across `omaha/networking/bap`,
+    `omaha/networking`, `omaha/world_controller`, `omaha/simulation`, `omaha/game`,
+    `engine/core`, `engine/resourcerer` and `spasaha/investment`:
+    - the BAP transport and message routing
+    - the activity client's handling of every activity-host message the backend emulates
+      (join, entity indices, membership, instance state, keep-alive)
+    - engine-type bitstream decode
+    - activity manager timeouts, the world transition, slice-set loading and its task graph
+    - the simulation queue and player/unit assignment
+    - the unlock-expression VM
+- Class attachment: `c_sun_manager` methods and two `c_activity_client_messaging_interface_bap`
+  slots are attached so far. The other
   decompiled functions do not appear in any RTTI vtable, so they are free
   functions or non-virtual methods whose class is not yet known.
 - Global channel names (FNV-1 32 preimages) are in

@@ -11,7 +11,11 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x106bf0` | client_reference_manager_create |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`106bf0_client_reference_manager_create.c`](decompiled/106bf0_client_reference_manager_create.c) | Allocates the client_reference_manager (0x2BE20 bytes). |
+| `0x1072c0` | client_reference_lookup |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`1072c0_client_reference_lookup.c`](decompiled/1072c0_client_reference_lookup.c) | Looks up a client reference (type, index) in the client reference manager (types at +0x2BD1C, slots +0x2A51C, entries +0x520). |
+| `0x10c500` | activity_mode_value |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`10c500_activity_mode_value.c`](decompiled/10c500_activity_mode_value.c) | Byte +0x1AC of client reference type 0x10 (the current activity mode tag); false when missing or -1. |
 
 ## Classes (24)
 

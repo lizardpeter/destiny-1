@@ -14,7 +14,11 @@ Verbatim path strings (`CONFIRMED_BINARY`). Each has a placeholder file here to 
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x6e7e20` | game_local_player_unit |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`6e7e20_game_local_player_unit.c`](decompiled/6e7e20_game_local_player_unit.c) | Simulation interface +0x138: the local player's unit index or -1. |
+| `0x923430` | player_set_unit_index |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`923430_player_set_unit_index.c`](decompiled/923430_player_set_unit_index.c) | Assigns a unit to a player (player table g_273EB80 +0xC0 + i*4), keeps unit count +0xBC and the per-unit player mask. |
+| `0x923790` | local_player_has_unit |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`923790_local_player_has_unit.c`](decompiled/923790_local_player_has_unit.c) | 0 if player 0 has a unit, else -1. |
 
 ## Classes (40)
 
