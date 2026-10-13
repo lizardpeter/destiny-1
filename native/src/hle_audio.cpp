@@ -1,6 +1,8 @@
-// libSceAudioOut (paced silent sink) and libSceAjm (codec jobs that "decode" to silence).
+// libSceAudioOut (paced silent sink), libSceAjm (codec jobs that "decode" to silence) and
+// libSceVoice (ports that exist but carry no audio).
 #include <time.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <map>
@@ -135,5 +137,63 @@ static int32_t sceAjmBatchWait(uint32_t, uint32_t, uint32_t, void*) { return SCE
 HLE("sceAjmBatchWait", sceAjmBatchWait)
 static int32_t sceAjmBatchErrorDump(const void*, int32_t) { return SCE_OK; }
 HLE("sceAjmBatchErrorDump", sceAjmBatchErrorDump)
+
+// ------------------------------------------------------------------ voice chat
+// Ports must get real ids: the game finds its port records by the id CreatePort returned and
+// dereferences the result unchecked (0xB49210). No audio flows through them.
+static std::atomic<uint32_t> g_next_voice_port{1};
+static int32_t sceVoiceInit(void*, uint32_t) { return SCE_OK; }
+HLE("sceVoiceInit", sceVoiceInit)
+static int32_t sceVoiceEnd() { return SCE_OK; }
+HLE("sceVoiceEnd", sceVoiceEnd)
+static int32_t sceVoiceStart(void*) { return SCE_OK; }
+HLE("sceVoiceStart", sceVoiceStart)
+static int32_t sceVoiceStop() { return SCE_OK; }
+HLE("sceVoiceStop", sceVoiceStop)
+static int32_t sceVoiceGetResourceInfo(void* info) {
+    if (info) std::memset(info, 0, 16);
+    return SCE_OK;
+}
+HLE("sceVoiceGetResourceInfo", sceVoiceGetResourceInfo)
+static int32_t sceVoiceCreatePort(uint32_t* port, const void* param) {
+    if (!port) return int32_t(0x8023000b);
+    *port = g_next_voice_port++;
+    log("voice: port %u", *port);
+    return SCE_OK;
+}
+HLE("sceVoiceCreatePort", sceVoiceCreatePort)
+static int32_t sceVoiceDeletePort(uint32_t) { return SCE_OK; }
+HLE("sceVoiceDeletePort", sceVoiceDeletePort)
+static int32_t sceVoiceConnectIPortToOPort(uint32_t, uint32_t) { return SCE_OK; }
+HLE("sceVoiceConnectIPortToOPort", sceVoiceConnectIPortToOPort)
+static int32_t sceVoiceDisconnectIPortFromOPort(uint32_t, uint32_t) { return SCE_OK; }
+HLE("sceVoiceDisconnectIPortFromOPort", sceVoiceDisconnectIPortFromOPort)
+static int32_t sceVoiceReadFromOPort(uint32_t, void*, uint32_t* size) {
+    if (size) *size = 0;
+    return SCE_OK;
+}
+HLE("sceVoiceReadFromOPort", sceVoiceReadFromOPort)
+static int32_t sceVoiceWriteToIPort(uint32_t, const void*, uint32_t*, int16_t) { return SCE_OK; }
+HLE("sceVoiceWriteToIPort", sceVoiceWriteToIPort)
+static int32_t sceVoiceSetMuteFlag(uint32_t, bool) { return SCE_OK; }
+HLE("sceVoiceSetMuteFlag", sceVoiceSetMuteFlag)
+static int32_t sceVoiceSetMuteFlagAll(bool) { return SCE_OK; }
+HLE("sceVoiceSetMuteFlagAll", sceVoiceSetMuteFlagAll)
+static int32_t sceVoiceSetVolume(uint32_t, float) { return SCE_OK; }
+HLE("sceVoiceSetVolume", sceVoiceSetVolume)
+static int32_t sceVoiceUpdatePort(uint32_t, const void*) { return SCE_OK; }
+HLE("sceVoiceUpdatePort", sceVoiceUpdatePort)
+static int32_t sceVoiceGetPortInfo(uint32_t, void* info) {
+    if (info) std::memset(info, 0, 32);
+    return SCE_OK;
+}
+HLE("sceVoiceGetPortInfo", sceVoiceGetPortInfo)
+static int32_t sceVoiceSetBitRate(uint32_t, int32_t) { return SCE_OK; }
+HLE("sceVoiceSetBitRate", sceVoiceSetBitRate)
+static int32_t sceVoiceGetBitRate(uint32_t, uint32_t* rate) {
+    if (rate) *rate = 16000;
+    return SCE_OK;
+}
+HLE("sceVoiceGetBitRate", sceVoiceGetBitRate)
 
 }  // namespace d1

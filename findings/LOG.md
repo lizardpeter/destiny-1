@@ -805,3 +805,33 @@ response; nothing has connected to it yet).
 - **Renderer**: shadPS4 lacked V_CMP_CLASS with a quiet-NaN-only mask. Fixed by
   native/renderer/patches, which are applied to copies in the build tree.
 - **Status**: reaches bootflow:prepare_for_orbit with a stable BAP connection.
+
+## 2026-10-13 (later): character select to orbit
+
+- **prepare_for_orbit** loads the orbit package sets, then enters character:signin.
+- **character:signin** (0x7A1AF0):
+  - With no characters it goes to step 6, the creation screens (UI 0x1D).
+  - Otherwise it goes to step 5, select (UI 0x1C).
+  - It finishes when the account slot has an active character. That is the profile's +0x68
+    id, backed by a family-4 slot-1 object 0x80801743 (0x586510 / 0x586970).
+- **Character creation**: 0x1F5 request 0x80801860 {race/gender/class (3 x i8), appearance
+  0x8080181A, 17-byte block}. Response {status, character id}.
+  - The backend stores the request (`<data>/backend/account.json`), answers with the new id
+    and pushes account + profile baselines.
+  - The summary (0x80801954) and the active character (0x80801714) both start {soid, rgc,
+    appearance}.
+- **Voice**: the game finds voice port records by the ids sceVoiceCreatePort returned and
+  dereferences the lookup unchecked (0xB49210). The ports need real ids.
+- **PSN web API**: d1-native forwards every libSceNpWebApi request to the backend as
+  `<METHOD> /npwebapi/<group><path>`.
+  - The fireteam session needs sessionInvitation `POST /v1/sessions` -> {"sessionId"}.
+  - Presence and friend-list calls get `{}`.
+- **More BAP**:
+  - 23 account id translation: bitstream, u16 count, from/to types (7 platform id, 0xFF
+    membership id). The reply repeats the request, then appends the to-list.
+  - 18 client config: protobuf 0x15B67E0, {1 cookie, 2 id}.
+  - 12 subscription {u8 family, u64 BE root}: acknowledge, then push that family's baseline.
+    Families 0 and 2 (rooted at the account) get empty baselines for now.
+  - 0xCD returns the family-5 root like 0x1F7.
+- **Status**: with a character on the account, the headless run reaches setup:orbit (the
+  Director).

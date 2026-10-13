@@ -37,6 +37,7 @@ add_executable(d1-native
   src/hle_audio.cpp
   src/hle_net.cpp
   src/hle_http.cpp
+  src/hle_npwebapi.cpp
   src/hooks.cpp
   src/settings.cpp
   src/discord.cpp

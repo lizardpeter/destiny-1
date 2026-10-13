@@ -193,7 +193,9 @@ int main(int argc, char** argv) {
         const std::string backend_exe = folder + "/d1-backend";
 #endif
         if (file_exists(backend_exe) &&
-            os::spawn_child(backend_exe, "--packages-dir \"" + app0 + "/packages\"", folder + "/backend.log")) {
+            os::spawn_child(backend_exe,
+                            "--packages-dir \"" + app0 + "/packages\" --data-dir \"" + data + "/backend\"",
+                            folder + "/backend.log")) {
             log("backend: started %s", backend_exe.c_str());
             set_env("D1_BACKEND", "127.0.0.1");
             // It reads every package header before listening; wait until it answers (the

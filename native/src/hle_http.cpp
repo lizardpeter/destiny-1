@@ -268,6 +268,31 @@ static int32_t sceHttpSendRequest(int32_t id, const void* data, uint64_t size) {
     return SCE_OK;
 }
 HLE("sceHttpSendRequest", sceHttpSendRequest)
+
+// One request to the backend's HTTP port from other HLE modules (NpWebApi).
+bool backend_http(const std::string& method, const std::string& host, const std::string& path,
+                  const std::vector<std::pair<std::string, std::string>>& headers, const void* data,
+                  size_t size, BackendReply& out) {
+    uint32_t addr;
+    if (!backend_route(host.c_str(), &addr)) return false;
+    std::string req = method + " " + path + " HTTP/1.1\r\nHost: " + host + "\r\n";
+    for (auto& [k, v] : headers)
+        if (strcasecmp(k.c_str(), "Host") && strcasecmp(k.c_str(), "Content-Length") && strcasecmp(k.c_str(), "Connection"))
+            req += k + ": " + v + "\r\n";
+    req += "Content-Length: " + std::to_string(data ? size : 0) + "\r\nConnection: close\r\n\r\n";
+    if (data && size) req.append(static_cast<const char*>(data), size);
+    static const uint16_t port = [] {
+        const char* p = getenv("D1_BACKEND_HTTP_PORT");
+        return uint16_t(p ? std::atoi(p) : 8080);
+    }();
+    HttpObj r{HttpObj::Request};
+    if (!exchange(addr, port, req, r)) return false;
+    out.status = r.status;
+    out.headers = std::move(r.resp_headers);
+    out.body = std::move(r.body);
+    return true;
+}
+
 static int32_t sceHttpGetStatusCode(int32_t id, int32_t* status) {
     auto r = obj(id);
     if (!r || !r->sent) return kHttpErrBeforeSend;

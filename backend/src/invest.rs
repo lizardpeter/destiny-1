@@ -420,16 +420,75 @@ pub fn queuez_update(updates: &[FamilyUpdate]) -> Vec<u8> {
 pub const FAMILY_ACCOUNT: u32 = 3;
 pub const TYPE_ACCOUNT: &str = "0x80801951";
 
+pub const TYPE_CHARACTER_SUMMARY: &str = "0x80801954";
+
+pub const TYPE_CREATE_REQUEST: &str = "0x80801860";
+
+/// Characters on the account. D1B_TEST_CHARACTER=1 adds a default one when there is none
+/// (headless tests, which cannot drive the creation screens).
+pub fn characters() -> Vec<crate::account::Character> {
+    let mut list = crate::account::characters();
+    if list.is_empty() && std::env::var("D1B_TEST_CHARACTER").map(|v| v != "0").unwrap_or(false) {
+        let mut w = BitWriter::default();
+        encode(&mut w, TYPE_CREATE_REQUEST, &Value::Struct(vec![]));
+        list.push(crate::account::Character { id: FIRST_CHARACTER_ID, creation: hex(&w.finish()) });
+    }
+    list
+}
+pub const FIRST_CHARACTER_ID: i64 = 0x4D31_0000_0000_0100;
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+fn unhex(s: &str) -> Vec<u8> {
+    (0..s.len() / 2).filter_map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).ok()).collect()
+}
+
+/// The creation request's {race/gender/class} and appearance, as stored for a character.
+fn creation(ch: &crate::account::Character) -> (Option<Value>, Option<Value>) {
+    let bytes = unhex(&ch.creation);
+    let mut r = BitReader::new(&bytes);
+    match decode(&mut r, TYPE_CREATE_REQUEST) {
+        Value::Struct(f) => (f.first().cloned().flatten(), f.get(1).cloned().flatten()),
+        _ => (None, None),
+    }
+}
+
+/// {count, ids[10]} as used by the account summary and the profile.
+fn character_list() -> Value {
+    use Value::*;
+    let ids: Vec<i64> = characters().iter().map(|c| c.id).collect();
+    Struct(vec![Some(Int(ids.len() as i64)), Some(Array(ids.iter().map(|&i| Some(Int(i))).collect()))])
+}
+
+/// Character summary 0x80801954 / active character 0x80801714 both start
+/// {soid, {race, gender, class}, appearance}.
+fn character_head(ch: &crate::account::Character) -> Value {
+    use Value::*;
+    let (rgc, look) = creation(ch);
+    Struct(vec![Some(Int(ch.id)), Some(rgc.unwrap_or(Struct(vec![Some(Int(0)), Some(Int(0)), Some(Int(0))]))), look])
+}
+
+/// Character creation (0x1F5): store it and return its id.
+pub fn create_character(req: &Request) -> i64 {
+    let mut w = BitWriter::default();
+    encode(&mut w, TYPE_CREATE_REQUEST, req.body.as_ref().unwrap_or(&Value::Struct(vec![])));
+    let creation = hex(&w.finish());
+    crate::account::with(|a| {
+        let id = FIRST_CHARACTER_ID + a.characters.len() as i64;
+        a.characters.push(crate::account::Character { id, creation });
+        id
+    })
+}
+
 pub fn account_baseline() -> FamilyUpdate {
     use Value::*;
-    let account = Struct(vec![Some(Int(ACCOUNT_ID)), Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))])), None, None]);
-    FamilyUpdate {
-        family: FAMILY_ACCOUNT,
-        root: ACCOUNT_ID,
-        version: 1,
-        flags: 1,
-        objects: vec![Object { ty: TYPE_ACCOUNT, soid: ACCOUNT_ID, value: account }],
+    let account = Struct(vec![Some(Int(ACCOUNT_ID)), Some(character_list()), None, None]);
+    let mut objects = vec![Object { ty: TYPE_ACCOUNT, soid: ACCOUNT_ID, value: account }];
+    for ch in characters() {
+        objects.push(Object { ty: TYPE_CHARACTER_SUMMARY, soid: ch.id, value: character_head(&ch) });
     }
+    FamilyUpdate { family: FAMILY_ACCOUNT, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_ACCOUNT), flags: 1, objects }
 }
 
 /// Family 4 (account profile): slot 0 0x80801803 wraps the profile 0x808018C7 {soid,
@@ -437,17 +496,31 @@ pub fn account_baseline() -> FamilyUpdate {
 /// account after sign-in and waits for its baseline (account slot ready flag, 0x586970).
 pub const FAMILY_PROFILE: u32 = 4;
 pub const TYPE_PROFILE: &str = "0x80801803";
+/// Family 4 slot 1: the active character's full state (wrapper of 0x80801714 {soid,
+/// {race, gender, class}, appearance, ...}). The profile's +0x68 names it; the account slot
+/// only reports a character as selected once that object exists (0x586970 / 0x586510).
+pub const TYPE_ACTIVE_CHARACTER: &str = "0x80801743";
 
 pub fn profile_baseline() -> FamilyUpdate {
     use Value::*;
-    let profile = Struct(vec![Some(Int(ACCOUNT_ID)), Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))]))]);
-    FamilyUpdate {
-        family: FAMILY_PROFILE,
-        root: ACCOUNT_ID,
-        version: 1,
-        flags: 1,
-        objects: vec![Object { ty: TYPE_PROFILE, soid: ACCOUNT_ID, value: Struct(vec![Some(profile)]) }],
+    let active = characters().last().cloned();
+    let profile = Struct(vec![Some(Int(ACCOUNT_ID)), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))]);
+    let mut objects = vec![Object { ty: TYPE_PROFILE, soid: ACCOUNT_ID, value: Struct(vec![Some(profile)]) }];
+    if let Some(ch) = active {
+        objects.push(Object { ty: TYPE_ACTIVE_CHARACTER, soid: ch.id, value: Struct(vec![Some(character_head(&ch))]) });
     }
+    FamilyUpdate { family: FAMILY_PROFILE, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
+}
+
+/// Baseline of a family the client subscribes to (BAP message 12). Families we hold no
+/// objects for get an empty baseline (the client logs "object-count of zero" but marks the
+/// family live, which is what the peer-subscription check waits for).
+pub fn family_baseline(family: u32, root: i64) -> Option<FamilyUpdate> {
+    Some(match family {
+        FAMILY_ACCOUNT if root == ACCOUNT_ID => account_baseline(),
+        FAMILY_PROFILE if root == ACCOUNT_ID => profile_baseline(),
+        _ => FamilyUpdate { family, root, version: crate::account::next_version(family), flags: 1, objects: vec![] },
+    })
 }
 
 /// Family-5 root object id: the client pre-registers that family with this soid and binds
@@ -479,6 +552,14 @@ pub fn respond(req: &Request) -> Option<Vec<u8>> {
             };
             response_with_extra(0xce, &Struct(vec![]), update.as_deref())
         }
+        // {status, family-5 root object}: same binding as sign-in
+        // character creation: {status, new character id}; the caller then pushes the
+        // account and profile families with the new character
+        0x1f5 => {
+            let id = create_character(req);
+            response(0x1f5, &Struct(vec![None, Some(Int(id))]))
+        }
+        0xcd => response(0xcd, &Struct(vec![None, Some(Struct(vec![Some(Int(FAMILY5_ROOT_SOID))]))])),
         id => empty_response(id),
     })
 }
@@ -486,6 +567,28 @@ pub fn respond(req: &Request) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_character_roundtrip() {
+        crate::account::init(None);
+        // request: race 1, gender 0, class 2 and a default appearance
+        let body = Value::Struct(vec![Some(Value::Struct(vec![Some(Value::Int(1)), Some(Value::Int(0)), Some(Value::Int(2))]))]);
+        let mut w = BitWriter::default();
+        w.bits(0x1f5, 16);
+        encode(&mut w, TYPE_CREATE_REQUEST, &body);
+        w.bit(false);
+        let req = parse_request(&w.finish());
+        assert_eq!(req.id, 0x1f5);
+        let resp = respond(&req).unwrap();
+        let mut r = BitReader::new(&resp);
+        assert_eq!(r.bits(16), 0x1f5);
+        let v = decode(&mut r, &schema().messages["0x1f5"].res);
+        assert!(show(&v).contains(&FIRST_CHARACTER_ID.to_string()), "{}", show(&v));
+        let ch = &crate::account::characters()[0];
+        assert!(show(&character_head(ch)).starts_with(&format!("{{{}, {{1, 0, 2}}", FIRST_CHARACTER_ID)));
+        // the pushes encode
+        assert!(!queuez_update(&[account_baseline(), profile_baseline()]).is_empty());
+    }
 
     #[test]
     fn request_1f7_roundtrip() {

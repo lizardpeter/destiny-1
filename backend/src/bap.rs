@@ -55,6 +55,8 @@ pub const MSG_WORLD_SERVER_RESPONSE: u16 = 11;
 pub const MSG_ECHO_REQUEST: u16 = 250;
 pub const MSG_UPDATE_PURCHASED_OFFERS_REQUEST: u16 = 21;
 pub const MSG_USER_MESSAGE_REQUEST: u16 = 32;
+pub const MSG_ACCOUNT_ID_TRANSLATION_REQUEST: u16 = 23;
+pub const MSG_CLIENT_CONFIG_REQUEST: u16 = 18;
 pub const MSG_QUEUEZ_UPDATE_NOTIFICATION: u16 = 123;
 pub const MSG_QUEUEZ_REGISTER_REQUEST: u16 = 121;
 pub const MSG_REGISTER_RELAY_CLIENT_REQUEST: u16 = 302;
@@ -281,7 +283,24 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                 chan = Some(Channel::new(&key, nonce));
                 info!("bap: channel keyed (AES-128-GCM)");
             }
-            MSG_QUEUEZ_REGISTER_REQUEST | MSG_SUBSCRIPTION_REQUEST | MSG_UNSUBSCRIBE_REQUEST
+            MSG_SUBSCRIPTION_REQUEST => {
+                // u8 family type, u64 BE family root soid (0x5631F0). Acknowledge, then push
+                // the family's baseline as a queuez update.
+                let family = payload.first().copied().unwrap_or(0xff);
+                let root = payload.get(1..9).map(|b| i64::from_be_bytes(b.try_into().unwrap())).unwrap_or(0);
+                info!("bap: subscribe family {family} root {root:#x} (seq {sequence})");
+                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &[])).await?;
+                match invest::family_baseline(family as u32, root) {
+                    Some(u) => {
+                        let n = invest::queuez_update(&[u]);
+                        notify_seq += 1;
+                        send(&mut sock, &mut chan, &notification(MSG_QUEUEZ_UPDATE_NOTIFICATION, notify_seq, &n)).await?;
+                        info!("bap: pushed family {family} baseline ({} bytes)", n.len());
+                    }
+                    None => warn!("bap: no data for family {family} root {root:#x}"),
+                }
+            }
+            MSG_QUEUEZ_REGISTER_REQUEST | MSG_UNSUBSCRIBE_REQUEST
             | MSG_REGISTER_RELAY_CLIENT_REQUEST | MSG_ECHO_REQUEST => {
                 // Responses with no payload (codec 0x1F70 on both sides).
                 info!("bap: {} (seq {sequence}, {} bytes) -> ok\n{}", name(kind), payload.len(), pb::dump(payload, 2));
@@ -292,6 +311,31 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                 // protobuf (request 0x55CBF0); response schema 0x15BA140: 1 repeated int
                 info!("bap: update_purchased_offers_request (seq {sequence})\n{}", pb::dump(payload, 2));
                 send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &[])).await?;
+            }
+            MSG_ACCOUNT_ID_TRANSLATION_REQUEST => {
+                // bitstream (0x55B220): u16 count, u8 from type, u8 to type, `count` ids of the
+                // from type (7 = platform id record, 0xFF = 64-bit membership id). The response
+                // (0x55B620) repeats header and from list, then the to list. Every platform id
+                // maps to our one account.
+                let mut out = payload.to_vec();
+                let count = if payload.len() >= 4 { u16::from_be_bytes([payload[0], payload[1]]) } else { 0 };
+                let to = payload.get(3).copied().unwrap_or(0);
+                info!("bap: account id translation ({count} ids, {:#x} -> {to:#x})", payload.get(2).copied().unwrap_or(0));
+                if to == 0xff {
+                    for _ in 0..count {
+                        out.extend_from_slice(&invest::ACCOUNT_ID.to_be_bytes());
+                    }
+                }
+                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &out)).await?;
+            }
+            MSG_CLIENT_CONFIG_REQUEST => {
+                // request: u64 BE config cookie (the one from sign-on field 4.1). Response
+                // schema 0x15B67E0: 1 cookie, 2 social matchmaking id, 3 optional config
+                // stream. Same cookie = keep the configuration from sign-on.
+                let cookie = payload.get(..8).map(|b| u64::from_be_bytes(b.try_into().unwrap())).unwrap_or(1);
+                info!("bap: client config request (cookie {cookie})");
+                let body = pb::Msg::new().uint(1, cookie).int(2, 0).into_bytes();
+                send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &body)).await?;
             }
             MSG_USER_MESSAGE_REQUEST => {
                 // response schema 0x15BA560: 1/2/3 optional strings, 4 required int
@@ -307,6 +351,12 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                     continue;
                 };
                 send(&mut sock, &mut chan, &response(MSG_WORLD_SERVER_RESPONSE, sequence, STATUS_OK, &body)).await?;
+                if req.id == 0x1f5 {
+                    let n = invest::queuez_update(&[invest::account_baseline(), invest::profile_baseline()]);
+                    notify_seq += 1;
+                    send(&mut sock, &mut chan, &notification(MSG_QUEUEZ_UPDATE_NOTIFICATION, notify_seq, &n)).await?;
+                    info!("bap: character created; pushed account and profile ({} bytes)", n.len());
+                }
                 if req.id == 0xce {
                     // After the account summary, push the account profile family (4), which
                     // the client registered at sign-in and waits for. It accepts the baseline only

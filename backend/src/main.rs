@@ -5,9 +5,11 @@
 //! Each service lives in its own module; the HTTP front routes by `Host` and path.
 //! It never talks to the real services.
 
+mod account;
 mod bap;
 mod content;
 mod invest;
+mod npwebapi;
 mod pb;
 mod psn;
 mod signon;
@@ -41,6 +43,9 @@ struct Args {
     /// Directory with the package files, normally `<game dir>/packages` (only read).
     #[arg(long, env = "D1B_PACKAGES_DIR")]
     packages_dir: Option<std::path::PathBuf>,
+    /// Where the account (characters) is saved. Without it nothing is kept between runs.
+    #[arg(long, env = "D1B_DATA_DIR")]
+    data_dir: Option<std::path::PathBuf>,
 }
 
 /// State shared by all handlers.
@@ -61,6 +66,7 @@ async fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
     let args = Args::parse();
+    account::init(args.data_dir.clone());
 
     let st: Shared = Arc::new(Config {
         public_ip: args.public_ip,
@@ -90,6 +96,7 @@ async fn main() {
         .route("/2.0/oauth/token", any(psn::oauth_token))
         .route("/SignOn", any(signon::sign_on))
         .route("/content/manifest", any(content::manifest))
+        .route("/npwebapi/:group/*path", any(npwebapi::request))
         .fallback(any(unhandled))
         .with_state(st);
 

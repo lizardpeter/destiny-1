@@ -66,6 +66,15 @@ bool gpu_on_fault(void* ucontext, void* addr);
 // services it replaces (then *addr_be is the server's IPv4 address).
 const char* backend_host();
 bool backend_route(const char* host, uint32_t* addr_be);
+struct BackendReply {
+    int status = 0;
+    std::vector<std::pair<std::string, std::string>> headers;
+    std::string body;
+};
+// A blocking HTTP/1.1 request to the backend's HTTP port (hle_http.cpp).
+bool backend_http(const std::string& method, const std::string& host, const std::string& path,
+                  const std::vector<std::pair<std::string, std::string>>& headers, const void* data,
+                  size_t size, BackendReply& out);
 
 // Sockets the game opened (hle_net.cpp): `close` routes them to the network layer.
 bool net_is_socket(int fd);
