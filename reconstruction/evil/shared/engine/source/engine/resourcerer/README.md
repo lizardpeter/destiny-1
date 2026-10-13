@@ -13,9 +13,14 @@ _None recovered (retail build stripped most asserts)._
 
 | VA | name | class | evidence | pseudo-C | role |
 |---|---|---|---|---|---|
+| `0xcdbd0` | resourcerer_register_package_set |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`cdbd0_resourcerer_register_package_set.c`](decompiled/cdbd0_resourcerer_register_package_set.c) | Registers a package set (every generation the manifest lists). |
+| `0xd6300` | resourcerer_register_package |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`d6300_resourcerer_register_package.c`](decompiled/d6300_resourcerer_register_package.c) | Registers one package file; verifies the package header's own RSA signature. |
+| `0xd8970` | resourcerer_find_named_tag |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`d8970_resourcerer_find_named_tag.c`](decompiled/d8970_resourcerer_find_named_tag.c) | Finds a named tag (0x3C-char names, 0x44-byte entries) across registered packages' named tables, newest generation first. |
 | `0x106bf0` | client_reference_manager_create |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`106bf0_client_reference_manager_create.c`](decompiled/106bf0_client_reference_manager_create.c) | Allocates the client_reference_manager (0x2BE20 bytes). |
 | `0x1072c0` | client_reference_lookup |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`1072c0_client_reference_lookup.c`](decompiled/1072c0_client_reference_lookup.c) | Looks up a client reference (type, index) in the client reference manager (types at +0x2BD1C, slots +0x2A51C, entries +0x520). |
 | `0x10c500` | activity_mode_value |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-13); names are HYPOTHESIS | [`10c500_activity_mode_value.c`](decompiled/10c500_activity_mode_value.c) | Byte +0x1AC of client reference type 0x10 (the current activity mode tag); false when missing or -1. |
+| `0x34a1d0` | global_resource_load |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`34a1d0_global_resource_load.c`](decompiled/34a1d0_global_resource_load.c) | Global resource load: with a simulation queue present it is sent as simulation event 0x4E (applied by 0x34B920), otherwise loaded locally (D1_BYPASS=localres patches 0x34A278). |
+| `0x78af50` | resource_register_packages |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`78af50_resource_register_packages.c`](decompiled/78af50_resource_register_packages.c) | Registers package files with the resource system. |
 
 ## Classes (24)
 

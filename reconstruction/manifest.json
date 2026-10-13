@@ -23,7 +23,18 @@
     "0x2c9ae0",
     "0x2c8340",
     "0x72240",
-    "0x73430"
+    "0x73430",
+    "0x101eb30",
+    "0x1db190",
+    "0x1033f80",
+    "0xe4d70",
+    "0xe4aa0",
+    "0xfb860",
+    "0xfaac0",
+    "0xfc520",
+    "0xfc540",
+    "0xfad30",
+    "0x1009cb0"
    ],
    "classes": [
     {
@@ -3312,7 +3323,12 @@
    "functions": [
     "0x10c500",
     "0x1072c0",
-    "0x106bf0"
+    "0x106bf0",
+    "0x78af50",
+    "0xcdbd0",
+    "0xd6300",
+    "0xd8970",
+    "0x34a1d0"
    ],
    "classes": [
     {
@@ -15086,7 +15102,17 @@
     "d:\\bungie\\evil\\shared\\engine\\source\\omaha\\main\\main.cpp",
     "d:\\bungie\\evil\\shared\\engine\\source\\omaha\\main\\omaha_world_controller_shim.cpp"
    ],
-   "functions": [],
+   "functions": [
+    "0x52c020",
+    "0x1cf60",
+    "0x239b70",
+    "0x6e95f0",
+    "0x594460",
+    "0x593f00",
+    "0x593890",
+    "0x5938b0",
+    "0x591710"
+   ],
    "classes": []
   },
   "omaha.game": {
@@ -15690,7 +15716,16 @@
     "0x29a5e0",
     "0x2a0d20",
     "0x2a5520",
-    "0x2a2c60"
+    "0x2a2c60",
+    "0x59a780",
+    "0x59b0e0",
+    "0x2aa420",
+    "0x2aada0",
+    "0x2aad90",
+    "0xa2020",
+    "0xa17d0",
+    "0x2b0980",
+    "0xb49210"
    ],
    "classes": [
     {
@@ -17051,7 +17086,29 @@
     "0x55e3d0",
     "0x55f2c0",
     "0x55f8a0",
-    "0x55bd10"
+    "0x55bd10",
+    "0x6cf80",
+    "0xb34fe0",
+    "0xb34f70",
+    "0xb32db0",
+    "0xb336f0",
+    "0xb33e80",
+    "0xb34840",
+    "0x55da10",
+    "0xb2f3d0",
+    "0xb2fc70",
+    "0xb30960",
+    "0x562aa0",
+    "0x562c70",
+    "0x5631f0",
+    "0x563cf0",
+    "0x563ef0",
+    "0x55c0a0",
+    "0x55fd50",
+    "0x565440",
+    "0x55b220",
+    "0x55b620",
+    "0x55cbf0"
    ],
    "classes": [
     {
@@ -18947,7 +19004,30 @@
     "0x792ed0",
     "0x7958c0",
     "0x7969a0",
-    "0x7965a0"
+    "0x7965a0",
+    "0x79e740",
+    "0x752f10",
+    "0x7536f0",
+    "0x799a70",
+    "0x799fa0",
+    "0x79da10",
+    "0x79f310",
+    "0x79fde0",
+    "0x7a01c0",
+    "0x7a02e0",
+    "0x7a1af0",
+    "0x7a1470",
+    "0x7a3b70",
+    "0x783ac0",
+    "0x783ee0",
+    "0x783960",
+    "0x785650",
+    "0x784e50",
+    "0x792cd0",
+    "0x7927b0",
+    "0x751ee0",
+    "0x78f660",
+    "0x78f570"
    ],
    "classes": [
     {
@@ -20199,7 +20279,9 @@
     "0x3007e0",
     "0xbb4690",
     "0xbad260",
-    "0xbb1c10"
+    "0xbb1c10",
+    "0x34b920",
+    "0x300be0"
    ],
    "classes": [
     {
@@ -26179,7 +26261,9 @@
    "path_evidence": "HYPOTHESIS",
    "role": "orbis/NP platform services, DLC, SKU, trophies",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0xbbe60"
+   ],
    "classes": [
     {
      "name": "c_dlc_async_task",
@@ -27166,7 +27250,22 @@
    "functions": [
     "0x5505c0",
     "0x28e590",
-    "0x28e530"
+    "0x28e530",
+    "0x261e90",
+    "0x262260",
+    "0x56a0c0",
+    "0x566050",
+    "0x5662d0",
+    "0x571150",
+    "0x571be0",
+    "0x56c780",
+    "0x56cda0",
+    "0x586a10",
+    "0x56d110",
+    "0x586970",
+    "0x586510",
+    "0x28bc60",
+    "0x296990"
    ],
    "classes": [
     {
@@ -34008,7 +34107,11 @@
     "D:\\bungie\\external_libraries\\DemonWare\\48\\bdSocket\\bdSocketRouter.cpp",
     "D:\\bungie\\external_libraries\\DemonWare\\48\\bdSocket\\bdSocketRouterConfig.cpp"
    ],
-   "functions": [],
+   "functions": [
+    "0x122c070",
+    "0x2eb340",
+    "0x2ebd40"
+   ],
    "classes": [
     {
      "name": "bdAddrHandle",
@@ -34996,7 +35099,10 @@
     "C:\\bungie\\external_libraries\\libtom\\v1.2\\pk\\rsa\\rsa_verify_hash.c",
     "C:\\bungie\\external_libraries\\libtom\\v1.2\\prngs\\yarrow.c"
    ],
-   "functions": [],
+   "functions": [
+    "0x6cd20",
+    "0x6ce20"
+   ],
    "classes": []
   },
   "tp.oodle": {
@@ -35237,7 +35343,10 @@
    "path_evidence": "HYPOTHESIS",
    "role": "Sony NP Toolkit, sce::Toolkit::NP (RTTI only)",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0xfa7e10",
+    "0xf90b30"
+   ],
    "classes": [
     {
      "name": "sce::Json::MemAllocator",

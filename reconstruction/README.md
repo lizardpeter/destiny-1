@@ -64,7 +64,7 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
 - 9 Bungie source files named in the binary (all placeholders, nothing reconstructed yet).
 - ~2,350 RTTI classes placed across 37 folders; the renderer is mostly invisible
   to RTTI, so `engine/graphics` is thin until functions are traced.
-- 114 decompiled functions:
+- 218 decompiled functions:
   - 33 from the graphics work: the TFX VM and extern ABI, the Frame extern, auto-exposure, the
     Engine Configuration snapshot, the global channel store, and `c_sun_manager`.
   - 81 from the online work (2026-10-13), spread across `omaha/networking/bap`,
@@ -77,6 +77,18 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
     - activity manager timeouts, the world transition, slice-set loading and its task graph
     - the simulation queue and player/unit assignment
     - the unlock-expression VM
+  - 104 backfilled from the earlier native-runtime and backend sessions (2026-10-12/13):
+    - BAP channel crypto and handshake, response matching, and the message codecs
+    - investment world-server bitstreams, queuez replication and the object manager
+    - account slot, unlock-flag sources, the trial check
+    - sign-on and content manifest, package registration
+    - bootflow state handlers, world-controller states and modes, prerequisites
+    - main loop timing, job system, logging, the engine heap
+    - NP toolkit and DemonWare entry points
+- The online protocol (every BAP message class, activity-host message types and handlers,
+  payload types, replication families, unlock flags, the prologue scenario, rejected
+  hypotheses and open questions) is in
+  `knowledge/records/d1_online_protocol_2026-10-13.json`.
 - Class attachment: `c_sun_manager` methods and two `c_activity_client_messaging_interface_bap`
   slots are attached so far. The other
   decompiled functions do not appear in any RTTI vtable, so they are free

@@ -11,7 +11,9 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0xbbe60` | addcont_list_query |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`bbe60_addcont_list_query.c`](decompiled/bbe60_addcont_list_query.c) | Queries installed add-on content (sceAppContentGetAddcontInfoList count-then-fill). |
 
 ## Classes (59)
 
