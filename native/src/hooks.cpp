@@ -222,6 +222,22 @@ static D1_SYSV void profile_update_hook(void* h) {
     if (*step != a) log("bootflow: profile_setup step %d -> %d", a, *step);
 }
 
+// Further bootflow handlers: update function, name, offset of a pair of int step fields.
+struct StepTrace { uint64_t off; const char* name; uint32_t field; HandlerUpdateFn orig; };
+static StepTrace g_step_traces[] = {
+    {0x79FDE0, "prepare_for_orbit", 0x30, nullptr},
+    {0x7A1AF0, "character_signin", 0x40, nullptr},
+    {0x7A1470, "character_prologue", 0x30, nullptr},
+};
+template <int I>
+static D1_SYSV void step_trace_hook(void* h) {
+    StepTrace& t = g_step_traces[I];
+    auto* f = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + t.field);
+    const int32_t a = f[0], b = f[1];
+    t.orig(h);
+    if (f[0] != a || f[1] != b) log("bootflow: %s step %d.%d -> %d.%d", t.name, a, b, f[0], f[1]);
+}
+
 // ---- call counters (research): D1_COUNT=off,off,... (eboot offsets, hex). Each function
 // start jumps to a stub that does `lock inc qword [counter]` and continues in the original.
 // Counts are printed by the watchdog (print_call_counts).
@@ -306,6 +322,12 @@ void install_game_hooks() {
         g_invest_update_orig = reinterpret_cast<HandlerUpdateFn>(
             hook_function(exe.base + 0x79DA10, reinterpret_cast<const void*>(&invest_update_hook)));
         if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "profile")) g_profile_bypass = true;
+        const void* step_hooks[] = {reinterpret_cast<const void*>(&step_trace_hook<0>),
+                                    reinterpret_cast<const void*>(&step_trace_hook<1>),
+                                    reinterpret_cast<const void*>(&step_trace_hook<2>)};
+        static_assert(sizeof(step_hooks) / sizeof(step_hooks[0]) == sizeof(g_step_traces) / sizeof(g_step_traces[0]));
+        for (size_t i = 0; i < sizeof(g_step_traces) / sizeof(g_step_traces[0]); ++i)
+            g_step_traces[i].orig = reinterpret_cast<HandlerUpdateFn>(hook_function(exe.base + g_step_traces[i].off, step_hooks[i]));
         g_profile_update_orig = reinterpret_cast<HandlerUpdateFn>(
             hook_function(exe.base + 0x7A01C0, reinterpret_cast<const void*>(&profile_update_hook)));
         log("hooks: bootflow trace %s",
