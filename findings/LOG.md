@@ -835,3 +835,41 @@ response; nothing has connected to it yet).
   - 0xCD returns the family-5 root like 0x1F7.
 - **Status**: with a character on the account, the headless run reaches setup:orbit (the
   Director).
+
+## 2026-10-13 (evening): activity host, into the prologue world
+
+- **AH discovery**: BAP 16 → 17 (16 bytes: echoed u64 id, IPv4 network order, u32 BE port).
+  The client opens a second BAP connection ("FAH") with the same handshake.
+- **Host startup**: request 6 kind 3 (0x55BD10: raw 0xE0C-byte struct, two length-prefixed
+  blobs at +0 and +0x202; the first holds the activity index and insertion point as i16
+  +0x8000). Response 7: kind 2, u64 BE AH id, 0x80 bytes.
+- **Messages**: client → host is notification 8 (header + u64 target id; payload
+  `[1][u32 type][u32 len][u32 0][data]`). Host → client is **bap_to_client 9** (base header,
+  payload `[1][u64 id][u32 type][u32 len][data]`, decoder 0x55F2C0). Notification 100 is
+  only relayed by the client to the service named in its header. Host types are dispatched
+  through 0x1910480; payloads are engine-type bitstreams (0x2A4AC0).
+- **Join sequence** the client accepts:
+  - 4 join result (echo identity, nonce must match, result 0)
+  - 0 entity indices (384-word bitmask)
+  - 11 membership. It is applied as an update (0x2C9AE0): a "present" bit, then 0x808009ED,
+    with players (identity + properties block from the join request), valid-slot masks, and
+    the host-tabulated region table (region 0 with the player's transition token 1)
+  - 1 instance state (0x80800E76). It carries:
+    - valid flag
+    - bubble count (+0x10, must equal the scenario tag's +0x48 count: 22 for the prologue)
+    - per-bubble slice-set index (+0x14, 0 = first)
+    - activity checksum (+0x5C = u32 at scenario tag data +0xC: 0x8FE07299)
+    - details +0x60, holding the activity index (+0x620), insertion point (+0x622) and
+      scenario name (+0x628, "act_cosmo_m0_highway")
+- **Keep-alive**: the client drops a host it hears nothing from for 20 s (connection +0x1EF8).
+  Host type 27 (sync token, echoed in client type 28) every 5 s.
+- **Purchase prerequisite**: the world transition evaluates `f[0x1A3] || f[0x1B8]` (scope-0
+  flags), now set true in the profile overrides.
+- **Result**: the world changes to act_cosmo_m0_highway, the initial slice set (PRV00.00)
+  precaches and switches, and the player spawns (simulation authority is local; a unit is
+  assigned).
+- **Remaining gap**: loading task 9 (0x7965A0) also needs the current activity-mode
+  reference (client reference type 0x10, byte +0x1AC). That reference still points at the
+  Cosmodrome ambient activity's tag 0x80CD0C34 (value -1), not the prologue's.
+  D1_BYPASS=spawn completes the task once the player has a unit. With it the client goes
+  through physics_join into **activity:in_world**.
