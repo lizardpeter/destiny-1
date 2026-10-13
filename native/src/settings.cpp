@@ -53,8 +53,10 @@ discord_app_id = 1559335126528426075   # [D1_DISCORD_APP_ID]
 # Copy the game's own log messages into d1-native.log (useful when reporting problems).
 game_log = true                # [D1_GAME_LOG]
 
-# Research hooks that get the boot past sign-in checks the backend cannot answer yet.
-bypass = prereq,transport      # [D1_BYPASS]
+# Research hooks for checks the backend cannot answer yet: prereq/transport (sign-in),
+# localres (load global resources locally), spawn (finish loading into a mission once the
+# player has spawned).
+bypass = prereq,transport,localres,spawn   # [D1_BYPASS]
 )";
 
 static bool truthy(const std::string& v) { return v == "1" || v == "true" || v == "on" || v == "yes"; }

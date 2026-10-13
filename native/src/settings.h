@@ -16,7 +16,7 @@ struct Settings {
     // one; anything else is the host name or address of a backend server.
     std::string backend = "local";
     // research hooks needed to get past sign-in for now (see README)
-    std::string bypass = "prereq,transport";
+    std::string bypass = "prereq,transport,localres,spawn";
     // window
     int window_width = 1280;
     int window_height = 720;
