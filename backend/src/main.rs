@@ -7,6 +7,7 @@
 
 mod bap;
 mod content;
+mod invest;
 mod pb;
 mod psn;
 mod signon;

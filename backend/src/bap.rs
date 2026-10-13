@@ -32,7 +32,7 @@
 //! header + payload; the envelope length includes the tag. Types 0x19 and 0x1E always go
 //! in the clear.
 
-use crate::{pb, signon};
+use crate::{invest, pb, signon};
 use aes_gcm::{aead::AeadInPlace, Aes128Gcm, KeyInit};
 use cbc::cipher::{BlockEncryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
@@ -50,6 +50,10 @@ pub const MSG_SECURE_HELLO_REQUEST: u16 = 0x19;
 pub const MSG_SECURE_HELLO_RESPONSE: u16 = 0x1A;
 pub const MSG_SUBSCRIPTION_REQUEST: u16 = 12;
 pub const MSG_UNSUBSCRIBE_REQUEST: u16 = 14;
+pub const MSG_WORLD_SERVER_REQUEST: u16 = 10;
+pub const MSG_WORLD_SERVER_RESPONSE: u16 = 11;
+pub const MSG_ECHO_REQUEST: u16 = 250;
+pub const MSG_QUEUEZ_UPDATE_NOTIFICATION: u16 = 123;
 pub const MSG_QUEUEZ_REGISTER_REQUEST: u16 = 121;
 pub const MSG_REGISTER_RELAY_CLIENT_REQUEST: u16 = 302;
 pub const STATUS_OK: u16 = 200;
@@ -193,6 +197,15 @@ fn response(kind: u16, sequence: u32, status: u16, payload: &[u8]) -> Vec<u8> {
     m
 }
 
+/// Notification message: base header (type, sequence) + payload.
+fn notification(kind: u16, sequence: u32, payload: &[u8]) -> Vec<u8> {
+    let mut m = Vec::with_capacity(6 + payload.len());
+    m.extend_from_slice(&kind.to_be_bytes());
+    m.extend_from_slice(&sequence.to_be_bytes());
+    m.extend_from_slice(payload);
+    m
+}
+
 /// Secure hello response payload carrying the channel nonce and key (see module docs).
 fn hello_payload(nonce: &[u8; 12], key: &[u8; 16]) -> Vec<u8> {
     let mut pt = Vec::with_capacity(28);
@@ -224,6 +237,7 @@ async fn send(sock: &mut TcpStream, chan: &mut Option<Channel>, msg: &[u8]) -> s
 
 async fn session(mut sock: TcpStream) -> std::io::Result<()> {
     let mut chan: Option<Channel> = None;
+    let mut notify_seq: u32 = 0;
     loop {
         let env = read_envelope(&mut sock).await?;
         let body = if env.kind == 1 {
@@ -265,11 +279,30 @@ async fn session(mut sock: TcpStream) -> std::io::Result<()> {
                 info!("bap: channel keyed (AES-128-GCM)");
             }
             MSG_QUEUEZ_REGISTER_REQUEST | MSG_SUBSCRIPTION_REQUEST | MSG_UNSUBSCRIBE_REQUEST
-            | MSG_REGISTER_RELAY_CLIENT_REQUEST => {
+            | MSG_REGISTER_RELAY_CLIENT_REQUEST | MSG_ECHO_REQUEST => {
                 // Responses with no payload (codec 0x1F70 on both sides).
                 info!("bap: {} (seq {sequence}, {} bytes) -> ok\n{}", name(kind), payload.len(), pb::dump(payload, 2));
                 let reply = response(kind + 1, sequence, STATUS_OK, &[]);
                 send(&mut sock, &mut chan, &reply).await?;
+            }
+            MSG_WORLD_SERVER_REQUEST => {
+                let req = invest::parse_request(payload);
+                info!("bap: world server request {:#x} (seq {sequence}): {}{}", req.id,
+                      req.body.as_ref().map(invest::show).unwrap_or_else(|| format!("(unknown message) {}", pb::hex(payload))),
+                      req.extra.as_ref().map(|e| format!(" extra {}", pb::hex(e))).unwrap_or_default());
+                let body = invest::respond(&req);
+                send(&mut sock, &mut chan, &response(MSG_WORLD_SERVER_RESPONSE, sequence, STATUS_OK, &body)).await?;
+                if req.id == 0xce {
+                    // After the account summary, push the account profile family (4), which
+                    // the client registered at sign-in and waits for. It accepts the baseline only
+                    // once the family has moved to "awaiting baseline" (replication state 2),
+                    // a moment after the account summary is applied.
+                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                    let n = invest::queuez_update(&[invest::profile_baseline()]);
+                    notify_seq += 1;
+                    send(&mut sock, &mut chan, &notification(MSG_QUEUEZ_UPDATE_NOTIFICATION, notify_seq, &n)).await?;
+                    info!("bap: pushed family {} baseline ({} bytes)", invest::FAMILY_PROFILE, n.len());
+                }
             }
             _ => warn!("bap: {enc}message {} ({kind}) seq {sequence} ({} bytes, unhandled): {}\n{}", name(kind), payload.len(),
                        pb::hex(&payload[..payload.len().min(256)]), pb::dump(payload, 2)),

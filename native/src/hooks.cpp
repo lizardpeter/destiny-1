@@ -199,6 +199,15 @@ static D1_SYSV void bap_update_hook(void* h) {
     if (*step != before) log("bootflow: bap_signin step %d -> %d", before, *step);
 }
 
+// investment_signin (eboot+0x79DA10): step at +0x30, sub-step at +0x34 (done at 7/3)
+static HandlerUpdateFn g_invest_update_orig = nullptr;
+static D1_SYSV void invest_update_hook(void* h) {
+    auto* step = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + 0x30);
+    const int32_t a = step[0], b = step[1];
+    g_invest_update_orig(h);
+    if (step[0] != a || step[1] != b) log("bootflow: investment_signin step %d.%d -> %d.%d", a, b, step[0], step[1]);
+}
+
 // ---- call counters (research): D1_COUNT=off,off,... (eboot offsets, hex). Each function
 // start jumps to a stub that does `lock inc qword [counter]` and continues in the original.
 // Counts are printed by the watchdog (print_call_counts).
@@ -280,7 +289,9 @@ void install_game_hooks() {
     {  // bap_signin sub-step trace: cheap (logs only on change), always on
         g_bap_update_orig = reinterpret_cast<HandlerUpdateFn>(
             hook_function(exe.base + 0x799A70, reinterpret_cast<const void*>(&bap_update_hook)));
-        log("hooks: bootflow trace %s", g_bap_update_orig ? "on" : "FAILED");
+        g_invest_update_orig = reinterpret_cast<HandlerUpdateFn>(
+            hook_function(exe.base + 0x79DA10, reinterpret_cast<const void*>(&invest_update_hook)));
+        log("hooks: bootflow trace %s", g_bap_update_orig && g_invest_update_orig ? "on" : "FAILED");
     }
     if (const char* c = getenv("D1_COUNT")) install_call_counters(c);
     if (const char* a = getenv("D1_ALLOC_LOG")) {
