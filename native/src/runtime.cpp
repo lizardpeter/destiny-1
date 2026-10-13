@@ -549,13 +549,19 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS* ep) {
 void dump_all_threads() {
     std::vector<GuestThread> ts;
     { std::lock_guard lk(g_threads_mutex); ts = g_threads; }
-    for (auto& t : ts) {
-        log("--- %s (%u)", t.name.c_str(), t.tid);
-        if (SuspendThread(t.handle) == DWORD(-1)) continue;
+    // Capture every thread's registers first, logging nothing while any thread is suspended
+    // (a suspended thread may hold the C runtime's or the log's lock).
+    std::vector<std::pair<uint64_t, uint64_t>> regs(ts.size());
+    for (size_t i = 0; i < ts.size(); ++i) {
+        if (ts[i].tid == gettid32() || SuspendThread(ts[i].handle) == DWORD(-1)) continue;
         CONTEXT c{};
         c.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
-        if (GetThreadContext(t.handle, &c)) walk(c.Rip, c.Rbp);
-        ResumeThread(t.handle);
+        if (GetThreadContext(ts[i].handle, &c)) regs[i] = {c.Rip, c.Rbp};
+        ResumeThread(ts[i].handle);
+    }
+    for (size_t i = 0; i < ts.size(); ++i) {
+        log("--- %s (%u)", ts[i].name.c_str(), ts[i].tid);
+        if (regs[i].first) walk(regs[i].first, regs[i].second);
     }
     dump_ring();
 }
