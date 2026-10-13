@@ -261,4 +261,63 @@ static int32_t sceMsgDialogProgressBarSetValue(int32_t, uint32_t) { return SCE_O
 HLE("sceMsgDialogProgressBarSetValue", sceMsgDialogProgressBarSetValue)
 static int32_t sceMsgDialogProgressBarSetMsg(int32_t, const char* m) { if (m) log("message dialog progress: %s", m); return SCE_OK; }
 HLE("sceMsgDialogProgressBarSetMsg", sceMsgDialogProgressBarSetMsg)
+
+// ------------------------------------------------------------------ libSceAppContent / PlayGo / DiscMap
+// These write results through pointers. Left as logging stubs they returned "OK" without
+// writing, and the game used stack garbage: GetAddcontInfoList's count once came back as
+// ~860 million add-ons, a 19 GB allocation and an ENGINE OOM halt in content_check.
+static int32_t sceAppContentInitialize(const void*, void*) { return SCE_OK; }
+HLE("sceAppContentInitialize", sceAppContentInitialize)
+// No add-on content installed for now (the expansions live in the main packages list).
+static int32_t sceAppContentGetAddcontInfoList(uint32_t, void* list, uint32_t num, uint32_t* hit) {
+    (void)list;
+    (void)num;
+    if (hit) *hit = 0;
+    return SCE_OK;
+}
+HLE("sceAppContentGetAddcontInfoList", sceAppContentGetAddcontInfoList)
+static int32_t sceAppContentAppParamGetInt(uint32_t, int32_t* value) {
+    if (value) *value = 0;
+    return SCE_OK;
+}
+HLE("sceAppContentAppParamGetInt", sceAppContentAppParamGetInt)
+static int32_t sceAppContentDownloadDataGetAvailableSpaceKb(const char*, uint64_t* kb) {
+    if (kb) *kb = 64ull << 20;  // 64 GiB
+    return SCE_OK;
+}
+HLE("sceAppContentDownloadDataGetAvailableSpaceKb", sceAppContentDownloadDataGetAvailableSpaceKb)
+HLE("sceAppContentTemporaryDataGetAvailableSpaceKb", sceAppContentDownloadDataGetAvailableSpaceKb)
+// The temporary-data mount is the /temp0 tree in the data folder (SceAppContentMountPoint: 16 chars).
+static int32_t sceAppContentTemporaryDataMount(char* mount_point) {
+    if (mount_point) std::strcpy(mount_point, "/temp0");
+    return SCE_OK;
+}
+HLE("sceAppContentTemporaryDataMount", sceAppContentTemporaryDataMount)
+static int32_t sceAppContentTemporaryDataMount2(uint32_t, char* mount_point) { return sceAppContentTemporaryDataMount(mount_point); }
+HLE("sceAppContentTemporaryDataMount2", sceAppContentTemporaryDataMount2)
+static int32_t sceAppContentTemporaryDataUnmount(const char*) { return SCE_OK; }
+HLE("sceAppContentTemporaryDataUnmount", sceAppContentTemporaryDataUnmount)
+
+// PlayGo (streaming install): everything is installed, nothing left to do.
+static int32_t scePlayGoInitialize(const void*) { return SCE_OK; }
+HLE("scePlayGoInitialize", scePlayGoInitialize)
+static int32_t scePlayGoOpen(int32_t* handle, const void*) { if (handle) *handle = 1; return SCE_OK; }
+HLE("scePlayGoOpen", scePlayGoOpen)
+static int32_t scePlayGoClose(int32_t) { return SCE_OK; }
+HLE("scePlayGoClose", scePlayGoClose)
+static int32_t scePlayGoSetLanguageMask(int32_t, uint64_t) { return SCE_OK; }
+HLE("scePlayGoSetLanguageMask", scePlayGoSetLanguageMask)
+static int32_t scePlayGoGetToDoList(int32_t, void*, uint32_t, uint32_t* entries) {
+    if (entries) *entries = 0;
+    return SCE_OK;
+}
+HLE("scePlayGoGetToDoList", scePlayGoGetToDoList)
+
+// Disc map: no disc layout information; the caller reads from the installed files.
+static int32_t sceDiscMapIsRequestOnHDD(const char*, uint64_t, uint64_t, int32_t* on_hdd) {
+    if (on_hdd) *on_hdd = 1;
+    return SCE_OK;
+}
+HLE("sceDiscMapIsRequestOnHDD", sceDiscMapIsRequestOnHDD)
+
 }  // namespace d1

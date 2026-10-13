@@ -78,7 +78,10 @@ target_compile_definitions(d1_shad_video PRIVATE BOOST_ASIO_STANDALONE)
 target_compile_options(d1_shad_video PRIVATE -w -fno-strict-aliasing)
 target_link_libraries(d1_shad_video PUBLIC sirit fmt::fmt d1_xxhash Zydis absl::flat_hash_map)
 if(WIN32)
-  target_link_libraries(d1_shad_video PUBLIC SDL2::SDL2-static)  # no SDL2.dll next to the exe
+  # MinGW cross build: header case aliases, xbyak, Windows 10 1809 APIs (CreateFileMapping2).
+  target_include_directories(d1_shad_video PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/shim/win ${X}/xbyak ${SDL2_INCLUDE_DIRS})
+  target_compile_definitions(d1_shad_video PRIVATE _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000006 NOMINMAX)
+  target_link_libraries(d1_shad_video PUBLIC SDL2::SDL2-static onecore ntdll)  # no SDL2.dll next to the exe
 else()
   target_link_libraries(d1_shad_video PUBLIC Vulkan::Vulkan SDL2::SDL2)
 endif()

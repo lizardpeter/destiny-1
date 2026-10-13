@@ -30,6 +30,11 @@
 #include "video_core/texture_cache/texture_cache.h"
 
 #include "../../src/os.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <SDL2/SDL.h>
+#endif
 #include "../../src/render_bridge.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBIW_WINDOWS_UTF8
@@ -306,6 +311,15 @@ bool patch_flip_request(u32* cmdbuf, u32 size_dw, u32 buf_idx) {
 }  // namespace
 
 // ------------------------------------------------------------- lifecycle
+void fatal_message(const char* text) {
+    d1::log("%s", text);
+#ifdef _WIN32
+    MessageBoxA(nullptr, text, "Destiny (d1-native)", MB_OK | MB_ICONERROR);
+#else
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Destiny (d1-native)", text, nullptr);
+#endif
+}
+
 bool init(const Callbacks& cb) {
     if (const char* v = std::getenv("D1_RENDERER"); v && v[0] == '0') return false;
     g = new State;
@@ -331,6 +345,13 @@ bool init(const Callbacks& cb) {
             d1::log("renderer: present mode %s", EmulatorSettings.GetPresentMode().c_str());
         }
     } catch (const std::exception& e) {
+        if (g->window) {  // someone is looking at a window: say why nothing will appear, then stop
+            d1::log("renderer: Vulkan initialisation failed (%s)", e.what());
+            fatal_message("This needs a graphics driver with Vulkan 1.3 support.\n\n"
+                          "Update your GPU driver (NVIDIA, AMD or Intel) and try again.\n"
+                          "Details are in d1-native.log.");
+            std::exit(1);
+        }
         d1::log("renderer: Vulkan initialisation failed (%s); using the null GPU", e.what());
         delete g;
         g = nullptr;

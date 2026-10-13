@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 
 #include <fmt/format.h>
@@ -50,9 +51,11 @@ void UpdateLogFlushLevel(std::string_view) {}
 
 }  // namespace Common::Log
 
+// A failed renderer assertion throws: during start-up (no usable Vulkan 1.3 device, ...)
+// render::init catches it and the game falls back to the null GPU with a clear message.
 void assert_fail_impl() {
     std::fflush(stderr);
-    __asm__ __volatile__("int $3");
+    throw std::runtime_error("renderer assertion failed (see the line above)");
 }
 [[noreturn]] void unreachable_impl() {
     assert_fail_impl();

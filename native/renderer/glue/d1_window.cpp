@@ -9,6 +9,7 @@
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <mutex>

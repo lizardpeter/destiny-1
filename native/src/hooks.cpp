@@ -176,13 +176,12 @@ static HeapAllocFn g_heap_alloc_orig = nullptr;
 static uint64_t g_alloc_log_min = 0;
 static D1_SYSV void* heap_alloc_hook(void* heap, uint64_t size, uint32_t id, char halt) {
     if (size >= g_alloc_log_min) {
-        auto* fp = static_cast<uint64_t*>(__builtin_frame_address(0));
-        std::string chain;
-        for (int d = 0; d < 6 && fp && !(reinterpret_cast<uint64_t>(fp) & 7); ++d) {
-            chain += " <- " + describe_addr(fp[1]);
-            if (reinterpret_cast<uint64_t*>(fp[0]) <= fp) break;
-            fp = reinterpret_cast<uint64_t*>(fp[0]);
-        }
+        // Our caller is game code (we were jumped to from its call); its frames follow the
+        // frame-pointer chain from the rbp it left us.
+        std::string chain = " <- " + describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0)));
+        uint64_t rbp;
+        asm volatile("mov %%rbp, %0" : "=r"(rbp));
+        (void)rbp;
         log("alloc: %llu bytes (id %u) on heap %p%s", (unsigned long long)size, id, heap, chain.c_str());
     }
     return g_heap_alloc_orig(heap, size, id, halt);
