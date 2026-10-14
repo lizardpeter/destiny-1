@@ -17,7 +17,9 @@ public:
     bool IsVkHostMarkersEnabled() const { return false; }
     bool IsVkGuestMarkersEnabled() const { return false; }
     bool IsPipelineCacheArchived() const { return false; }
-    bool IsPipelineCacheEnabled() const { return false; }
+    bool IsPipelineCacheEnabled() const { return pipeline_cache; }
+    void SetPipelineCacheEnabled(bool v) { pipeline_cache = v; }
+    bool pipeline_cache = false;  // render::init turns it on with a cache folder
     bool IsDumpShaders() const { return Env("D1_DUMP_SHADERS"); }
     bool IsShaderCollect() const { return false; }
     bool IsRenderdocEnabled() const { return false; }
@@ -41,11 +43,17 @@ public:
     bool IsReadbackLinearImagesEnabled() const { return false; }
     bool IsRcasEnabled() const { return false; }
     bool IsPatchShaders() const { return false; }
-    bool IsInlineFetchShader() const { return true; }
+    // Stock shadPS4 default (vertex input attributes). D1_INLINE_FETCH=1 translates fetch
+    // shaders inline as buffer loads instead (shadPS4's debugging path, slower).
+    bool IsInlineFetchShader() const { return Env("D1_INLINE_FETCH"); }
     bool IsFsrEnabled() const { return false; }
     bool IsCopyGpuBuffers() const { return false; }
     float GetRcasAttenuation() const { return 0.25f; }
-    int GetGpuId() const { return -1; }
+    // -1 = shadPS4's picker; D1_GPU_ID=<n> picks the n-th Vulkan device.
+    int GetGpuId() const {
+        const char* v = std::getenv("D1_GPU_ID");
+        return v ? std::atoi(v) : -1;
+    }
 };
 
 #define EmulatorSettings (*EmulatorSettingsImpl::GetInstance())

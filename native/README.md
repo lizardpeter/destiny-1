@@ -73,7 +73,7 @@ with commented defaults. Environment variables override it:
 |---|---|---|
 | `window_width`, `window_height` | `D1_WINDOW_SIZE=1920x1080` | window size in pixels (default 1280x720); the picture is scaled to fit, letterboxed |
 | `fullscreen` | `D1_FULLSCREEN=1` | borderless fullscreen; F11 or Alt+Enter toggles while running |
-| `overlay` | `D1_OVERLAY=1` | stats overlay (FPS, frame time, render and window resolution, v-sync, GPU, game state); F3 toggles it while running |
+| `overlay` | `D1_OVERLAY=1` | stats overlay (FPS, frame time, where a frame's time goes, render and window resolution, v-sync, GPU, game state); F3 toggles it while running. The same breakdown is logged every 10 s as a `perf:` line |
 | `render_resolution` | `D1_RENDER_RESOLUTION=2560x1440` | the game's own internal resolution (1920x1080 on the console); every render target is created at this size, no upscaling |
 | `vsync` | `D1_VSYNC` | `off-tearing` (default: Immediate, lowest latency, may tear), `off` (Mailbox: newest frame at the next refresh, no tearing), `on` (Fifo) |
 | `fps` | `D1_FPS` | frame-rate limit: 0 / `unlimited` (default) runs one game tick per rendered frame with no limiter; a number caps it (30 = the console's rate) |
@@ -100,7 +100,10 @@ engine-side patch (not done yet).
 | `D1_WINDOW=0` | (renderer build) no window: offscreen rendering only |
 | `D1_PRESENT=Mailbox\|Immediate\|Fifo` | (renderer build) raw swapchain present mode, overrides `vsync` |
 | `D1_PEEK=off,*off` / `D1_POKE=secs:off+delta=value;…` | research aids: dump / write eboot-relative memory (`*` dereferences a pointer) |
-| `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level |
+| `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level; each repeated warning prints 20 times, then once per 10,000 |
+| `D1_PIPELINE_CACHE=0` | (renderer build) don't keep compiled shaders and pipelines in `<data>/shader_cache` between runs |
+| `D1_INLINE_FETCH=1` | (renderer build) translate vertex fetch shaders inline as buffer loads (shadPS4's slower debugging path) |
+| `D1_GPU_ID=<n>` | (renderer build) use the n-th Vulkan device instead of the automatic pick |
 
 ## How it works
 

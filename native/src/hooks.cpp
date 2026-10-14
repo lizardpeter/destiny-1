@@ -318,6 +318,26 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
                 (unsigned long long)pa, (unsigned long long)pb, refs0c);
         }
     }
+    if (getenv("D1_TRACE_FADE")) {  // research: find a held screen-fade block {count, .., mode @0x14, alpha @0x18}
+        static auto next = std::chrono::steady_clock::now();
+        if (std::chrono::steady_clock::now() >= next) {
+            next = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            const uint64_t b = rt().modules[0].base;
+            int found = 0;
+            for (uint64_t g = 0x2600000; g < 0x2980000 && found < 16; g += 8) {
+                const uint64_t p = *reinterpret_cast<const uint64_t*>(b + g);
+                if (p < 0x200000000ull || p > 0x7FFFFFFFFFFull || (p & 3)) continue;
+                if (guest_region_extent(p) < 0x20) continue;
+                const uint32_t* w = reinterpret_cast<const uint32_t*>(p);
+                const float alpha = *reinterpret_cast<const float*>(p + 0x18);
+                if (w[0] >= 1 && w[0] <= 4 && w[5] >= 1 && w[5] <= 4 && alpha > 0.0f && alpha <= 1.0f) {
+                    ++found;
+                    log("fade: [%#llx] -> %#llx: +0 %u +4 %#x +8 %#x +0xC %#x +0x10 %#x +0x14 %u +0x18 %.3f +0x1C %#x",
+                        (unsigned long long)g, (unsigned long long)p, w[0], w[1], w[2], w[3], w[4], w[5], alpha, w[7]);
+                }
+            }
+        }
+    }
     if (getenv("D1_TRACE_CINE")) {  // research: why loading cinematics are suppressed
         static int n = 0;
         if (n++ == 0) {

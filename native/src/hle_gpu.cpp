@@ -91,7 +91,34 @@ HLE("sceKernelCreateEqueue", sceKernelCreateEqueue)
 static int32_t sceKernelDeleteEqueue(Equeue* q) { return SCE_OK; }
 HLE("sceKernelDeleteEqueue", sceKernelDeleteEqueue)
 
+namespace render {
+Perf& perf() {
+    static Perf p;
+    return p;
+}
+}  // namespace render
+static thread_local bool t_flip_thread = false;  // the game's thread that submits frames
+static uint64_t now_ns() {
+    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+// Interval between the game's frame submissions (its whole CPU frame, waits included).
+static void note_guest_frame() {
+    static std::atomic<uint64_t> last{0};
+    t_flip_thread = true;
+    const uint64_t t = now_ns(), prev = last.exchange(t);
+    if (prev && t - prev < 2'000'000'000ull) {
+        auto& p = render::perf();
+        p.guest_ns += t - prev;
+        ++p.guest_frames;
+    }
+}
+
 static int32_t sceKernelWaitEqueue(Equeue* q, KEvent* ev, int num, int* out, uint32_t* timeout_us) {
+    struct WaitTimer {
+        uint64_t t0 = t_flip_thread ? now_ns() : 0;
+        ~WaitTimer() { if (t0) render::perf().guest_wait_ns += now_ns() - t0; }
+    } wait_timer;
     std::unique_lock lk(q->m);
     auto any = [&] { for (auto& x : q->events) if (x.triggered) return true; return false; };
     if (timeout_us) {
@@ -288,6 +315,7 @@ static void do_flip(int32_t index, int64_t arg) {
     gpu_stats(n);
 }
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {
+    note_guest_frame();
     if (gpu_real()) {
         { std::lock_guard lk(g_vo.m); ++g_vo.status.flip_pending_num; }
         render::cpu_flip(index, arg);
@@ -418,6 +446,7 @@ HLE("sceGnmSubmitCommandBuffers", sceGnmSubmitCommandBuffers)
 static int32_t sceGnmSubmitAndFlipCommandBuffers(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes,
                                                  uint32_t* const* ccbs, const uint32_t* ccb_sizes, uint32_t,
                                                  uint32_t buf, uint32_t mode, int64_t arg) {
+    note_guest_frame();
     if (gpu_real()) {
         {
             std::lock_guard lk(g_vo.m);
@@ -510,6 +539,8 @@ void gpu_init() {
     cb.window_height = st.window_height;
     cb.fullscreen = st.fullscreen;
     cb.overlay = st.overlay;
+    static const std::string cache_dir = rt().data_root + "/shader_cache";
+    cb.cache_dir = cache_dir.c_str();
     cb.present_mode = st.vsync == "on" ? "Fifo" : st.vsync == "off-tearing" ? "Immediate" : "Mailbox";
     g_gpu_real = render::init(cb);
     if (!g_gpu_real) log("GPU: null GPU (nothing is drawn)");
@@ -522,7 +553,13 @@ void gpu_on_unmap(uint64_t addr, uint64_t size) {
     if (gpu_real()) render::on_unmap(addr, size);
 }
 bool gpu_on_fault(void* uc, void* addr) {
-    return gpu_real() && render::on_fault(uc, addr);
+    if (!gpu_real()) return false;
+    const uint64_t t0 = now_ns();
+    if (!render::on_fault(uc, addr)) return false;
+    auto& p = render::perf();
+    ++p.faults;
+    p.fault_ns += now_ns() - t0;
+    return true;
 }
 
 void print_gpu_summary() {

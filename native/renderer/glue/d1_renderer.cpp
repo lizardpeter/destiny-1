@@ -43,6 +43,8 @@
 #include "d1_present.h"
 #include "d1_window.h"
 
+void d1_set_pipeline_cache_dir(const char* dir);  // glue_common.cpp
+
 namespace d1 {
 void log(const char* fmt, ...);
 const char* game_state();
@@ -69,6 +71,11 @@ struct State {
     std::chrono::steady_clock::time_point stats_t0 = std::chrono::steady_clock::now();
     u64 stats_flips0 = 0;
     double fps = 0, frame_ms = 0;
+    // frame-time breakdown (render_bridge.h Perf), per stats window
+    struct PerfSnap { u64 faults, fault_ns, guest_frames, guest_ns, guest_wait_ns, gpu_frames, gpu_lag_ns, compiles, msgs; };
+    PerfSnap perf0{};
+    double game_ms = 0, wait_ms = 0, lag_ms = 0, faults_per_frame = 0, fault_ms = 0, compiles_per_s = 0;
+    u64 compiles_total = 0, msgs_per_s = 0;
     // presentation diagnostics (logged every 5 s): image identity per video-out buffer
     std::chrono::steady_clock::time_point diag_t0 = std::chrono::steady_clock::now();
     u64 last_image_id[16]{};
@@ -160,6 +167,29 @@ void update_stats() {
     g->frame_ms = g->fps > 0 ? 1000.0 / g->fps : 0;
     g->stats_t0 = now;
     g->stats_flips0 = n;
+    auto& p = d1::render::perf();
+    const State::PerfSnap c{p.faults, p.fault_ns, p.guest_frames, p.guest_ns, p.guest_wait_ns,
+                            p.gpu_frames, p.gpu_lag_ns, p.compiles, p.gpu_messages};
+    const auto& o = g->perf0;
+    const double gf = double(std::max<u64>(1, c.guest_frames - o.guest_frames));
+    const double pf = double(std::max<u64>(1, c.gpu_frames - o.gpu_frames));
+    g->game_ms = (c.guest_ns - o.guest_ns) / gf / 1e6;
+    g->wait_ms = (c.guest_wait_ns - o.guest_wait_ns) / gf / 1e6;
+    g->faults_per_frame = (c.faults - o.faults) / gf;
+    g->fault_ms = (c.fault_ns - o.fault_ns) / gf / 1e6;
+    g->lag_ms = (c.gpu_lag_ns - o.gpu_lag_ns) / pf / 1e6;
+    g->compiles_per_s = (c.compiles - o.compiles) / dt;
+    g->compiles_total = c.compiles;
+    g->msgs_per_s = u64((c.msgs - o.msgs) / dt);
+    g->perf0 = c;
+    static auto log_t = now;
+    if (now - log_t >= std::chrono::seconds(10)) {
+        log_t = now;
+        d1::log("perf: %.1f fps | game frame %.1f ms (blocked on GPU %.1f ms, write faults %.0f = %.1f ms) | "
+                "submit->screen %.1f ms | %.1f compiles/s (%llu total) | %llu renderer msgs/s",
+                g->fps, g->game_ms, g->wait_ms, g->faults_per_frame, g->fault_ms, g->lag_ms, g->compiles_per_s,
+                (unsigned long long)g->compiles_total, (unsigned long long)g->msgs_per_s);
+    }
 }
 
 std::vector<std::string> overlay_lines(s32 iw, s32 ih) {
@@ -167,6 +197,12 @@ std::vector<std::string> overlay_lines(s32 iw, s32 ih) {
     std::vector<std::string> l;
     l.push_back("Destiny  d1-native          F3: hide");
     std::snprintf(b, sizeof b, "FPS %5.1f   frame %5.2f ms", g->fps, g->frame_ms);
+    l.push_back(b);
+    std::snprintf(b, sizeof b, "game %5.1f ms  (GPU wait %5.1f, faults %4.0f / %4.1f ms)", g->game_ms, g->wait_ms,
+                  g->faults_per_frame, g->fault_ms);
+    l.push_back(b);
+    std::snprintf(b, sizeof b, "submit->screen %5.1f ms  compiles %4.1f/s (%llu)", g->lag_ms, g->compiles_per_s,
+                  (unsigned long long)g->compiles_total);
     l.push_back(b);
     const auto e = g->presenter->Extent();
     std::snprintf(b, sizeof b, "render %dx%d  ->  window %ux%u", iw, ih, e.width, e.height);
@@ -181,7 +217,6 @@ std::vector<std::string> overlay_lines(s32 iw, s32 ih) {
 
 void present(s32 index) {
     if (!g->presenter || index < 0 || !g->vo_buffers[index]) return;
-    update_stats();
     auto& pr = *g->presenter;
     const u32 ww = u32(g->window->GetWidth()), wh = u32(g->window->GetHeight());
     if (!pr.Acquire(ww, wh)) {
@@ -273,8 +308,14 @@ void present(s32 index) {
     pr.Present();
 }
 
-void flip_on_gpu(s32 index, s64 arg) {
+void flip_on_gpu(s32 index, s64 arg, std::chrono::steady_clock::time_point t0 = {}) {
+    if (t0.time_since_epoch().count()) {
+        auto& p = d1::render::perf();
+        p.gpu_lag_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        ++p.gpu_frames;
+    }
     ++g->flips;
+    update_stats();
     capture(index);
     present(index);
     g->cb.flip(index, arg);
@@ -387,6 +428,11 @@ bool init(const Callbacks& cb) {
     g = new State;
     g->cb = cb;
     g->sdk_version = cb.sdk_version;
+    // keep compiled shaders and pipelines between runs (D1_PIPELINE_CACHE=0 turns it off)
+    if (const char* v = std::getenv("D1_PIPELINE_CACHE"); !(v && v[0] == '0') && cb.cache_dir) {
+        ::d1_set_pipeline_cache_dir(cb.cache_dir);
+        EmulatorSettings.SetPipelineCacheEnabled(true);
+    }
     if (const char* d = std::getenv("D1_FRAMES")) {
         g->frames_dir = d;
         d1::os::make_dirs(d);
@@ -459,9 +505,10 @@ void submit(u32 count, u32* const* dcbs, const u32* dcb_sizes, u32* const* ccbs,
 s32 submit_and_flip(u32 count, u32* const* dcbs, const u32* dcb_sizes, u32* const* ccbs, const u32* ccb_sizes,
                     u32 buf, s64 arg) {
     std::scoped_lock lk{g->submit_mutex};
+    const auto t0 = std::chrono::steady_clock::now();
     if (count && patch_flip_request(dcbs[count - 1], dcb_sizes[count - 1] / 4, buf)) {
         Platform::IrqC::Instance()->RegisterOnce(Platform::InterruptId::GfxFlip,
-                                                 [buf, arg](Platform::InterruptId) { flip_on_gpu(s32(buf), arg); });
+                                                 [buf, arg, t0](Platform::InterruptId) { flip_on_gpu(s32(buf), arg, t0); });
         perform_submit(count, dcbs, dcb_sizes, ccbs, ccb_sizes);
     } else {
         static bool warned;
@@ -470,7 +517,7 @@ s32 submit_and_flip(u32 count, u32* const* dcbs, const u32* dcb_sizes, u32* cons
             d1::log("renderer: no prepareFlip packet at the end of the DCB; flipping after the submit");
         }
         perform_submit(count, dcbs, dcb_sizes, ccbs, ccb_sizes);
-        g->liverpool->SendCommand([buf, arg] { flip_on_gpu(s32(buf), arg); });
+        g->liverpool->SendCommand([buf, arg, t0] { flip_on_gpu(s32(buf), arg, t0); });
     }
     return 0;
 }

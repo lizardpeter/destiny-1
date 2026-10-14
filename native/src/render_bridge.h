@@ -2,6 +2,7 @@
 // (native/renderer/, built with -DD1_RENDERER_SHADPS4=ON). Only plain types cross it, so
 // the renderer's headers never leak into the rest of the program.
 #pragma once
+#include <atomic>
 #include <cstdint>
 
 namespace d1::render {
@@ -26,6 +27,7 @@ struct Callbacks {
     bool fullscreen;                           // borderless fullscreen on the current display
     const char* present_mode;                  // Vulkan present mode: "Fifo", "Mailbox" or "Immediate"
     bool overlay;                              // stats overlay shown at start (F3 toggles)
+    const char* cache_dir;                     // pipeline cache folder (compiled shaders kept between runs)
 };
 
 // Creates the Vulkan device, the command processor and the rasterizer. Returns false (and
@@ -59,6 +61,18 @@ int32_t set_hs_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32
 int32_t set_ls_shader(uint32_t* cmd, uint32_t size, const uint32_t* regs, uint32_t modifier);
 
 void print_summary();
+
+// Frame-time breakdown for the stats overlay and the periodic perf log line. Firmware side
+// (hle_gpu.cpp) owns it; the renderer reads it once per stats window.
+struct Perf {
+    std::atomic<uint64_t> faults{0}, fault_ns{0};          // CPU writes to GPU-tracked pages
+    std::atomic<uint64_t> guest_frames{0}, guest_ns{0};    // the game's submit+flip calls, interval sum
+    std::atomic<uint64_t> guest_wait_ns{0};                // that thread blocked in sceKernelWaitEqueue
+    std::atomic<uint64_t> gpu_frames{0}, gpu_lag_ns{0};    // submit -> frame done on the GPU thread
+    std::atomic<uint64_t> compiles{0};                     // shader / pipeline compilations
+    std::atomic<uint64_t> gpu_messages{0};                 // renderer warnings and errors
+};
+Perf& perf();
 
 // Window and input (renderer build with a display). The pad state uses ScePadData's
 // button bits and 0..255 stick axes (0x80 = centre).
