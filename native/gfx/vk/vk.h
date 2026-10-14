@@ -77,4 +77,11 @@ void destroy_context(Context& ctx);
 
 uint32_t find_memory_type(const Context& ctx, uint32_t type_bits, VkMemoryPropertyFlags want);
 
+// Window surfaces. The instance must have been created with surface_instance_extensions().
+enum class WindowSystem { None, Win32, Xlib };
+// VK_KHR_surface plus the platform's surface extension, if the loader offers them (else 0).
+uint32_t surface_instance_extensions(WindowSystem ws, const char** out /* 2 entries */);
+// display: HINSTANCE (Win32) or Display* (Xlib); window: HWND or X11 Window.
+bool create_surface(const Context& ctx, WindowSystem ws, void* display, uint64_t window, VkSurfaceKHR* out);
+
 }  // namespace d1::vk

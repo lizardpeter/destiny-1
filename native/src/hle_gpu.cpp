@@ -211,6 +211,9 @@ static void frame_end() {
 
 bool gpu_active() { return gpu_real(); }
 
+void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);  // native_gfx.cpp
+void native_gfx_flip(void* addr, uint32_t width, uint32_t height);
+
 // ------------------------------------------------------------------ video out
 struct FlipStatus {
     uint64_t count, process_time, tsc;
@@ -358,6 +361,7 @@ static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64
         return SCE_OK;
     }
     if (gpu_real()) frame_end();
+    if (index >= 0 && index < 16) native_gfx_flip(g_vo.buffers[index], g_vo.attr.width, g_vo.attr.height);
     do_flip(index, arg);
     return SCE_OK;
 }
@@ -478,8 +482,6 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
     if (eop) signal_eop();
 }
 
-void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);  // native_gfx.cpp
-void native_gfx_flip(void* addr, uint32_t width, uint32_t height);
 
 static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
     native_gfx_submit(count, dcbs, dcb_sizes);

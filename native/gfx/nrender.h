@@ -49,18 +49,36 @@ struct Draw {
     std::vector<uint8_t> inline_vertices;  // draw from an inline vertex buffer: V# bases are offsets into it
 };
 
+// A window to present to (native handles; see vk::create_surface).
+struct WindowHandles {
+    enum Type { kNone, kWin32, kXlib } type = kNone;
+    void* display = nullptr;  // HINSTANCE / Display*
+    uint64_t window = 0;      // HWND / X11 Window
+};
+
 struct Options {
     const char* frames_dir = nullptr;  // write the flipped image as <dir>/f<N>.ppm
     bool no_cull = false;
     bool dump_targets = false;         // with each written frame, every render target the frame used
+    // presentation (optional): the window's handles and its current drawable size
+    bool (*window_handles)(WindowHandles& out) = nullptr;
+    void (*window_size)(uint32_t& w, uint32_t& h) = nullptr;
+    const char* present_mode = "Immediate";  // "Fifo", "Mailbox" or "Immediate"
+    uint32_t frames_in_flight = 2;           // frames the CPU may record ahead of the GPU
+    const char* pipeline_cache = nullptr;    // file for the Vulkan pipeline cache (kept between runs)
 };
 
 bool init(const Options& opt);
 bool active();
-// Executes draws (already in GPU order) and waits for them.
+// Records and submits draws (already in GPU order). The GPU runs them asynchronously; data
+// they read from guest memory is copied while recording.
 void execute(const std::vector<Draw*>& draws);
-// The video-out buffer at `addr` was flipped: dump it when frames are being written.
-void flip(uint64_t addr, uint32_t width, uint32_t height, uint64_t frame);
+// The video-out buffer at `addr` was flipped: present it to the window (if any), dump it when
+// frames are being written (dump = true), and limit how far the CPU runs ahead.
+void flip(uint64_t addr, uint32_t width, uint32_t height, uint64_t frame, bool dump);
 void print_stats();
+// Frame timing for the title bar: presented frames and the GPU name.
+uint64_t presented_frames();
+const char* gpu_name();
 
 }  // namespace d1::ng

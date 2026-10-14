@@ -29,10 +29,12 @@ int32_t set_gs_shader(uint32_t*, uint32_t, const uint32_t*) { return -1; }
 int32_t set_hs_shader(uint32_t*, uint32_t, const uint32_t*, uint32_t) { return -1; }
 int32_t set_ls_shader(uint32_t*, uint32_t, const uint32_t*, uint32_t) { return -1; }
 void print_summary() {}
+#ifndef D1_FRONTEND_SDL  // else frontend_sdl.cpp: window, input and audio for the native renderer
 bool window_active() { return false; }
 bool read_pad(PadState&) { return false; }
 bool take_mouse_motion(int32_t&, int32_t&) { return false; }
 bool audio_open(uint32_t, uint32_t) { return false; }
 void audio_output(const float*, uint32_t) {}
 void run_window_loop() {}
+#endif
 }  // namespace d1::render

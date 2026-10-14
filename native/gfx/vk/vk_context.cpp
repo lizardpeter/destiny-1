@@ -208,6 +208,51 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     return true;
 }
 
+uint32_t surface_instance_extensions(WindowSystem ws, const char** out) {
+    if (ws == WindowSystem::None || !open_loader()) return 0;
+    uint32_t n = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &n, nullptr);
+    std::vector<VkExtensionProperties> exts(n);
+    vkEnumerateInstanceExtensionProperties(nullptr, &n, exts.data());
+    const char* platform = ws == WindowSystem::Win32 ? "VK_KHR_win32_surface" : "VK_KHR_xlib_surface";
+    if (!has_extension(exts, VK_KHR_SURFACE_EXTENSION_NAME) || !has_extension(exts, platform)) return 0;
+    out[0] = VK_KHR_SURFACE_EXTENSION_NAME;
+    out[1] = platform;
+    return 2;
+}
+
+bool create_surface(const Context& ctx, WindowSystem ws, void* display, uint64_t window, VkSurfaceKHR* out) {
+    // The platform create-info structs, declared here so no window-system header is needed
+    // (layouts as in vulkan_win32.h / vulkan_xlib.h).
+    struct Win32Info {
+        VkStructureType sType;
+        const void* pNext;
+        VkFlags flags;
+        void* hinstance;
+        void* hwnd;
+    };
+    struct XlibInfo {
+        VkStructureType sType;
+        const void* pNext;
+        VkFlags flags;
+        void* dpy;
+        unsigned long window;
+    };
+    using CreateFn = VkResult(VKAPI_PTR*)(VkInstance, const void*, const VkAllocationCallbacks*, VkSurfaceKHR*);
+    if (ws == WindowSystem::Win32) {
+        auto fn = reinterpret_cast<CreateFn>(g_gipa(ctx.instance, "vkCreateWin32SurfaceKHR"));
+        Win32Info ci{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR, nullptr, 0, display,
+                     reinterpret_cast<void*>(uintptr_t(window))};
+        return fn && fn(ctx.instance, &ci, nullptr, out) == VK_SUCCESS;
+    }
+    if (ws == WindowSystem::Xlib) {
+        auto fn = reinterpret_cast<CreateFn>(g_gipa(ctx.instance, "vkCreateXlibSurfaceKHR"));
+        XlibInfo ci{VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR, nullptr, 0, display, (unsigned long)window};
+        return fn && fn(ctx.instance, &ci, nullptr, out) == VK_SUCCESS;
+    }
+    return false;
+}
+
 void destroy_context(Context& ctx) {
     if (ctx.device) vkDestroyDevice(ctx.device, nullptr);
     if (ctx.instance) vkDestroyInstance(ctx.instance, nullptr);

@@ -9,11 +9,14 @@
 // uses: device instances, threads, draws, shaders, vertex declarations, state combinations
 // (future Vulkan pipelines), textures and buffers. The numbers size the native design.
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
+#include <string>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -21,6 +24,10 @@
 
 #include "formats.h"
 #include "nrender.h"
+#include "settings.h"
+#ifdef D1_FRONTEND_SDL
+#include "frontend.h"
+#endif
 #include "hle.h"
 #include "runtime.h"
 #include "tiling.h"
@@ -311,6 +318,7 @@ int g_every = 1;            // execute every Nth frame
 int g_dump_every = 0;       // write every Nth executed frame (0: none)
 uint64_t g_executed_frames = 0;
 bool g_frame_executed = false;
+uint64_t g_exec_ns = 0, g_flip_ns = 0;  // time in ng::execute / ng::flip (CPU side, incl. waits)
 
 DevState* dev_state(uint64_t dev) {
     thread_local uint64_t last_dev = 0;
@@ -557,6 +565,9 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
 // Called once the eboot is loaded and relocated (with the other game hooks).
 void native_gfx_install() {
     const char* mode = getenv("D1_NATIVE_GFX");
+#ifndef D1_RENDERER_SHADPS4
+    if (!mode) mode = "render";  // the native renderer is this build's renderer
+#endif
     if (!mode) return;
     if (std::strcmp(mode, "render") == 0) {
         nr::g_base = rt().modules[0].base;
@@ -567,6 +578,31 @@ void native_gfx_install() {
         opt.frames_dir = getenv("D1_NG_FRAMES");
         opt.no_cull = getenv("D1_NG_NOCULL") != nullptr;
         opt.dump_targets = getenv("D1_NG_TARGETS") != nullptr;
+        const Settings& st = settings();
+        opt.present_mode = st.vsync == "on" ? "Fifo" : st.vsync == "off-tearing" ? "Immediate" : "Mailbox";
+        static std::string cache_file;
+        cache_file = rt().data_root + "/shader_cache";
+        {
+            std::error_code ec;
+            std::filesystem::create_directories(cache_file, ec);
+        }
+        cache_file += "/native_pipelines.bin";
+        opt.pipeline_cache = cache_file.c_str();
+        if (const char* v = getenv("D1_NG_FRAMES_IN_FLIGHT")) opt.frames_in_flight = uint32_t(std::max(1, std::atoi(v)));
+#ifdef D1_FRONTEND_SDL
+        // the game window (main thread, before the game starts)
+        if (frontend::open(st.window_width, st.window_height, st.fullscreen)) {
+            opt.window_handles = [](ng::WindowHandles& out) {
+                frontend::Handles h;
+                if (!frontend::handles(h)) return false;
+                out.type = h.type == frontend::Handles::kWin32 ? ng::WindowHandles::kWin32 : ng::WindowHandles::kXlib;
+                out.display = h.display;
+                out.window = h.window;
+                return true;
+            };
+            opt.window_size = [](uint32_t& w, uint32_t& h) { frontend::drawable_size(w, h); };
+        }
+#endif
         if (!ng::init(opt)) {
             log("native gfx: renderer unavailable; not capturing");
             return;
@@ -629,7 +665,9 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
     if (run && !mine.empty()) {
         std::vector<ng::Draw*> draws;
         for (auto& [k, d] : mine) draws.push_back(d);
+        const auto t0 = std::chrono::steady_clock::now();
         ng::execute(draws);
+        nr::g_exec_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         nr::g_frame_executed = true;
     }
     for (auto& [k, d] : mine) delete d;
@@ -640,10 +678,34 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
     if (!nr::g_base || !ng::active()) return;
     if (nr::g_frame_executed) {
         ++nr::g_executed_frames;
-        if (nr::g_dump_every && nr::g_executed_frames % uint64_t(nr::g_dump_every) == 0)
-            ng::flip(uint64_t(addr), width, height, gpu_flip_count());
-        else ng::flip(0, width, height, gpu_flip_count());
-        if (nr::g_executed_frames % 10 == 0) ng::print_stats();
+        const bool dump = nr::g_dump_every && nr::g_executed_frames % uint64_t(nr::g_dump_every) == 0;
+        const auto f0 = std::chrono::steady_clock::now();
+        ng::flip(uint64_t(addr), width, height, gpu_flip_count(), dump);
+        nr::g_flip_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - f0).count());
+        // title bar: frames per second over the last second; log stats every minute or so
+        static auto t0 = std::chrono::steady_clock::now();
+        static uint64_t n0 = 0;
+        const auto now = std::chrono::steady_clock::now();
+        const double secs = std::chrono::duration<double>(now - t0).count();
+        if (secs >= 1.0) {
+            const uint64_t n = nr::g_executed_frames;
+            const double fps = double(n - n0) / secs;
+#ifdef D1_FRONTEND_SDL
+            char title[256];
+            std::snprintf(title, sizeof title, "Destiny (d1-native) - %.0f fps (%.1f ms) - %s", fps,
+                          fps > 0 ? 1000.0 / fps : 0.0, ng::gpu_name());
+            frontend::set_status(title);
+#endif
+            static int report = 0;
+            if (++report % (getenv("D1_NG_STATS") ? 5 : 60) == 1) {
+                const double frames = double(std::max<uint64_t>(1, n - n0));
+                log("native gfx: %.1f fps | per frame: record %.1f ms, present+wait %.1f ms", fps,
+                    double(nr::g_exec_ns) / 1e6 / frames, double(nr::g_flip_ns) / 1e6 / frames);
+                ng::print_stats();
+            }
+            t0 = now, n0 = n;
+            nr::g_exec_ns = nr::g_flip_ns = 0;
+        }
     }
     nr::g_frame_executed = false;
 }

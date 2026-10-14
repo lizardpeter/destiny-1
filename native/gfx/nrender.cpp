@@ -1,11 +1,15 @@
 // Native renderer, Vulkan side. See nrender.h.
 //
-// Model (milestone "mirror"): each submission's draws are executed synchronously on one
-// command buffer. Every image stays in VK_IMAGE_LAYOUT_GENERAL; a full memory barrier sits
-// between render passes. Transient data the draws read from guest memory (vertices,
-// indices, constants) is copied into a host-visible ring that is reset per submission.
-// Textures are detiled and uploaded once per distinct T#; render targets are our own images
-// keyed by (address, format, size), and a T# that points at one samples it directly.
+// Model: each submission's draws are recorded into their own command buffer and submitted
+// without waiting; the CPU runs at most `frames_in_flight` frames ahead of the GPU. Every
+// image stays in VK_IMAGE_LAYOUT_GENERAL; a full memory barrier sits between render passes
+// and at the start of each command buffer. Transient data the draws read from guest memory
+// (vertices, indices, constants, texture uploads) is copied into a host-visible circular
+// ring while recording; space is reused once the submissions that read it have completed.
+// Textures are detiled and uploaded once per distinct T# (and dropped when unused for a
+// while); render targets are our own images keyed by (address, format, size), and a T# that
+// points at one samples it directly. Device memory for images is suballocated from large
+// blocks. Flips blit the video-out target into the window's swapchain.
 #include "nrender.h"
 
 #include <algorithm>
@@ -13,7 +17,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -220,9 +227,16 @@ VkSamplerAddressMode address_mode(uint32_t c) {
 }
 
 // ---------------------------------------------------------------------------- resources
+// device memory suballocation (see Heap)
+struct Alloc {
+    VkDeviceMemory mem = VK_NULL_HANDLE;
+    uint64_t offset = 0, size = 0;
+    int block = -1;  // -1: dedicated allocation
+};
+
 struct Image {
     VkImage image = VK_NULL_HANDLE;
-    VkDeviceMemory mem = VK_NULL_HANDLE;
+    Alloc mem;
     VkFormat format = VK_FORMAT_UNDEFINED;
     uint32_t w = 1, h = 1, d = 1, layers = 1, levels = 1;
     bool depth = false, stencil = false, cube = false, is3d = false;
@@ -258,19 +272,70 @@ struct Buffer {
 
 struct Stats {
     uint64_t frames = 0, submits = 0, draws = 0, clears = 0, skipped = 0, pipelines = 0, textures = 0, targets = 0,
-             shaders = 0, bad_shaders = 0, ring_peak = 0;
+             shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     std::unordered_map<std::string, uint64_t> skip;
+};
+
+// Device-local memory for images: 256 MiB blocks per memory type, first fit with a free
+// list per block (drivers limit the number of allocations; Windows drivers often to 4096).
+struct Heap {
+    struct Block {
+        VkDeviceMemory mem = VK_NULL_HANDLE;
+        uint32_t type = 0;
+        uint64_t size = 0;
+        std::map<uint64_t, uint64_t> free;  // offset -> size
+    };
+    std::vector<Block> blocks;
+    uint64_t used = 0, reserved = 0;
+};
+
+// One submitted (or recording) command buffer and what must outlive it.
+struct Sub {
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    uint64_t serial = 0;
+    uint64_t ring_begin = 0;  // ring position (absolute) when recording started
+    std::vector<Buffer> staging;
+    std::vector<std::unique_ptr<Image>> dead;
+};
+
+// Window presentation.
+struct Swapchain {
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkSwapchainKHR chain = VK_NULL_HANDLE;
+    VkSurfaceFormatKHR format{};
+    VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
+    VkExtent2D extent{};
+    std::vector<VkImage> images;
+    std::vector<VkSemaphore> acquired;  // per frame slot
+    std::vector<VkSemaphore> ready;     // per swapchain image
+    uint32_t slot = 0;
+    bool failed = false;     // no surface / no swapchain support: stop trying
+    bool stale = false;      // out of date or resized: rebuild before the next acquire
+    uint32_t want_w = 0, want_h = 0;
+    std::unique_ptr<Image> raw;  // UNORM copy of an sRGB video-out image (blit without decoding)
+    uint64_t presented = 0;
 };
 
 struct Renderer {
     Options opt;
     Context ctx;
+    std::mutex m;
     VkCommandPool pool = VK_NULL_HANDLE;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkFence fence = VK_NULL_HANDLE;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;  // the command buffer being recorded
     Buffer ring;
-    uint64_t ring_pos = 0;
-    std::vector<Buffer> staging;  // freed after the submission completes
+    uint64_t ring_head = 0;                 // absolute position of the next ring allocation
+    std::vector<Sub> subs;
+    std::deque<uint32_t> inflight;          // submitted, in order
+    std::vector<uint32_t> idle_subs;
+    uint32_t cur = UINT32_MAX;              // recording
+    uint64_t serial_next = 1, serial_done = 0;
+    std::deque<uint64_t> frame_ends;        // last submission serial of each recent frame
+    Heap heap;
+    Swapchain sc;
+    VkPipelineCache pcache = VK_NULL_HANDLE;
+    uint64_t pcache_saved_pipelines = 0;
+    void save_pipeline_cache();
     std::unordered_map<uint64_t, std::unique_ptr<Image>> targets;   // (base, format, size)
     std::unordered_map<uint64_t, Image*> target_by_base;            // newest target at an address
     std::vector<std::unique_ptr<Image>> retired;                    // replaced targets (still referenced)
@@ -294,17 +359,32 @@ struct Renderer {
     Buffer make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host);
     void free_buffer(Buffer& b);
     VkDeviceMemory alloc(VkMemoryRequirements req, VkMemoryPropertyFlags want);
+    Alloc heap_alloc(VkMemoryRequirements req);
+    void heap_free(Alloc& a);
     std::unique_ptr<Image> make_image(VkFormat f, uint32_t w, uint32_t h, uint32_t d, uint32_t layers, uint32_t levels,
                                       bool cube, bool is3d, bool depth, bool stencil);
+    void destroy_image(Image* img);
     VkImageView view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level, bool depth_aspect);
     uint64_t ring_alloc(uint64_t size, uint64_t align = 256);
     uint64_t ring_copy(const void* src, uint64_t size);
+    // submissions
+    void begin_record();
+    void submit(const VkSemaphoreSubmitInfo* wait = nullptr, const VkSemaphoreSubmitInfo* signal = nullptr);
+    void retire_one();
+    void retire_completed();
+    void wait_serial(uint64_t serial);
+    void wait_idle() { wait_serial(serial_next - 1); }
+    void submit_and_wait() {
+        submit();
+        wait_idle();
+    }
     void barrier();
     Image* color_target(const uint32_t* c);
     VkImageView attachment_view(Image* img);
     Image* depth_target(const uint32_t* d);
     VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
     Image* upload_texture(const uint32_t* t);
+    void evict_textures();
     VkSampler sampler(const uint32_t* s);
     Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims);
     Pipeline* pipeline(const Draw& dr, Image* const* colors, Image* depth);
@@ -317,6 +397,11 @@ struct Renderer {
     void draw(const Draw& dr);
     void clear(const Draw& dr);
     void execute(const std::vector<Draw*>& draws);
+    // presentation
+    bool make_swapchain(uint32_t w, uint32_t h);
+    void destroy_swapchain(bool keep_surface);
+    void present(uint64_t addr);
+    void end_frame();
     void dump(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame);
     bool save_image(Image* img, const char* path);
     uint64_t frame_first_submit = 0;
@@ -338,7 +423,19 @@ bool Renderer::init(const Options& o) {
     char err[512];
     int gpu = -1;
     if (const char* v = std::getenv("D1_GPU")) gpu = std::atoi(v);
-    if (!create_context(ctx, gpu, nullptr, 0, err, sizeof err)) {
+    // window surface extensions when there is a window to present to
+    WindowHandles wh;
+    const char* inst_exts[2];
+    uint32_t n_inst = 0;
+    if (opt.window_handles && opt.window_handles(wh))
+        n_inst = surface_instance_extensions(wh.type == WindowHandles::kWin32 ? WindowSystem::Win32 : WindowSystem::Xlib,
+                                             inst_exts);
+    else sc.failed = true;
+    if (!sc.failed && !n_inst) {
+        log("native renderer: the Vulkan loader has no window surface support; not presenting");
+        sc.failed = true;
+    }
+    if (!create_context(ctx, gpu, inst_exts, n_inst, err, sizeof err)) {
         log("native renderer: %s", err);
         return false;
     }
@@ -346,15 +443,20 @@ bool Renderer::init(const Options& o) {
     pci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     pci.queueFamilyIndex = ctx.queue_family;
     vkCreateCommandPool(ctx.device, &pci, nullptr, &pool);
-    VkCommandBufferAllocateInfo cai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-    cai.commandPool = pool;
-    cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cai.commandBufferCount = 1;
-    vkAllocateCommandBuffers(ctx.device, &cai, &cmd);
-    VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    vkCreateFence(ctx.device, &fci, nullptr, &fence);
-    uint64_t ring_mb = 512;
-    if (const char* v = std::getenv("D1_NG_RING_MB")) ring_mb = std::strtoull(v, nullptr, 10);
+    // command buffers: enough for a few frames of several submissions each
+    subs.resize(48);
+    for (uint32_t i = 0; i < subs.size(); ++i) {
+        VkCommandBufferAllocateInfo cai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        cai.commandPool = pool;
+        cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cai.commandBufferCount = 1;
+        vkAllocateCommandBuffers(ctx.device, &cai, &subs[i].cmd);
+        VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        vkCreateFence(ctx.device, &fci, nullptr, &subs[i].fence);
+        idle_subs.push_back(uint32_t(subs.size() - 1 - i));
+    }
+    uint64_t ring_mb = 256;
+    if (const char* v = std::getenv("D1_NG_RING_MB")) ring_mb = std::max<uint64_t>(64, std::strtoull(v, nullptr, 10));
     ring = make_buffer(ring_mb << 20, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                           VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
@@ -363,9 +465,7 @@ bool Renderer::init(const Options& o) {
         return false;
     }
     // placeholder textures for unbound slots (black, alpha 0)
-    vkResetCommandBuffer(cmd, 0);
-    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &bi);
+    begin_record();
     for (int k = 0; k < 4; ++k) {
         const auto dim = gcn::TexDim(k);
         dummy[k] = make_image(VK_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, dim == gcn::TexDim::Cube ? 6 : 1, 1,
@@ -374,21 +474,106 @@ bool Renderer::init(const Options& o) {
         VkImageSubresourceRange r{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS};
         vkCmdClearColorImage(cmd, dummy[k]->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &r);
     }
-    vkEndCommandBuffer(cmd);
+    submit_and_wait();
+    VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    vkCreateSampler(ctx.device, &sci, nullptr, &dummy_sampler);
+    // pipeline cache from the last run (the driver checks it matches this GPU and driver)
+    {
+        std::vector<char> data;
+        if (opt.pipeline_cache)
+            if (FILE* f = std::fopen(opt.pipeline_cache, "rb")) {
+                std::fseek(f, 0, SEEK_END);
+                const long n = std::ftell(f);
+                std::fseek(f, 0, SEEK_SET);
+                if (n > 0) {
+                    data.resize(size_t(n));
+                    if (std::fread(data.data(), 1, data.size(), f) != data.size()) data.clear();
+                }
+                std::fclose(f);
+            }
+        VkPipelineCacheCreateInfo cci{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+        cci.initialDataSize = data.size();
+        cci.pInitialData = data.empty() ? nullptr : data.data();
+        if (vkCreatePipelineCache(ctx.device, &cci, nullptr, &pcache) != VK_SUCCESS) {
+            cci.initialDataSize = 0, cci.pInitialData = nullptr;
+            vkCreatePipelineCache(ctx.device, &cci, nullptr, &pcache);
+        }
+        if (!data.empty()) log("native renderer: pipeline cache %.1f MiB from the last run", double(data.size()) / 1048576.0);
+    }
+    opt.frames_in_flight = std::clamp(opt.frames_in_flight, 1u, 4u);
+    log("native renderer: %s, Vulkan %u.%u, %llu MiB upload ring, %u frame%s in flight%s%s", ctx.name,
+        VK_API_VERSION_MAJOR(ctx.api_version), VK_API_VERSION_MINOR(ctx.api_version), (unsigned long long)ring_mb,
+        opt.frames_in_flight, opt.frames_in_flight == 1 ? "" : "s", sc.failed ? "" : ", presenting to the window",
+        opt.frames_dir ? ", writing frames" : "");
+    return true;
+}
+
+// ---------------------------------------------------------------------------- submissions
+void Renderer::begin_record() {
+    if (cur != UINT32_MAX) return;
+    if (idle_subs.empty()) retire_one();
+    cur = idle_subs.back();
+    idle_subs.pop_back();
+    Sub& sb = subs[cur];
+    sb.ring_begin = ring_head;
+    vkResetFences(ctx.device, 1, &sb.fence);
+    vkResetCommandBuffer(sb.cmd, 0);
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(sb.cmd, &bi);
+    cmd = sb.cmd;
+    barrier();  // earlier submissions' writes before anything here
+}
+
+void Renderer::submit(const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmitInfo* signal) {
+    if (cur == UINT32_MAX) return;
+    Sub& sb = subs[cur];
+    vkEndCommandBuffer(sb.cmd);
     VkCommandBufferSubmitInfo cbi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cbi.commandBuffer = cmd;
+    cbi.commandBuffer = sb.cmd;
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
     si.commandBufferInfoCount = 1;
     si.pCommandBufferInfos = &cbi;
-    vkQueueSubmit2(ctx.queue, 1, &si, fence);
-    vkWaitForFences(ctx.device, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(ctx.device, 1, &fence);
-    VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    vkCreateSampler(ctx.device, &sci, nullptr, &dummy_sampler);
-    log("native renderer: %s, Vulkan %u.%u, %llu MiB upload ring%s", ctx.name, VK_API_VERSION_MAJOR(ctx.api_version),
-        VK_API_VERSION_MINOR(ctx.api_version), (unsigned long long)ring_mb,
-        opt.frames_dir ? ", writing frames" : "");
-    return true;
+    si.waitSemaphoreInfoCount = wait ? 1 : 0;
+    si.pWaitSemaphoreInfos = wait;
+    si.signalSemaphoreInfoCount = signal ? 1 : 0;
+    si.pSignalSemaphoreInfos = signal;
+    const VkResult r = vkQueueSubmit2(ctx.queue, 1, &si, sb.fence);
+    if (r != VK_SUCCESS) {
+        static int logged = 0;
+        if (logged++ < 5) log("native renderer: vkQueueSubmit2 failed (%d)%s", int(r),
+                              r == VK_ERROR_DEVICE_LOST ? ": the GPU device was lost" : "");
+        if (r == VK_ERROR_DEVICE_LOST) {
+            log("native renderer: cannot continue after a lost device");
+            std::_Exit(1);
+        }
+    }
+    sb.serial = serial_next++;
+    inflight.push_back(cur);
+    cur = UINT32_MAX;
+    cmd = VK_NULL_HANDLE;
+}
+
+void Renderer::retire_one() {
+    if (inflight.empty()) return;
+    const uint32_t i = inflight.front();
+    inflight.pop_front();
+    Sub& sb = subs[i];
+    vkWaitForFences(ctx.device, 1, &sb.fence, VK_TRUE, UINT64_MAX);
+    for (auto& b : sb.staging) free_buffer(b);
+    sb.staging.clear();
+    for (auto& img : sb.dead) destroy_image(img.get());
+    sb.dead.clear();
+    serial_done = std::max(serial_done, sb.serial);
+    idle_subs.push_back(i);
+}
+
+void Renderer::retire_completed() {
+    while (!inflight.empty() && vkGetFenceStatus(ctx.device, subs[inflight.front()].fence) == VK_SUCCESS) retire_one();
+}
+
+void Renderer::wait_serial(uint64_t serial) {
+    while (serial_done < serial && !inflight.empty()) retire_one();
 }
 
 VkDeviceMemory Renderer::alloc(VkMemoryRequirements req, VkMemoryPropertyFlags want) {
@@ -425,6 +610,97 @@ Buffer Renderer::make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host)
     return b;
 }
 
+Alloc Renderer::heap_alloc(VkMemoryRequirements req) {
+    Alloc a;
+    uint32_t type = find_memory_type(ctx, req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (type == UINT32_MAX) type = find_memory_type(ctx, req.memoryTypeBits, 0);
+    if (type == UINT32_MAX) return a;
+    const uint64_t align = std::max<uint64_t>({req.alignment, ctx.props.limits.bufferImageGranularity, 256});
+    auto dedicated = [&] {
+        VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        ai.allocationSize = req.size;
+        ai.memoryTypeIndex = type;
+        if (vkAllocateMemory(ctx.device, &ai, nullptr, &a.mem) != VK_SUCCESS) a.mem = VK_NULL_HANDLE;
+        a.size = req.size, a.offset = 0, a.block = -1;
+        if (a.mem) heap.used += req.size;
+        return a;
+    };
+    if (req.size >= (64ull << 20)) return dedicated();
+    for (int pass = 0; pass < 2; ++pass) {
+        for (size_t bi = 0; bi < heap.blocks.size(); ++bi) {
+            auto& b = heap.blocks[bi];
+            if (b.type != type) continue;
+            for (auto it = b.free.begin(); it != b.free.end(); ++it) {
+                const uint64_t start = (it->first + align - 1) & ~(align - 1);
+                const uint64_t end = it->first + it->second;
+                if (start + req.size > end) continue;
+                const uint64_t fo = it->first, fs = it->second;
+                b.free.erase(it);
+                if (start > fo) b.free[fo] = start - fo;
+                if (start + req.size < fo + fs) b.free[start + req.size] = fo + fs - (start + req.size);
+                a.mem = b.mem, a.offset = start, a.size = req.size, a.block = int(bi);
+                heap.used += req.size;
+                return a;
+            }
+        }
+        if (pass) break;
+        // a new block
+        Heap::Block nb;
+        nb.type = type;
+        for (uint64_t sz : {256ull << 20, 64ull << 20}) {
+            VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            ai.allocationSize = sz;
+            ai.memoryTypeIndex = type;
+            if (vkAllocateMemory(ctx.device, &ai, nullptr, &nb.mem) == VK_SUCCESS) {
+                nb.size = sz;
+                break;
+            }
+            nb.mem = VK_NULL_HANDLE;
+        }
+        if (!nb.mem) break;
+        nb.free[0] = nb.size;
+        heap.reserved += nb.size;
+        heap.blocks.push_back(std::move(nb));
+    }
+    return dedicated();
+}
+
+void Renderer::heap_free(Alloc& a) {
+    if (!a.mem) return;
+    heap.used -= a.size;
+    if (a.block < 0) {
+        vkFreeMemory(ctx.device, a.mem, nullptr);
+    } else {
+        auto& fr = heap.blocks[size_t(a.block)].free;
+        uint64_t off = a.offset, size = a.size;
+        auto next = fr.lower_bound(off);
+        if (next != fr.end() && next->first == off + size) {  // merge with the following range
+            size += next->second;
+            next = fr.erase(next);
+        }
+        if (next != fr.begin()) {  // and the preceding one
+            auto prev = std::prev(next);
+            if (prev->first + prev->second == off) {
+                off = prev->first, size += prev->second;
+                fr.erase(prev);
+            }
+        }
+        fr[off] = size;
+    }
+    a = Alloc{};
+}
+
+void Renderer::destroy_image(Image* img) {
+    if (!img) return;
+    for (auto& [k, v] : img->views) vkDestroyImageView(ctx.device, v, nullptr);
+    img->views.clear();
+    if (img->attachment) vkDestroyImageView(ctx.device, img->attachment, nullptr);
+    img->attachment = VK_NULL_HANDLE;
+    if (img->image) vkDestroyImage(ctx.device, img->image, nullptr);
+    img->image = VK_NULL_HANDLE;
+    heap_free(img->mem);
+}
+
 void Renderer::free_buffer(Buffer& b) {
     if (b.buf) vkDestroyBuffer(ctx.device, b.buf, nullptr);
     if (b.mem) vkFreeMemory(ctx.device, b.mem, nullptr);
@@ -454,12 +730,15 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
     if (vkCreateImage(ctx.device, &ici, nullptr, &img->image) != VK_SUCCESS) return nullptr;
     VkMemoryRequirements req;
     vkGetImageMemoryRequirements(ctx.device, img->image, &req);
-    img->mem = alloc(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    if (!img->mem) {
+    img->mem = heap_alloc(req);
+    if (!img->mem.mem) {
+        static int logged = 0;
+        if (logged++ < 5) log("native renderer: out of GPU memory for a %ux%u image (%.0f MiB in use)", w, h,
+                              double(heap.used) / 1048576.0);
         vkDestroyImage(ctx.device, img->image, nullptr);
         return nullptr;
     }
-    vkBindImageMemory(ctx.device, img->image, img->mem, 0);
+    vkBindImageMemory(ctx.device, img->image, img->mem.mem, img->mem.offset);
     // straight to GENERAL, where every image lives
     VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -515,11 +794,27 @@ VkImageView Renderer::view(Image* img, VkImageViewType type, VkComponentMapping 
     return v;
 }
 
+// The ring is circular in absolute positions: an allocation may reuse space once every
+// submission recorded before it reached that space has completed.
 uint64_t Renderer::ring_alloc(uint64_t size, uint64_t align) {
-    uint64_t p = (ring_pos + align - 1) & ~(align - 1);
-    if (p + size > ring.size) return UINT64_MAX;
-    ring_pos = p + size;
-    st.ring_peak = std::max(st.ring_peak, ring_pos);
+    const uint64_t R = ring.size;
+    if (size > R / 2 || cur == UINT32_MAX) return UINT64_MAX;
+    uint64_t off = ring_head % R;
+    uint64_t p = (off + align - 1) & ~(align - 1);
+    if (p + size > R) {  // wrap to the start
+        ring_head += R - off;
+        off = 0, p = 0;
+    }
+    const uint64_t end = ring_head - off + p + size;
+    for (;;) {
+        const uint64_t oldest = inflight.empty() ? subs[cur].ring_begin : subs[inflight.front()].ring_begin;
+        if (end <= oldest + R) break;
+        if (inflight.empty()) return UINT64_MAX;  // this submission alone needs more than the ring
+        retire_one();
+    }
+    ring_head = end;
+    const uint64_t oldest = inflight.empty() ? subs[cur].ring_begin : subs[inflight.front()].ring_begin;
+    st.ring_peak = std::max(st.ring_peak, ring_head - oldest);
     return p;
 }
 
@@ -622,7 +917,10 @@ Image* Renderer::depth_target(const uint32_t* d) {
 Image* Renderer::upload_texture(const uint32_t* t) {
     const uint64_t key = hash_bytes(t, 32);
     auto it = textures.find(key);
-    if (it != textures.end()) return it->second.get();
+    if (it != textures.end()) {
+        if (it->second) it->second->last_used = submit_no;
+        return it->second.get();
+    }
     const auto ts = fmt::decode_tsharp(t);
     const auto fi = fmt::data_format(ts.dfmt);
     const VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
@@ -651,14 +949,19 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                 sizes[lv] = uint64_t(ew) * eh * (fi.bpp / 8) * std::max(1u, is3d ? std::max(1u, sf.depth >> lv) : sf.layers);
                 total += (sizes[lv] + 15) & ~15ull;
             }
-            Buffer sb = make_buffer(std::max<uint64_t>(total, 16), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true);
+            // staging: the ring (large textures get their own buffer, freed with the submission)
+            Buffer sb;
+            uint64_t base_off = ring_alloc(std::max<uint64_t>(total, 16), 256);
+            bool own = base_off == UINT64_MAX;
+            if (!own) sb = ring, sb.map = ring.map + base_off;
+            else sb = make_buffer(std::max<uint64_t>(total, 16), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true), base_off = 0;
             if (sb.map) {
                 std::vector<VkBufferImageCopy> regions;
                 uint64_t off = 0;
                 for (uint32_t lv = 0; lv < sf.levels; ++lv) {
                     tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), sb.map + off);
                     VkBufferImageCopy r{};
-                    r.bufferOffset = off;
+                    r.bufferOffset = base_off + off;
                     r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, lv, 0, is3d ? 1u : sf.layers};
                     r.imageExtent = {std::max(1u, ts.width >> lv), std::max(1u, ts.height >> lv),
                                      is3d ? std::max(1u, sf.depth >> lv) : 1u};
@@ -667,8 +970,9 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                 }
                 vkCmdCopyBufferToImage(cmd, sb.buf, img->image, VK_IMAGE_LAYOUT_GENERAL, uint32_t(regions.size()),
                                        regions.data());
-                staging.push_back(sb);
+                if (own) subs[cur].staging.push_back(sb);
                 out = img.get();
+                out->last_used = submit_no;
                 ++st.textures;
             }
             textures[key] = std::move(img);
@@ -677,6 +981,26 @@ Image* Renderer::upload_texture(const uint32_t* t) {
     }
     if (!out) textures[key] = nullptr;
     return out;
+}
+
+// Textures unused for a while are dropped (re-uploaded if the game uses them again): the
+// game streams, and an address range can hold many textures over a session. The image is
+// destroyed once the submissions that may still read it have completed.
+void Renderer::evict_textures() {
+    const uint64_t horizon = 2000;  // submissions (several per frame)
+    if (submit_no < horizon) return;
+    std::vector<uint64_t> drop;
+    for (auto& [k, img] : textures)
+        if (img && img->last_used + horizon < submit_no) drop.push_back(k);
+    for (uint64_t k : drop) {
+        auto it = textures.find(k);
+        // the current (or, without one, the newest) submission frees it when it completes
+        if (cur != UINT32_MAX) subs[cur].dead.push_back(std::move(it->second));
+        else if (!inflight.empty()) subs[inflight.back()].dead.push_back(std::move(it->second));
+        else destroy_image(it->second.get());
+        textures.erase(it);
+    }
+    if (!drop.empty()) st.evicted += drop.size();
 }
 
 VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
@@ -702,6 +1026,7 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
     auto it = textures.find(hash_bytes(t, 32));
     Image* img = it != textures.end() ? it->second.get() : nullptr;
     if (!img) return view(dummy[int(dim)].get(), vt, {}, 0, false);
+    img->last_used = submit_no;
     return view(img, vt, comp, ts.base_level, false);
 }
 
@@ -978,7 +1303,7 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
     gci.pColorBlendState = &cbs;
     gci.pDynamicState = &dy;
     gci.layout = p->layout;
-    if (vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 1, &gci, nullptr, &p->pipeline) != VK_SUCCESS)
+    if (vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &p->pipeline) != VK_SUCCESS)
         p->pipeline = VK_NULL_HANDLE;
     ++st.pipelines;
     Pipeline* out = p.get();
@@ -1289,11 +1614,8 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     if (passlog_frame == UINT64_MAX - 1 && draws.size() > 2000) passlog_frame = st.frames + 3;
     ++submit_no;
     ++st.submits;
-    ring_pos = 0;
-    vkResetCommandBuffer(cmd, 0);
-    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &bi);
+    retire_completed();
+    begin_record();
     // resources first (copies cannot run inside a render pass): targets, then textures
     for (Draw* d : draws) {
         for (int i = 0; i < 5; ++i) color_target(d->color[i]);
@@ -1310,17 +1632,266 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         else draw(*d);
     }
     end_pass();
-    vkEndCommandBuffer(cmd);
-    VkCommandBufferSubmitInfo cbi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cbi.commandBuffer = cmd;
-    VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
-    si.commandBufferInfoCount = 1;
-    si.pCommandBufferInfos = &cbi;
-    vkQueueSubmit2(ctx.queue, 1, &si, fence);
-    vkWaitForFences(ctx.device, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(ctx.device, 1, &fence);
-    for (auto& b : staging) free_buffer(b);
-    staging.clear();
+    submit();
+}
+
+// ---------------------------------------------------------------------------- presentation
+bool Renderer::make_swapchain(uint32_t w, uint32_t h) {
+    if (!sc.surface) {
+        WindowHandles wh;
+        if (!opt.window_handles || !opt.window_handles(wh) ||
+            !create_surface(ctx, wh.type == WindowHandles::kWin32 ? WindowSystem::Win32 : WindowSystem::Xlib, wh.display,
+                            wh.window, &sc.surface)) {
+            log("native renderer: could not create a window surface; not presenting");
+            sc.failed = true;
+            return false;
+        }
+        VkBool32 ok = VK_FALSE;
+        vkGetPhysicalDeviceSurfaceSupportKHR(ctx.gpu, ctx.queue_family, sc.surface, &ok);
+        if (!ok || !vkCreateSwapchainKHR) {
+            log("native renderer: %s cannot present to this window", ctx.name);
+            sc.failed = true;
+            return false;
+        }
+        // format: 8-bit UNORM (the video-out bytes are already sRGB-encoded; no conversion)
+        uint32_t n = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(ctx.gpu, sc.surface, &n, nullptr);
+        std::vector<VkSurfaceFormatKHR> fmts(n);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(ctx.gpu, sc.surface, &n, fmts.data());
+        sc.format = fmts.empty() ? VkSurfaceFormatKHR{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR} : fmts[0];
+        for (auto& f : fmts)
+            if ((f.format == VK_FORMAT_B8G8R8A8_UNORM || f.format == VK_FORMAT_R8G8B8A8_UNORM) &&
+                f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                sc.format = f;
+                break;
+            }
+        // present mode: the requested one if offered, else FIFO (always available)
+        vkGetPhysicalDeviceSurfacePresentModesKHR(ctx.gpu, sc.surface, &n, nullptr);
+        std::vector<VkPresentModeKHR> modes(n);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(ctx.gpu, sc.surface, &n, modes.data());
+        const std::string want = opt.present_mode ? opt.present_mode : "Fifo";
+        const VkPresentModeKHR wm = want == "Immediate" ? VK_PRESENT_MODE_IMMEDIATE_KHR
+                                  : want == "Mailbox"   ? VK_PRESENT_MODE_MAILBOX_KHR
+                                                        : VK_PRESENT_MODE_FIFO_KHR;
+        sc.mode = VK_PRESENT_MODE_FIFO_KHR;
+        for (auto m : modes)
+            if (m == wm) sc.mode = wm;
+        if (sc.mode != wm && wm == VK_PRESENT_MODE_IMMEDIATE_KHR)  // no tearing mode: the next least latency
+            for (auto m : modes)
+                if (m == VK_PRESENT_MODE_MAILBOX_KHR) sc.mode = m;
+        log("native renderer: presenting %s (%s), format %d", sc.mode == VK_PRESENT_MODE_IMMEDIATE_KHR ? "Immediate"
+                                                              : sc.mode == VK_PRESENT_MODE_MAILBOX_KHR ? "Mailbox"
+                                                                                                       : "Fifo",
+            want.c_str(), int(sc.format.format));
+    }
+    VkSurfaceCapabilitiesKHR caps{};
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.gpu, sc.surface, &caps);
+    VkExtent2D ext{w, h};
+    if (caps.currentExtent.width != UINT32_MAX) ext = caps.currentExtent;
+    ext.width = std::clamp(ext.width, caps.minImageExtent.width, std::max(caps.minImageExtent.width, caps.maxImageExtent.width));
+    ext.height = std::clamp(ext.height, caps.minImageExtent.height, std::max(caps.minImageExtent.height, caps.maxImageExtent.height));
+    if (!ext.width || !ext.height) return false;  // minimised
+    uint32_t count = std::max(caps.minImageCount, sc.mode == VK_PRESENT_MODE_MAILBOX_KHR ? 3u : 2u);
+    if (caps.maxImageCount) count = std::min(count, caps.maxImageCount);
+    VkSwapchainCreateInfoKHR ci{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+    ci.surface = sc.surface;
+    ci.minImageCount = count;
+    ci.imageFormat = sc.format.format;
+    ci.imageColorSpace = sc.format.colorSpace;
+    ci.imageExtent = ext;
+    ci.imageArrayLayers = 1;
+    ci.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ci.preTransform = (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
+                                                                                         : caps.currentTransform;
+    ci.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
+                            ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+                            : VkCompositeAlphaFlagBitsKHR(caps.supportedCompositeAlpha & -caps.supportedCompositeAlpha);
+    ci.presentMode = sc.mode;
+    ci.clipped = VK_TRUE;
+    ci.oldSwapchain = sc.chain;
+    VkSwapchainKHR chain = VK_NULL_HANDLE;
+    const VkResult r = vkCreateSwapchainKHR(ctx.device, &ci, nullptr, &chain);
+    destroy_swapchain(true);
+    if (r != VK_SUCCESS) {
+        log("native renderer: vkCreateSwapchainKHR failed (%d)", int(r));
+        return false;
+    }
+    sc.chain = chain;
+    sc.extent = ext;
+    uint32_t n = 0;
+    vkGetSwapchainImagesKHR(ctx.device, chain, &n, nullptr);
+    sc.images.resize(n);
+    vkGetSwapchainImagesKHR(ctx.device, chain, &n, sc.images.data());
+    VkSemaphoreCreateInfo si{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    sc.ready.resize(n);
+    for (auto& x : sc.ready) vkCreateSemaphore(ctx.device, &si, nullptr, &x);
+    sc.acquired.resize(opt.frames_in_flight + 2);
+    for (auto& x : sc.acquired) vkCreateSemaphore(ctx.device, &si, nullptr, &x);
+    sc.want_w = w, sc.want_h = h, sc.stale = false;
+    log("native renderer: swapchain %ux%u, %u images", ext.width, ext.height, n);
+    return true;
+}
+
+void Renderer::destroy_swapchain(bool keep_surface) {
+    if (sc.chain || !sc.acquired.empty()) wait_idle(), vkDeviceWaitIdle(ctx.device);
+    for (auto x : sc.ready) vkDestroySemaphore(ctx.device, x, nullptr);
+    for (auto x : sc.acquired) vkDestroySemaphore(ctx.device, x, nullptr);
+    sc.ready.clear(), sc.acquired.clear(), sc.images.clear();
+    if (sc.chain) vkDestroySwapchainKHR(ctx.device, sc.chain, nullptr);
+    sc.chain = VK_NULL_HANDLE;
+    if (!keep_surface && sc.surface) vkDestroySurfaceKHR(ctx.instance, sc.surface, nullptr), sc.surface = VK_NULL_HANDLE;
+}
+
+VkFormat unorm_of(VkFormat f) {
+    switch (f) {
+    case VK_FORMAT_R8G8B8A8_SRGB: return VK_FORMAT_R8G8B8A8_UNORM;
+    case VK_FORMAT_B8G8R8A8_SRGB: return VK_FORMAT_B8G8R8A8_UNORM;
+    case VK_FORMAT_A8B8G8R8_SRGB_PACK32: return VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+    default: return VK_FORMAT_UNDEFINED;
+    }
+}
+
+// Blit the flipped video-out image into the window, letterboxed to keep its aspect ratio.
+void Renderer::present(uint64_t addr) {
+    if (sc.failed || !opt.window_size) return;
+    auto it = target_by_base.find(addr);
+    if (it == target_by_base.end() || !it->second || it->second->depth) return;
+    Image* src = it->second;
+    uint32_t ww = 0, wh = 0;
+    opt.window_size(ww, wh);
+    if (!ww || !wh) return;  // minimised
+    if (!sc.chain || sc.stale || ww != sc.want_w || wh != sc.want_h)
+        if (!make_swapchain(ww, wh)) return;
+    const uint32_t slot = sc.slot;
+    uint32_t index = 0;
+    VkResult r = vkAcquireNextImageKHR(ctx.device, sc.chain, UINT64_MAX, sc.acquired[slot], VK_NULL_HANDLE, &index);
+    if (r == VK_ERROR_OUT_OF_DATE_KHR) {
+        sc.stale = true;
+        return;
+    }
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
+        static int logged = 0;
+        if (logged++ < 5) log("native renderer: vkAcquireNextImageKHR failed (%d)", int(r));
+        if (r == VK_ERROR_SURFACE_LOST_KHR) destroy_swapchain(false);
+        return;
+    }
+    sc.slot = (slot + 1) % uint32_t(sc.acquired.size());
+    begin_record();
+    // sRGB-format sources: copy the bytes into a UNORM image first (a blit would decode them)
+    Image* from = src;
+    if (const VkFormat uf = unorm_of(src->format); uf != VK_FORMAT_UNDEFINED) {
+        if (!sc.raw || sc.raw->w != src->w || sc.raw->h != src->h || sc.raw->format != uf) {
+            if (sc.raw) subs[cur].dead.push_back(std::move(sc.raw));
+            sc.raw = make_image(uf, src->w, src->h, 1, 1, 1, false, false, false, false);
+        }
+        if (sc.raw) {
+            VkImageCopy c{};
+            c.srcSubresource = c.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            c.extent = {src->w, src->h, 1};
+            vkCmdCopyImage(cmd, src->image, VK_IMAGE_LAYOUT_GENERAL, sc.raw->image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+            barrier();
+            from = sc.raw.get();
+        }
+    }
+    VkImage dst = sc.images[index];
+    auto transition = [&](VkImageLayout a, VkImageLayout b, VkPipelineStageFlags2 src_stage, VkPipelineStageFlags2 dst_stage) {
+        VkImageMemoryBarrier2 ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        ib.srcStageMask = src_stage;
+        ib.srcAccessMask = a == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        ib.dstStageMask = dst_stage;
+        ib.dstAccessMask = b == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR ? 0 : VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        ib.oldLayout = a, ib.newLayout = b;
+        ib.srcQueueFamilyIndex = ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ib.image = dst;
+        ib.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        di.imageMemoryBarrierCount = 1;
+        di.pImageMemoryBarriers = &ib;
+        vkCmdPipelineBarrier2(cmd, &di);
+    };
+    transition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+               VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT);
+    VkClearColorValue black{};
+    VkImageSubresourceRange rr{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    // fit: largest rectangle with the source's aspect ratio
+    const double sa = double(from->w) / from->h, da = double(sc.extent.width) / sc.extent.height;
+    uint32_t bw = sc.extent.width, bh = sc.extent.height;
+    if (sa > da) bh = uint32_t(bw / sa + 0.5);
+    else bw = uint32_t(bh * sa + 0.5);
+    const int32_t bx = int32_t(sc.extent.width - bw) / 2, by = int32_t(sc.extent.height - bh) / 2;
+    if (bw != sc.extent.width || bh != sc.extent.height) {
+        vkCmdClearColorImage(cmd, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &rr);
+        transition(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT);
+    }
+    VkImageBlit b{};
+    b.srcSubresource = b.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    b.srcOffsets[1] = {int32_t(from->w), int32_t(from->h), 1};
+    b.dstOffsets[0] = {bx, by, 0};
+    b.dstOffsets[1] = {bx + int32_t(bw), by + int32_t(bh), 1};
+    vkCmdBlitImage(cmd, from->image, VK_IMAGE_LAYOUT_GENERAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &b,
+                   (bw == from->w && bh == from->h) ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+    transition(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+               VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+    VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    wait.semaphore = sc.acquired[slot];
+    wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    signal.semaphore = sc.ready[index];
+    signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    submit(&wait, &signal);
+    VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    pi.waitSemaphoreCount = 1;
+    pi.pWaitSemaphores = &sc.ready[index];
+    pi.swapchainCount = 1;
+    pi.pSwapchains = &sc.chain;
+    pi.pImageIndices = &index;
+    r = vkQueuePresentKHR(ctx.queue, &pi);
+    if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) sc.stale = r == VK_ERROR_OUT_OF_DATE_KHR;
+    else if (r != VK_SUCCESS) {
+        static int logged = 0;
+        if (logged++ < 5) log("native renderer: vkQueuePresentKHR failed (%d)", int(r));
+    }
+    ++sc.presented;
+}
+
+// Written next to the game's data whenever enough new pipelines were built (the process ends
+// without a shutdown path, so there is no "on exit").
+void Renderer::save_pipeline_cache() {
+    if (!opt.pipeline_cache || !pcache || st.pipelines == pcache_saved_pipelines) return;
+    pcache_saved_pipelines = st.pipelines;
+    size_t n = 0;
+    if (vkGetPipelineCacheData(ctx.device, pcache, &n, nullptr) != VK_SUCCESS || !n) return;
+    std::vector<char> data(n);
+    if (vkGetPipelineCacheData(ctx.device, pcache, &n, data.data()) != VK_SUCCESS) return;
+    const std::string tmp = std::string(opt.pipeline_cache) + ".tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return;
+    const bool ok = std::fwrite(data.data(), 1, n, f) == n;
+    std::fclose(f);
+    if (ok) {
+        std::remove(opt.pipeline_cache);
+        std::rename(tmp.c_str(), opt.pipeline_cache);
+    }
+}
+
+// End of a frame: limit how far the CPU runs ahead, and housekeeping.
+void Renderer::end_frame() {
+    frame_ends.push_back(serial_next - 1);
+    while (frame_ends.size() > opt.frames_in_flight) {
+        wait_serial(frame_ends.front());
+        frame_ends.pop_front();
+    }
+    retire_completed();
+    if (st.frames % 120 == 0) evict_textures();
+    // pipeline cache: shortly after new pipelines appear (a burst while a level loads), at
+    // most every ~10 s
+    static uint64_t last_save_frame = 0;
+    if (st.pipelines != pcache_saved_pipelines && st.frames - last_save_frame > 600) {
+        last_save_frame = st.frames;
+        save_pipeline_cache();
+    }
 }
 
 // Reads an image back and writes it as a PPM (8-bit; float formats are clamped to [0, 1],
@@ -1343,23 +1914,12 @@ bool Renderer::save_image(Image* img, const char* path) {
     const uint32_t w = img->w, h = img->h;
     Buffer rb = make_buffer(uint64_t(w) * h * bpp, VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
     if (!rb.map) return false;
-    vkResetCommandBuffer(cmd, 0);
-    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &bi);
-    barrier();
+    begin_record();
     VkBufferImageCopy r{};
     r.imageSubresource = {img->depth ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT) : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT), 0, 0, 1};
     r.imageExtent = {w, h, 1};
     vkCmdCopyImageToBuffer(cmd, img->image, VK_IMAGE_LAYOUT_GENERAL, rb.buf, 1, &r);
-    vkEndCommandBuffer(cmd);
-    VkCommandBufferSubmitInfo cbi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
-    cbi.commandBuffer = cmd;
-    VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
-    si.commandBufferInfoCount = 1;
-    si.pCommandBufferInfos = &cbi;
-    vkQueueSubmit2(ctx.queue, 1, &si, fence);
-    vkWaitForFences(ctx.device, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(ctx.device, 1, &fence);
+    submit_and_wait();
     auto half = [](uint16_t hv) {
         const uint32_t e = hv >> 10 & 0x1F, m = hv & 0x3FF;
         float f = e == 0 ? m / 16777216.0f : e == 31 ? 65504.0f : std::ldexp(1.0f + m / 1024.0f, int(e) - 15);
@@ -1480,10 +2040,13 @@ bool init(const Options& opt) {
 }
 bool active() { return g != nullptr; }
 void execute(const std::vector<Draw*>& draws) {
-    if (g) g->execute(draws);
-}
-void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame) {
     if (!g) return;
+    std::lock_guard lk(g->m);
+    g->execute(draws);
+}
+void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
+    if (!g) return;
+    std::lock_guard lk(g->m);
     if (g->st.frames == g->passlog_frame) {
         int i = 0;
         for (auto& pl : g->passlog)
@@ -1494,18 +2057,25 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame) {
                 pl.tex.c_str());
     }
     ++g->st.frames;
-    if (addr) g->dump(addr, w, h, frame);
+    if (addr) g->present(addr);
+    if (dump && addr) g->dump(addr, w, h, frame);
     else g->frame_first_submit = g->submit_no;
+    g->end_frame();
 }
+uint64_t presented_frames() { return g ? g->sc.presented : 0; }
+const char* gpu_name() { return g ? g->ctx.name : ""; }
 void print_stats() {
     if (!g) return;
+    std::lock_guard lk(g->m);
     auto& s = g->st;
     log("native renderer: %llu frames, %llu submissions | %llu draws, %llu clears, %llu skipped | %llu pipelines, "
-        "%llu shaders (%llu failed), %llu textures, %llu targets | ring peak %.1f MiB",
+        "%llu shaders (%llu failed), %llu textures (%llu dropped), %llu targets | ring peak %.1f MiB | "
+        "image memory %.0f MiB in %zu blocks",
         (unsigned long long)s.frames, (unsigned long long)s.submits, (unsigned long long)s.draws,
         (unsigned long long)s.clears, (unsigned long long)s.skipped, (unsigned long long)s.pipelines,
         (unsigned long long)s.shaders, (unsigned long long)s.bad_shaders, (unsigned long long)s.textures,
-        (unsigned long long)s.targets, double(s.ring_peak) / 1048576.0);
+        (unsigned long long)s.evicted, (unsigned long long)s.targets, double(s.ring_peak) / 1048576.0,
+        double(g->heap.used) / 1048576.0, g->heap.blocks.size());
     std::string why;
     for (auto& [k, v] : s.skip) why += " " + k + "=" + std::to_string(v);
     if (!why.empty()) log("native renderer: skipped:%s", why.c_str());

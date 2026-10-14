@@ -91,6 +91,19 @@ if(D1_RENDERER_SHADPS4)
   target_compile_definitions(d1-native PRIVATE D1_RENDERER_SHADPS4=1)
 else()
   target_sources(d1-native PRIVATE src/render_null.cpp)
+  # Window, input and audio for the native renderer (SDL2; on Windows linked in statically,
+  # so no SDL2.dll next to the exe).
+  option(D1_NATIVE_WINDOW "Game window, input and audio with SDL2 (native renderer builds)" ON)
+  if(D1_NATIVE_WINDOW)
+    find_package(SDL2 REQUIRED)
+    target_sources(d1-native PRIVATE src/frontend_sdl.cpp)
+    target_compile_definitions(d1-native PRIVATE D1_FRONTEND_SDL=1)
+    if(WIN32)
+      target_link_libraries(d1-native PRIVATE SDL2::SDL2-static)
+    else()
+      target_link_libraries(d1-native PRIVATE SDL2::SDL2)
+    endif()
+  endif()
 endif()
 
 # Development tool for the native shader translator (decode / disassemble / translate).
