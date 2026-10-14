@@ -263,6 +263,7 @@ HLE("sceVideoOutColorSettingsSetGamma_", vo_noop)
 HLE("sceVideoOutAdjustColor_", vo_noop)
 
 static std::atomic<uint64_t> g_frames{0};
+static void gpu_stats(uint64_t frame);
 static void do_flip(int32_t index, int64_t arg) {
     std::vector<Equeue*> qs;
     {
@@ -284,6 +285,7 @@ static void do_flip(int32_t index, int64_t arg) {
     for (auto* q : qs) q->trigger(6, kFilterVideoOut, 6 | (uint64_t(arg) << 16), true);
     uint64_t n = ++g_frames;
     if (n == 1 || n == 10 || n == 100 || n % 1000 == 0) log("flip #%llu (buffer %d, arg %lld)", n, index, arg);
+    gpu_stats(n);
 }
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {
     if (gpu_real()) {
@@ -301,6 +303,20 @@ static std::mutex g_gnm_mutex;
 static std::vector<Equeue*> g_eop_eqs;
 static std::atomic<uint64_t> g_packets{0};
 static uint64_t g_op_counts[256];
+
+// D1_GPU_STATS=1 (null GPU): every 300 flips, the average draws / dispatches / packets per
+// frame, which shows whether the game is submitting a scene or only UI / fades.
+static void gpu_stats(uint64_t frame) {
+    static const bool on = getenv("D1_GPU_STATS") != nullptr;
+    if (!on || frame % 300) return;
+    static uint64_t last_draw = 0, last_disp = 0, last_pk = 0;
+    const uint64_t draw = g_op_counts[0x27] + g_op_counts[0x2D] + g_op_counts[0x35] + g_op_counts[0x38] + g_op_counts[0x25];
+    const uint64_t disp = g_op_counts[0x15] + g_op_counts[0x16];
+    const uint64_t pk = g_packets.load();
+    log("gpu stats @%llu: %.1f draws, %.1f dispatches, %.0f packets per frame", (unsigned long long)frame,
+        (draw - last_draw) / 300.0, (disp - last_disp) / 300.0, (pk - last_pk) / 300.0);
+    last_draw = draw, last_disp = disp, last_pk = pk;
+}
 
 static void signal_eop() {
     std::vector<Equeue*> qs;

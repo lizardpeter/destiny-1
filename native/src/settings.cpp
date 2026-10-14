@@ -43,7 +43,8 @@ vsync = off                    # [D1_VSYNC]
 # Stats overlay (FPS, render/window resolution, v-sync, GPU). F3 toggles it while running.
 overlay = false                # [D1_OVERLAY=1]
 
-# Frame-rate target. 0 keeps the game's own 30 fps.
+# Frame-rate limit: 0 = unlimited (one game tick per rendered frame), or a cap such as
+# 60, 120 or 144 (30 is the console's own rate). Use vsync = on to lock to the display.
 fps = 0                        # [D1_FPS]
 
 # Discord Rich Presence (needs the Discord desktop app running).
@@ -79,7 +80,7 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "fullscreen") s.fullscreen = truthy(v);
     else if (key == "vsync") s.vsync = v;
     else if (key == "overlay") s.overlay = truthy(v);
-    else if (key == "fps") s.fps = std::atoi(v.c_str());
+    else if (key == "fps") s.fps = (v == "unlimited" || v == "max") ? 0 : std::atoi(v.c_str());
     else if (key == "discord") s.discord = truthy(v);
     else if (key == "discord_app_id") s.discord_app_id = v;
     else if (key == "name") s.name = v;
@@ -136,7 +137,7 @@ void load_settings(const std::string& path) {
     log("settings: name %s", s.name.c_str());
     log("settings: %s (game %s, backend %s, window %dx%d%s, vsync %s, fps %s, discord %s)", g_path.c_str(), s.game_dir.c_str(), s.backend.c_str(), s.window_width,
         s.window_height, s.fullscreen ? " fullscreen" : "", s.vsync.c_str(),
-        s.fps ? std::to_string(s.fps).c_str() : "game default",
+        s.fps ? std::to_string(s.fps).c_str() : "unlimited",
         !s.discord ? "off" : s.discord_app_id.empty() ? "no app id" : "on");
 }
 

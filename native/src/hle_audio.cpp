@@ -1,7 +1,9 @@
-// libSceAudioOut (paced silent sink), libSceAjm (codec jobs that "decode" to silence) and
+// libSceAudioOut (played through the window's audio device when there is one, else a
+// paced silent sink), libSceAjm (codec jobs that "decode" to silence) and
 // libSceVoice (ports that exist but carry no audio).
 #include <time.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -11,11 +13,17 @@
 #include <vector>
 
 #include "hle.h"
+#include "render_bridge.h"
 
 namespace d1 {
 
 // ------------------------------------------------------------------ audio out
-struct AudioPort { uint32_t samples = 256, freq = 48000; std::chrono::steady_clock::time_point next{}; };
+struct AudioPort {
+    uint32_t samples = 256, freq = 48000, format = 1;
+    float gain = 1.0f;
+    std::chrono::steady_clock::time_point next{};
+    std::vector<float> mix;
+};
 static std::mutex g_ao_mutex;
 static std::map<int32_t, AudioPort> g_ports;
 static int32_t g_next_port = 1;
@@ -25,20 +33,61 @@ HLE("sceAudioOutInit", sceAudioOutInit)
 static int32_t sceAudioOutOpen(int32_t user, int32_t type, int32_t index, uint32_t len, uint32_t freq, uint32_t param) {
     std::lock_guard lk(g_ao_mutex);
     int32_t h = g_next_port++;
-    g_ports[h] = {len ? len : 256, freq ? freq : 48000, std::chrono::steady_clock::now()};
-    log("audio out: port %d type %d, %u samples @ %u Hz, param %#x", h, type, len, freq, param);
+    AudioPort& p = g_ports[h];
+    p.samples = len ? len : 256, p.freq = freq ? freq : 48000, p.format = param & 0xFF;
+    p.next = std::chrono::steady_clock::now();
+    // the main port (type 0) goes to the speakers; others (pad speaker, voice, ...) stay silent
+    const bool played = type == 0 && render::audio_open(p.freq, p.samples);
+    log("audio out: port %d type %d, %u samples @ %u Hz, format %u%s", h, type, len, freq, p.format,
+        played ? " -> audio device" : "");
+    if (!played) p.format = ~0u;
     return h;
 }
 HLE("sceAudioOutOpen", sceAudioOutOpen)
 static int32_t sceAudioOutClose(int32_t h) { std::lock_guard lk(g_ao_mutex); g_ports.erase(h); return SCE_OK; }
 HLE("sceAudioOutClose", sceAudioOutClose)
-static int32_t sceAudioOutOutput(int32_t h, const void*) {
+
+// Port formats: 0 s16 mono, 1 s16 stereo, 2 s16 7.1, 3 float mono, 4 float stereo,
+// 5 float 7.1, 6 s16 7.1 "std", 7 float 7.1 "std". The 7.1 layouts are L R C LFE then
+// back/side (std: side, back); the device side takes SDL's 7.1 order (L R C LFE back side).
+static bool to_float8(AudioPort& p, const void* src) {
+    static const int kChannels[8] = {1, 2, 8, 1, 2, 8, 8, 8};
+    if (p.format > 7) return false;
+    const int ch = kChannels[p.format];
+    const bool is_float = p.format >= 3 && p.format != 6;
+    const bool std_order = p.format >= 6;
+    p.mix.assign(size_t(p.samples) * 8, 0.0f);
+    for (uint32_t i = 0; i < p.samples; ++i) {
+        float in[8] = {};
+        for (int c = 0; c < ch; ++c)
+            in[c] = is_float ? static_cast<const float*>(src)[i * ch + c]
+                             : static_cast<const int16_t*>(src)[i * ch + c] * (1.0f / 32768.0f);
+        float* o = &p.mix[size_t(i) * 8];
+        if (ch == 1) o[0] = o[1] = in[0];
+        else if (ch == 2) o[0] = in[0], o[1] = in[1];
+        else if (std_order) o[0] = in[0], o[1] = in[1], o[2] = in[2], o[3] = in[3], o[4] = in[6], o[5] = in[7], o[6] = in[4], o[7] = in[5];
+        else for (int c = 0; c < 8; ++c) o[c] = in[c];
+        for (int c = 0; c < 8; ++c) o[c] *= p.gain;
+    }
+    return true;
+}
+
+static int32_t sceAudioOutOutput(int32_t h, const void* data) {
     std::chrono::steady_clock::time_point wake;
     {
         std::lock_guard lk(g_ao_mutex);
         auto it = g_ports.find(h);
         if (it == g_ports.end()) return SCE_OK;
         auto& p = it->second;
+        if (data && to_float8(p, data)) {
+            std::vector<float> buf;
+            buf.swap(p.mix);
+            const uint32_t frames = p.samples;
+            g_ao_mutex.unlock();
+            render::audio_output(buf.data(), frames);  // blocks while the device has enough queued
+            g_ao_mutex.lock();
+            return SCE_OK;
+        }
         auto now = std::chrono::steady_clock::now();
         if (p.next < now) p.next = now;
         p.next += std::chrono::microseconds(uint64_t(p.samples) * 1000000 / p.freq);
@@ -54,7 +103,18 @@ static int32_t sceAudioOutOutputs(const AudioOutParam* p, uint32_t num) {
     return SCE_OK;
 }
 HLE("sceAudioOutOutputs", sceAudioOutOutputs)
-static int32_t sceAudioOutSetVolume(int32_t, int32_t, const int32_t*) { return SCE_OK; }
+// volumes: per channel, 32768 = 0 dB; flag bits select the channels being set
+static int32_t sceAudioOutSetVolume(int32_t h, int32_t flag, const int32_t* vol) {
+    if (!vol) return SCE_OK;
+    std::lock_guard lk(g_ao_mutex);
+    auto it = g_ports.find(h);
+    if (it == g_ports.end()) return SCE_OK;
+    int32_t m = 0;
+    for (int c = 0; c < 8; ++c)
+        if (flag & (1 << c)) m = std::max(m, vol[c]);
+    it->second.gain = std::min(m, 32768) / 32768.0f;
+    return SCE_OK;
+}
 HLE("sceAudioOutSetVolume", sceAudioOutSetVolume)
 
 // ------------------------------------------------------------------ AJM
@@ -83,6 +143,8 @@ HLE("sceAjmModuleUnregister", sceAjmModuleUnregister)
 static int32_t sceAjmInstanceCreate(uint32_t, uint32_t codec, uint64_t flags, uint32_t* inst) {
     std::lock_guard lk(g_ajm_mutex);
     *inst = (codec << 14) | g_next_instance++;
+    static bool seen[8];
+    if (codec < 8 && !seen[codec]) { seen[codec] = true; log("ajm: codec %u instance (0 mp3, 1 atrac9, 2 aac); decoded as silence", codec); }
     return SCE_OK;
 }
 HLE("sceAjmInstanceCreate", sceAjmInstanceCreate)

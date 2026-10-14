@@ -75,6 +75,12 @@ bool read_pad(PadState& out);  // false when there is no window: caller keeps it
 // Raw mouse motion (device counts, no OS acceleration) accumulated since the last call while
 // the window holds the cursor; the counts are consumed. False when the cursor is not captured.
 bool take_mouse_motion(int32_t& dx, int32_t& dy);
+// Audio (renderer build with a window): open the speakers for 7.1 float frames (SDL order
+// L R C LFE back-L back-R side-L side-R; the device downmixes), and queue a buffer. Output
+// blocks while about three buffers are queued, which paces the game's mixer like the
+// console's audio port.
+bool audio_open(uint32_t freq, uint32_t frames);
+void audio_output(const float* frames8, uint32_t frames);
 void run_window_loop();        // main thread; returns when the window is closed
 
 }  // namespace d1::render

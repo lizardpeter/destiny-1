@@ -11,6 +11,7 @@
 // Loads eboot.bin and the game-shipped modules, links their imports (game modules,
 // host implementations, or logging stubs), starts the modules, and jumps to the
 // game's entry point on a thread with a PS4 thread control block installed.
+#include <cstdio>
 #include <pthread.h>
 #include <unistd.h>
 
@@ -160,6 +161,13 @@ int main(int argc, char** argv) {
         else if (k == "--game" || k == "--app0") app0 = v;
         else if (k == "--data") data = v;
         else if (k == "--config") config = v;
+    }
+    // keep the previous session's logs next to the new ones (problems are often noticed a
+    // launch later, e.g. a character that did not persist)
+    for (const char* n : {"d1-native", "backend"}) {
+        const std::string cur = folder + "/" + n + ".log", prev = folder + "/" + n + ".prev.log";
+        std::remove(prev.c_str());
+        std::rename(cur.c_str(), prev.c_str());
     }
     log_to_file(folder + "/d1-native.log");
     load_settings(config);

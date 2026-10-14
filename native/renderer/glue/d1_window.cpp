@@ -221,6 +221,39 @@ bool take_mouse_motion(int32_t& dx, int32_t& dy) {
     return true;
 }
 
+static SDL_AudioDeviceID g_audio = 0;
+static uint32_t g_audio_bytes = 0;  // one buffer
+bool audio_open(uint32_t freq, uint32_t frames) {
+    if (!g_window || g_audio) return g_audio != 0;
+    if (const char* v = std::getenv("D1_AUDIO"); v && v[0] == '0') return false;
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+        d1::log("audio: SDL audio init failed: %s", SDL_GetError());
+        return false;
+    }
+    SDL_AudioSpec want{}, have{};
+    want.freq = int(freq);
+    want.format = AUDIO_F32SYS;
+    want.channels = 8;
+    want.samples = Uint16(std::min<uint32_t>(frames, 4096));
+    // no allowed changes: SDL converts (and downmixes 7.1) to whatever the device uses
+    g_audio = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    if (!g_audio) {
+        d1::log("audio: no output device: %s", SDL_GetError());
+        return false;
+    }
+    g_audio_bytes = frames * 8 * sizeof(float);
+    SDL_PauseAudioDevice(g_audio, 0);
+    d1::log("audio: %s, %d Hz, 7.1 float in (%d-frame device buffer)",
+            SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "?", freq, int(have.samples));
+    return true;
+}
+void audio_output(const float* frames8, uint32_t frames) {
+    if (!g_audio) return;
+    // keep ~3 buffers (64 ms at 1024 frames) queued: enough to ride out a slow frame
+    for (int i = 0; i < 200 && SDL_GetQueuedAudioSize(g_audio) > 2 * g_audio_bytes; ++i) SDL_Delay(1);
+    SDL_QueueAudio(g_audio, frames8, frames * 8 * sizeof(float));
+}
+
 bool read_pad(PadState& out) {
     if (!g_window) return false;
     std::lock_guard lk(g_pad_mutex);

@@ -217,12 +217,18 @@ static D1_SYSV bool flag_true() { return true; }
 
 // ---- frame rate (eboot+0x593F00 builds "time control config globals", pointer at 0x26BCD08)
 // Config fields (µs): +0x08 frame period (33366 = 29.97 fps), +0x28 vblank period,
-// +0x38 integer target fps. The main loop (0x594460) sleeps until the next period and the
-// frame-time getters (0x593890 seconds, 0x5938B0 fps) derive from +0x08, so changing the
-// period changes pacing and the per-frame time step together. Title-screen timing is
-// wall-clock based at 30 and 60 fps (findings/LOG.md). The `fps` setting (or D1_FPS) sets the target.
+// +0x38 integer target fps. The main loop (0x594460) waits until last frame + period
+// (`add rcx, [rsi+8]` at 0x594A3B), and the game-time update (0x591710, given the real
+// elapsed seconds) runs elapsed / period simulation ticks of one period each (0x593890
+// seconds, 0x5938B0 fps), so game time stays wall-clock correct and the tick rate equals
+// the target. `fps = N` sets the target. `fps = 0` (unlimited, the default) removes the wait
+// and, every frame, sets the period to that frame's real duration (1-33.4 ms) just before
+// the tick math: one simulation tick per rendered frame with dt = the frame time; below
+// 30 fps it falls back to several 33 ms ticks.
 using TimeInitFn = D1_SYSV void (*)(void*);
+using GameTimeFn = D1_SYSV void (*)(float, float*, int32_t*, float*, int32_t*);
 static TimeInitFn g_time_init_orig = nullptr;
+static GameTimeFn g_game_time_orig = nullptr;
 static D1_SYSV void time_init_hook(void* cfg) {
     g_time_init_orig(cfg);
     static const int fps = settings().fps;
@@ -231,6 +237,14 @@ static D1_SYSV void time_init_hook(void* cfg) {
     *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
     *reinterpret_cast<int32_t*>(tc + 0x38) = fps;
     log("hooks: frame rate target %d fps (period %d us)", fps, 1000000 / fps);
+}
+static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, float* dt2, int32_t* ticks2) {
+    if (auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08); tc && elapsed > 0.0f) {
+        const int64_t period = std::clamp<int64_t>(int64_t(double(elapsed) * 1e6 + 0.5), 1000, 33366);
+        *reinterpret_cast<int64_t*>(tc + 0x08) = period;
+        *reinterpret_cast<int32_t*>(tc + 0x38) = int32_t(1000000 / period);
+    }
+    g_game_time_orig(elapsed, dt, ticks, dt2, ticks2);
 }
 
 // ---- current world-controller state (eboot+0x783AC0, the state manager's transition step)
@@ -408,6 +422,16 @@ void install_game_hooks() {
     if (settings().fps > 0) {
         g_time_init_orig = reinterpret_cast<TimeInitFn>(hook_function(exe.base + 0x593F00, reinterpret_cast<const void*>(&time_init_hook)));
         if (!g_time_init_orig) log("hooks: frame-rate hook FAILED");
+    } else {  // unlimited: no limiter wait, one simulation tick per rendered frame
+        auto* wait = reinterpret_cast<uint8_t*>(exe.base + 0x594A3B);
+        const uint8_t expect[4] = {0x48, 0x03, 0x4E, 0x08}, nop4[4] = {0x0F, 0x1F, 0x40, 0x00};
+        g_game_time_orig = reinterpret_cast<GameTimeFn>(hook_function(exe.base + 0x591710, reinterpret_cast<const void*>(&game_time_hook)));
+        if (g_game_time_orig && std::memcmp(wait, expect, 4) == 0) {
+            std::memcpy(wait, nop4, 4);
+            log("hooks: frame rate unlimited (one game tick per frame)");
+        } else {
+            log("hooks: unlimited frame rate hook FAILED");
+        }
     }
     if (const char* w = getenv("D1_WORLD_CONTROLLER"); w && std::strcmp(w, "editor") == 0) {
         replace_function(exe.base + 0x239B70, reinterpret_cast<const void*>(&flag_true));

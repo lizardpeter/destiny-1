@@ -30,5 +30,7 @@ void print_summary() {}
 bool window_active() { return false; }
 bool read_pad(PadState&) { return false; }
 bool take_mouse_motion(int32_t&, int32_t&) { return false; }
+bool audio_open(uint32_t, uint32_t) { return false; }
+void audio_output(const float*, uint32_t) {}
 void run_window_loop() {}
 }  // namespace d1::render

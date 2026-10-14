@@ -75,7 +75,7 @@ with commented defaults. Environment variables override it:
 | `fullscreen` | `D1_FULLSCREEN=1` | borderless fullscreen; F11 or Alt+Enter toggles while running |
 | `overlay` | `D1_OVERLAY=1` | stats overlay (FPS, frame time, render and window resolution, v-sync, GPU, game state); F3 toggles it while running |
 | `vsync` | `D1_VSYNC` | `off` (default: Mailbox, newest frame, no tearing), `on` (Fifo), `off-tearing` (Immediate, lowest latency) |
-| `fps` | `D1_FPS` | frame-rate target for the game's own limiter; 0 keeps its 30 fps |
+| `fps` | `D1_FPS` | frame-rate limit: 0 / `unlimited` (default) runs one game tick per rendered frame with no limiter; a number caps it (30 = the console's rate) |
 | `discord`, `discord_app_id` | `D1_DISCORD=0`, `D1_DISCORD_APP_ID` | Discord Rich Presence over Discord's local IPC socket; needs the Discord desktop app and an application id |
 
 The game draws its render targets at 1080p whatever display resolution it is told about, so
