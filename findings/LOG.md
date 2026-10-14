@@ -1011,3 +1011,27 @@ What changed:
   is not found yet; D1_TRACE_SPAWN logs every gate.
 - backend: engine-type kinds 23 (type handle: presence bit + u32) and 35 (8-byte id) in the
   bitstream codec; client-reference message types merged into the schema.
+
+## 2026-10-14: in-world rendering performance (first pass)
+
+First in-world frames on real hardware (Intel Arc iGPU, 1080p) ran at ~9.5 fps with a
+blotchy, posterised, blurred image. What the instrumented software-renderer runs show:
+
+- **Colour-grading LUT churn**: the game binds its 32x32x32 RGBA8 colour-grading volume
+  (tile 0x13) as a 32x32 2D array (2 layers at a time) as well as a volume. shadPS4 resolved
+  the overlap to the cached volume, found fewer "resources" (a volume has one array layer)
+  and freed and recreated it from guest memory on every bind: ~1000 times a second during
+  loading/in-world, and every recreation threw away what the GPU had rendered into it.
+  Fixed by treating 2D bindings over a volume's slices as a 2D-array view of it (the
+  volume is already created 2D-array compatible) and making barriers on volumes always cover
+  the whole image (renderer patches 0004, 0005).
+- **Write-tracking faults are not the cost**: 0-13 per game frame.
+- **Shader compilation**: ~250-460 pipelines on the way into the world; they were recompiled
+  every run (the pipeline cache was stubbed out). Now kept in `<data>/shader_cache`.
+- The renderer shim used shadPS4's inline fetch-shader path (a debugging path); now the
+  stock vertex-input path.
+- Open: software-rendered runs sometimes sit in world-controller `cleanup` with tasks
+  0x0000400040000000 active (15 s in one run, >25 min in others); not yet explained.
+- Open: the in-world image itself (blur/posterisation) is not reproduced locally (the
+  software runs reach in_world but present black); the stock-shadPS4 A/B and the prologue
+  wake-up effect are still to check.
