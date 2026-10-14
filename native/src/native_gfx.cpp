@@ -433,10 +433,13 @@ using DrawQuadsFn = D1_SYSV void (*)(uint64_t, uint32_t, uint64_t, int32_t);
 using DrawInlineFn = D1_SYSV void (*)(uint64_t, uint32_t, int32_t, const void*, int32_t);
 using ClearFn = D1_SYSV void (*)(uint64_t, uint32_t);
 DrawInstancedFn o_draw_instanced;
+using DrawIndexedInstancedFn = D1_SYSV void (*)(uint64_t, uint32_t, uint32_t, uint64_t, uint32_t, uint64_t, uint32_t);
+DrawIndexedInstancedFn o_draw_indexed_instanced;
 DrawQuadsFn o_draw_quads;
 DrawInlineFn o_draw_inline;
 ClearFn o_clear;
 
+thread_local uint32_t t_instances = 1;  // set by the instanced draw around its draw_indexed call
 D1_SYSV void r_draw_indexed(uint64_t dev, uint64_t prim, uint64_t a, int32_t first, uint32_t count) {
     if (field<uint8_t>(dev, 0x26)) {
         ng::Draw* d = nr::capture(dev, uint32_t(prim), uint64_t(__builtin_return_address(0)));
@@ -446,6 +449,7 @@ D1_SYSV void r_draw_indexed(uint64_t dev, uint64_t prim, uint64_t a, int32_t fir
         d->index32 = isz != 0;
         d->index_addr = ib ? field<uint64_t>(ib, 0x30) + uint64_t(uint32_t((isz * 2 + 2) * first)) : 0;
         d->count = count;
+        d->instances = t_instances;
         nr::push(d);
     }
     o_draw_indexed(dev, prim, a, first, count);
@@ -467,6 +471,13 @@ D1_SYSV void r_draw_instanced(uint64_t dev, uint32_t prim, uint32_t count, uint6
         nr::push(d);
     }
     o_draw_instanced(dev, prim, count, a, instances);
+}
+// draw_indexed_instanced(prim, count, ?, instances, ?, first): NUM_INSTANCES around draw_indexed
+D1_SYSV void r_draw_indexed_instanced(uint64_t dev, uint32_t prim, uint32_t count, uint64_t a, uint32_t instances,
+                                      uint64_t b, uint32_t first) {
+    t_instances = instances ? instances : 1;
+    o_draw_indexed_instanced(dev, prim, count, a, instances, b, first);
+    t_instances = 1;
 }
 // indexed from the engine's shared 16-bit index buffer (*device->manager)
 D1_SYSV void r_draw_quads(uint64_t dev, uint32_t prim, uint64_t first, int32_t prims) {
@@ -558,6 +569,7 @@ void native_gfx_install() {
         ok &= hook(0x7E15D0, &r_draw_indexed, o_draw_indexed, "draw_indexed");
         ok &= hook(0x7E17C0, &r_draw, o_draw, "draw");
         ok &= hook(0x7E1710, &r_draw_instanced, o_draw_instanced, "draw_instanced");
+        ok &= hook(0x7E16A0, &r_draw_indexed_instanced, o_draw_indexed_instanced, "draw_indexed_instanced");
         ok &= hook(0x7E1840, &r_draw_quads, o_draw_quads, "draw_shared_indices");
         ok &= hook(0x7E1960, &r_draw_inline, o_draw_inline, "draw_inline");
         ok &= hook(0x7E2A00, &r_clear, o_clear, "clear");

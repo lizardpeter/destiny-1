@@ -65,6 +65,7 @@ struct VertexAttrib {
     uint8_t dfmt, nfmt;    // buffer data / number format (MTBUF); 0xFF: from the V# at draw time
     uint8_t components;    // VGPRs written
     uint8_t vgpr;          // first destination VGPR
+    uint8_t index_vgpr;    // index register: 0 vertex id, 3 instance id, 1/2 instance id / step rate
 };
 
 struct Result {
@@ -85,7 +86,8 @@ Result translate(const ShaderDesc& d);
 
 namespace d1::gcn {
 // Geometry shader that turns each GCN rect-list primitive (three corners of a rectangle) into
-// two triangles: the fourth corner is v1 + v2 - v0 for the position and every parameter.
+// two triangles: the fourth corner is A + B - C (C: the right-angle corner, found as the
+// vertex opposite the longest edge) for the position and every parameter.
 // `param_exports`: the vertex shader's parameter locations.
 std::vector<uint32_t> rect_list_gs(uint32_t param_exports);
 }  // namespace d1::gcn

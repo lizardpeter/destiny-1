@@ -317,12 +317,20 @@ struct Renderer {
     void dump(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame);
     bool save_image(Image* img, const char* path);
     uint64_t frame_first_submit = 0;
+    struct PassLog { uint64_t c[5], d; uint32_t draws, clears; uint64_t first_vs, first_ps, caller; };
+    std::vector<PassLog> passlog;
+    uint64_t passlog_frame = UINT64_MAX;  // D1_NG_PASSLOG=<executed frame>: list that frame's passes
+    bool debug = false;
+    uint64_t debug_from = 0;  // D1_NG_DEBUG=<executed frame>: log draws and clears from that frame
+    int debug_lines = 0;
 };
 
 Renderer* g = nullptr;
 
 bool Renderer::init(const Options& o) {
     opt = o;
+    if (const char* v = std::getenv("D1_NG_DEBUG")) debug = true, debug_from = std::strtoull(v, nullptr, 10);
+    if (const char* v = std::getenv("D1_NG_PASSLOG")) passlog_frame = std::strtoull(v, nullptr, 10);
     char err[512];
     int gpu = -1;
     if (const char* v = std::getenv("D1_GPU")) gpu = std::atoi(v);
@@ -781,7 +789,7 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
     uint64_t key = mix(mix(uint64_t(vs), uint64_t(ps)), topo);
     for (const auto& a : vs->res.attribs) {
         const uint32_t* v = dr.vb[a.vb_slot & 15];
-        key = mix(key, (v[1] >> 16 & 0x3FFF) | uint64_t(v[3] >> 12 & 0x7F) << 16);
+        key = mix(key, (v[1] >> 16 & 0x3FFF) | uint64_t(v[3] >> 12 & 0x7F) << 16 | uint64_t(a.index_vgpr) << 24);
     }
     key = mix(key, dr.blend), key = mix(key, dr.target_mask), key = mix(key, dr.su_sc_mode);
     key = mix(key, dr.depth_ctl), key = mix(key, dr.stencil_ctl);
@@ -849,7 +857,7 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
         VkFormat f = vertex_format(dfmt, nfmt);
         if (f == VK_FORMAT_UNDEFINED) f = VK_FORMAT_R32G32B32A32_SFLOAT;
         if (std::none_of(vbind.begin(), vbind.end(), [&](auto& x) { return x.binding == a.vb_slot; }))
-            vbind.push_back({a.vb_slot, stride, VK_VERTEX_INPUT_RATE_VERTEX});
+            vbind.push_back({a.vb_slot, stride, a.index_vgpr == 0 ? VK_VERTEX_INPUT_RATE_VERTEX : VK_VERTEX_INPUT_RATE_INSTANCE});
         vattr.push_back({a.location, a.vb_slot, f, a.offset});
     }
     VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
@@ -990,11 +998,23 @@ void Renderer::begin_pass(Image* const* colors, Image* depth) {
     ri.pDepthAttachment = depth ? &da : nullptr;
     ri.pStencilAttachment = depth && depth->stencil ? &da : nullptr;
     vkCmdBeginRendering(cmd, &ri);
+    if (st.frames == passlog_frame) {
+        PassLog pl{};
+        for (int i = 0; i < 5; ++i) pl.c[i] = colors[i] ? colors[i]->base : 0;
+        pl.d = depth ? depth->base : 0;
+        passlog.push_back(pl);
+    }
     in_pass = true;
     pass_key = key, pass_depth = depth, pass_w = w, pass_h = h;
 }
 
 void Renderer::clear(const Draw& dr) {
+    if (debug && st.frames >= debug_from && debug_lines < 600) {
+        ++debug_lines;
+        log("ng clear flags %#x color %g %g %g %g depth %g stencil %u | c0 %llx d %llx", dr.clear_flags,
+            dr.clear_color[0], dr.clear_color[1], dr.clear_color[2], dr.clear_color[3], dr.clear_depth,
+            dr.clear_stencil, (unsigned long long)dr.color[0][0] << 8, (unsigned long long)dr.depth[4] << 8);
+    }
     Image* colors[8] = {};
     for (int i = 0; i < 5; ++i) colors[i] = color_target(dr.color[i]);
     Image* depth = depth_target(dr.depth);
@@ -1021,6 +1041,7 @@ void Renderer::clear(const Draw& dr) {
     w = std::min(w, pass_w - std::min<uint32_t>(pass_w, uint32_t(x)));
     h = std::min(h, pass_h - std::min<uint32_t>(pass_h, uint32_t(y)));
     if (!w || !h) return;
+    if (st.frames == passlog_frame && !passlog.empty()) ++passlog.back().clears;
     VkClearRect r{{{x, y}, {w, h}}, 0, 1};
     vkCmdClearAttachments(cmd, n, att, 1, &r);
     ++st.clears;
@@ -1067,7 +1088,10 @@ void Renderer::draw(const Draw& dr) {
         // copy only vertices [vfirst, vlast] (bounded by the V#'s record count); vertexOffset
         // in the draw shifts the indices back
         const uint32_t records = std::max(v[2], 1u);
-        const uint32_t first = stride ? vfirst : 0, last = stride ? std::min(vlast, records - 1) : 0;
+        // per-instance streams (fetched with the instance id) start at record 0
+        const bool per_instance = a.index_vgpr != 0;
+        const uint32_t lo = per_instance ? 0 : vfirst, hi = per_instance ? std::max(dr.instances, 1u) - 1 : vlast;
+        const uint32_t first = stride ? lo : 0, last = stride ? std::min(hi, records - 1) : 0;
         if (first >= records && stride) {  // every fetch is out of range: reads 0, as on GCN
             const uint64_t off = ring_alloc(16);
             if (off == UINT64_MAX) return skip("ring full");
@@ -1163,6 +1187,19 @@ void Renderer::draw(const Draw& dr) {
     if (!count) return;
 
     begin_pass(colors, depth);
+    if (debug && st.frames >= debug_from && debug_lines < 600) {
+        ++debug_lines;
+        log("ng draw %s prim %u count %u inst %u | vs %p ps %p | c0 %llx d %llx | depth %#x stencil %#x/%#x blend %#x mask %#x "
+            "su %#x | vp %d %d %d %d z %g..%g | vb %u range %u..%u | from %#llx",
+            dr.kind == Draw::Indexed ? "idx" : "auto", dr.prim, dr.count, dr.instances, (const void*)dr.vs,
+            (const void*)dr.ps, (unsigned long long)dr.color[0][0] << 8, (unsigned long long)dr.depth[4] << 8,
+            dr.depth_ctl, dr.stencil_ctl, dr.stencil_ref, dr.blend, dr.target_mask, dr.su_sc_mode, dr.vp[0], dr.vp[1],
+            dr.vp[2], dr.vp[3], dr.znear, dr.zfar, dr.num_vb, vfirst, vlast, (unsigned long long)dr.caller);
+    }
+    if (st.frames == passlog_frame && !passlog.empty()) {
+        auto& pl = passlog.back();
+        if (!pl.draws++) pl.first_vs = uint64_t(dr.vs), pl.first_ps = uint64_t(dr.ps), pl.caller = dr.caller;
+    }
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
     for (int s = 0; s < 2; ++s)
         if (nw[s]) vkCmdPushDescriptorSet(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, uint32_t(s), nw[s], writes[s]);
@@ -1393,6 +1430,14 @@ void execute(const std::vector<Draw*>& draws) {
 }
 void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame) {
     if (!g) return;
+    if (g->st.frames == g->passlog_frame) {
+        int i = 0;
+        for (auto& pl : g->passlog)
+            log("ng pass %3d: c %llx %llx %llx %llx d %llx | %u draws %u clears | vs %llx ps %llx from %#llx", i++,
+                (unsigned long long)pl.c[0], (unsigned long long)pl.c[1], (unsigned long long)pl.c[2],
+                (unsigned long long)pl.c[3], (unsigned long long)pl.d, pl.draws, pl.clears,
+                (unsigned long long)pl.first_vs, (unsigned long long)pl.first_ps, (unsigned long long)pl.caller);
+    }
     ++g->st.frames;
     if (addr) g->dump(addr, w, h, frame);
     else g->frame_first_submit = g->submit_no;

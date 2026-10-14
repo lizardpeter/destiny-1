@@ -367,6 +367,7 @@ void Translator::emit_fetch_call() {
             a.dfmt = in.dfmt, a.nfmt = in.nfmt;
             a.components = uint8_t(in.enc == Enc::MTBUF ? in.opnum + 1 : in.opnum + 1);
             a.vgpr = in.vdata;
+            a.index_vgpr = in.vaddr;
             if (o.kind != Origin::Table) problem("fetch shader load from an unknown vertex buffer");
             if (in.enc == Enc::MUBUF) a.dfmt = a.nfmt = 0xFF;  // format comes from the V# at draw time
             r_.attribs.push_back(a);
@@ -872,7 +873,6 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
         ddx = nd == 2 ? m_.op_r(OpCompositeConstruct, tv2f_, {dx[0], dx[1]}) : m_.op_r(OpCompositeConstruct, tv3f_, {dx[0], dx[1], dx[2]});
         ddy = nd == 2 ? m_.op_r(OpCompositeConstruct, tv2f_, {dy[0], dy[1]}) : m_.op_r(OpCompositeConstruct, tv3f_, {dy[0], dy[1], dy[2]});
     }
-    if (td == TexDim::Cube) problem("cube map sampling (face coordinates) not translated exactly yet");
     auto write_result = [&](Id vec4, bool is_uint) {
         uint32_t out = in.vdata;
         const uint32_t mask = (in.op == Op::IMAGE_GATHER4_LZ || in.op == Op::IMAGE_GATHER4_LZ_O) ? 0xF : in.dmask;
@@ -905,6 +905,24 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     Id c[3];
     for (uint32_t k = 0; k < ncoord; ++k) c[k] = af(a++);
     if (in.unorm) problem("unnormalized texture coordinates");
+    if (td == TexDim::Cube) {
+        // GCN cube coordinates are (s, t, face) with s, t = sc / |ma| + 1.5 (v_cube*):
+        // rebuild the direction vector Vulkan wants
+        const Id x = m_.op_r(OpFMul, tf_, {m_.op_r(OpFSub, tf_, {c[0], m_.c_f32(1.5f)}), m_.c_f32(2.0f)});
+        const Id y = m_.op_r(OpFMul, tf_, {m_.op_r(OpFSub, tf_, {c[1], m_.c_f32(1.5f)}), m_.c_f32(2.0f)});
+        const Id nx = m_.op_r(OpFNegate, tf_, {x}), ny = m_.op_r(OpFNegate, tf_, {y});
+        const Id one = m_.c_f32(1.0f), mone = m_.c_f32(-1.0f);
+        const Id face = m_.op_r(OpConvertFToU, tu_, {m_.ext(tf_, GlslRoundEven, {c[2]})});
+        const Id faces[6][3] = {{one, ny, nx}, {mone, ny, x}, {x, one, y}, {x, mone, ny}, {x, ny, one}, {nx, ny, mone}};
+        Id dir[3];
+        for (int k = 0; k < 3; ++k) {
+            Id v = faces[5][k];
+            for (int f = 4; f >= 0; --f)
+                v = m_.op_r(OpSelect, tf_, {m_.op_r(OpIEqual, tbool_, {face, m_.c_u32(uint32_t(f))}), faces[f][k], v});
+            dir[k] = v;
+        }
+        c[0] = dir[0], c[1] = dir[1], c[2] = dir[2];
+    }
     const Id coord = ncoord == 2 ? m_.op_r(OpCompositeConstruct, tv2f_, {c[0], c[1]}) : m_.op_r(OpCompositeConstruct, tv3f_, {c[0], c[1], c[2]});
     const Id sampler = ld(sampler_var(smp.api), m_.t_sampler());
     const Id si = m_.op_r(OpSampledImage, m_.t_sampled_image(img_t), {image, sampler});
@@ -1186,13 +1204,35 @@ std::vector<uint32_t> rect_list_gs(uint32_t param_exports) {
         }
     for (auto& v : vars) iface.push_back(v.in), iface.push_back(v.out);
     const Id fn = m.begin_function(tvoid, m.t_func(tvoid));
-    std::vector<std::array<Id, 4>> vals;
+    const Id tb = m.t_bool(), tv2 = m.t_vec(tf, 2);
+    std::vector<std::array<Id, 3>> in;
     for (auto& v : vars) {
-        std::array<Id, 4> x{};
+        std::array<Id, 3> x{};
         for (uint32_t k = 0; k < 3; ++k)
             x[k] = m.op_r(OpLoad, tv4, {m.op_r(OpAccessChain, p_in_v, {v.in, m.c_u32(k)})});
-        x[3] = m.op_r(OpFSub, tv4, {m.op_r(OpFAdd, tv4, {x[1], x[2]}), x[0]});
-        vals.push_back(x);
+        in.push_back(x);
+    }
+    // the right-angle corner is opposite the longest edge (the hypotenuse)
+    auto xy = [&](Id v) { return m.op_r(OpVectorShuffle, tv2, {v, v, 0, 1}); };
+    auto d2 = [&](Id a, Id b) {
+        const Id d = m.op_r(OpFSub, tv2, {xy(a), xy(b)});
+        return m.op_r(OpFAdd, tf, {m.op_r(OpFMul, tf, {m.op_r(OpCompositeExtract, tf, {d, 0}), m.op_r(OpCompositeExtract, tf, {d, 0})}),
+                                    m.op_r(OpFMul, tf, {m.op_r(OpCompositeExtract, tf, {d, 1}), m.op_r(OpCompositeExtract, tf, {d, 1})})});
+    };
+    const Id d01 = d2(in[0][0], in[0][1]), d12 = d2(in[0][1], in[0][2]), d20 = d2(in[0][2], in[0][0]);
+    const Id c0 = m.op_r(OpLogicalAnd, tb, {m.op_r(OpFOrdGreaterThanEqual, tb, {d12, d01}), m.op_r(OpFOrdGreaterThanEqual, tb, {d12, d20})});
+    const Id c1 = m.op_r(OpLogicalAnd, tb, {m.op_r(OpLogicalNot, tb, {c0}), m.op_r(OpFOrdGreaterThanEqual, tb, {d20, d01})});
+    auto pick = [&](Id if0, Id if1, Id if2) {
+        return m.op_r(OpSelect, tv4, {c0, if0, m.op_r(OpSelect, tv4, {c1, if1, if2})});
+    };
+    // corner C, its neighbours A and B, the opposite corner D = A + B - C; strip A, C, D, B
+    std::vector<std::array<Id, 4>> vals;
+    for (auto& x : in) {
+        const Id C = pick(x[0], x[1], x[2]);
+        const Id A = pick(x[1], x[0], x[0]);
+        const Id B = pick(x[2], x[2], x[1]);
+        const Id D = m.op_r(OpFSub, tv4, {m.op_r(OpFAdd, tv4, {A, B}), C});
+        vals.push_back({A, C, D, B});
     }
     for (uint32_t k = 0; k < 4; ++k) {
         for (size_t i = 0; i < vars.size(); ++i) m.op(OpStore, {vars[i].out, vals[i][k]});
