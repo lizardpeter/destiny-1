@@ -2481,7 +2481,7 @@
   "class": null,
   "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS",
   "file": "594460_main_loop.c",
-  "role": "Main loop: waits for the next frame period from the time-control config.",
+  "role": "Main loop: waits for the next frame period from the time-control config. Main loop. Paces frames: next = last + period (add rcx, [rsi+8] at 0x594A3B) unless vblank-synced (config mode 2); d1-native's unlimited mode NOPs that add.",
   "size_bytes": 2111,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:main_loop:594460",
   "calls": []
@@ -2493,7 +2493,7 @@
   "class": null,
   "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS",
   "file": "593f00_time_control_config_build.c",
-  "role": "Builds the time-control config globals (pointer 0x26BCD08, 0x48 bytes) from float seconds; +0x08 frame period, +0x38 (D1_FPS hook rewrites both).",
+  "role": "Builds the time-control config globals (pointer 0x26BCD08, 0x48 bytes) from float seconds; +0x08 frame period, +0x38 (D1_FPS hook rewrites both). Builds the time control config globals (pointer 0x26BCD08, 0x48 bytes): +0x08 frame period us (33366 = 29.97 fps), +0x28 vblank period, +0x38 integer target fps. d1-native's fps cap rewrites +0x08/+0x38 after it.",
   "size_bytes": 1065,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:time_control_config_build:593f00",
   "calls": []
@@ -2505,7 +2505,7 @@
   "class": null,
   "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS",
   "file": "593890_time_control_frame_seconds.c",
-  "role": "Frame time in seconds from time-control +0x08.",
+  "role": "Frame time in seconds from time-control +0x08. Frame period in seconds (config +0x08 / 1e6): the duration of one simulation tick.",
   "size_bytes": 22,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:time_control_frame_seconds:593890",
   "calls": []
@@ -2517,7 +2517,7 @@
   "class": null,
   "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS",
   "file": "5938b0_time_control_fps.c",
-  "role": "Frames per second from time-control +0x08.",
+  "role": "Frames per second from time-control +0x08. Ticks per second (1e6 / config +0x08).",
   "size_bytes": 26,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:time_control_fps:5938b0",
   "calls": []
@@ -2529,7 +2529,7 @@
   "class": null,
   "evidence": "CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS",
   "file": "591710_time_control_apply.c",
-  "role": "Consumes frame time / fps from the time-control config.",
+  "role": "Consumes frame time / fps from the time-control config. Game time per frame: from the real elapsed seconds, runs elapsed x rate (+ fractional accumulator) simulation ticks of one period each, capped per frame; handles time-scale transitions. d1-native's unlimited mode sets the period to the frame's real duration first (one tick per frame).",
   "size_bytes": 1041,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:time_control_apply:591710",
   "calls": []
@@ -3013,6 +3013,203 @@
   "role": "Per-axis look-speed scale while zoomed (1 - weapon tag +0x1B4 for yaw, 1 - +0x184 for pitch).",
   "size_bytes": 244,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_zoom_look_scale:bd3a50",
+  "calls": []
+ },
+ {
+  "va": "0x33e110",
+  "name": "cinematic_player_stop",
+  "subsystem": "omaha.camera",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "33e110_cinematic_player_stop.c",
+  "role": "Stops the cinematic playing on a cinematic player object (the prologue intro uses the one at 0x295C0A0).",
+  "size_bytes": 29,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:cinematic_player_stop:33e110",
+  "calls": []
+ },
+ {
+  "va": "0x766750",
+  "name": "loading_cinematics_suppressed",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "766750_loading_cinematics_suppressed.c",
+  "role": "Loading cinematics are suppressed when the investment activity selection (*0x26BC068) kind byte is 1 or the face-to-face join check holds. The prologue launch selects kind 1 {1, 0, activity 164, insertion -1}, so the arrival cinematics (prologue intro playback, cinematic exchange, filler) are skipped by design.",
+  "size_bytes": 32,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:loading_cinematics_suppressed:766750",
+  "calls": [
+   "0x574ef0",
+   "0x78c710"
+  ]
+ },
+ {
+  "va": "0x574ef0",
+  "name": "activity_selection_get",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "574ef0_activity_selection_get.c",
+  "role": "Returns the investment activity selection (0x130 bytes) at *0x26BC068: +0 pending {kind, , u16 activity, insertion...}, +0x8C current copy, +0x118.. ids.",
+  "size_bytes": 12,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_selection_get:574ef0",
+  "calls": []
+ },
+ {
+  "va": "0x574c00",
+  "name": "activity_selection_update",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "574c00_activity_selection_update.c",
+  "role": "Copies the private activity's target record (activity +0x9B8, +0xE8) into the selection's current half when it changed.",
+  "size_bytes": 440,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_selection_update:574c00",
+  "calls": [
+   "0x775770"
+  ]
+ },
+ {
+  "va": "0x775770",
+  "name": "activity_record_for_slot",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "775770_activity_record_for_slot.c",
+  "role": "Activity record for a matchmaking slot (0 = private): slot stride 0x131C8, per-state 0x98E0, record at +0x6B38, valid when its state < 11 and in mask 0x7F0. Record +0x4B8 = current (destination hash at +0x59C), +0x9B8 = target ({kind, activity index, insertion} at +0xE8).",
+  "size_bytes": 96,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_record_for_slot:775770",
+  "calls": []
+ },
+ {
+  "va": "0x78c710",
+  "name": "face_to_face_same_destination",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "78c710_face_to_face_same_destination.c",
+  "role": "True when the private activity's destination (+0x59C) equals the cached face-to-face destination (0x26CF2B0) and a target activity is set: rejoining where you are, so loading cinematics are suppressed.",
+  "size_bytes": 128,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:face_to_face_same_destination:78c710",
+  "calls": [
+   "0x775770"
+  ]
+ },
+ {
+  "va": "0x78c600",
+  "name": "face_to_face_cache_destination",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "78c600_face_to_face_cache_destination.c",
+  "role": "Caches the private activity's destination hash in 0x26CF2B0 ('Caching destination').",
+  "size_bytes": 268,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:face_to_face_cache_destination:78c600",
+  "calls": [
+   "0x775770"
+  ]
+ },
+ {
+  "va": "0x78c540",
+  "name": "face_to_face_clear_destination",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "78c540_face_to_face_clear_destination.c",
+  "role": "Clears the cached destination (0x26CF2B0 = 0x811C9DC5, the empty FNV hash).",
+  "size_bytes": 181,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:face_to_face_clear_destination:78c540",
+  "calls": []
+ },
+ {
+  "va": "0x795da0",
+  "name": "slice_set_task_prologue_intro_playback",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "795da0_slice_set_task_prologue_intro_playback.c",
+  "role": "Initial slice-set loading task: plays the prologue intro unless loading cinematics are suppressed ('was skipped due to suppressing cinematis').",
+  "size_bytes": 297,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:slice_set_task_prologue_intro_playback:795da0",
+  "calls": [
+   "0x766750"
+  ]
+ },
+ {
+  "va": "0x76b060",
+  "name": "matchmaking_update_host_enabled",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "76b060_matchmaking_update_host_enabled.c",
+  "role": "Matchmaking manager: per activity, whether this client may act as session host; warns 'identified as the host ... but the AH has not acknowledged this' while the activity host's membership does not name it.",
+  "size_bytes": 816,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:matchmaking_update_host_enabled:76b060",
+  "calls": [
+   "0x76b390"
+  ]
+ },
+ {
+  "va": "0x76b390",
+  "name": "matchmaking_ah_acknowledges_host",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "76b390_matchmaking_ah_acknowledges_host.c",
+  "role": "True when the activity client's membership host id (membership +0x5020, set only by 0x2A5390) equals the activity client's own id (+0xE68).",
+  "size_bytes": 482,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:matchmaking_ah_acknowledges_host:76b390",
+  "calls": [
+   "0x2a0840"
+  ]
+ },
+ {
+  "va": "0x2a0840",
+  "name": "activity_client_is_acknowledged_host",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "2a0840_activity_client_is_acknowledged_host.c",
+  "role": "membership (AC +0xE70) host id +0x5020 == AC +0xE68.",
+  "size_bytes": 21,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_is_acknowledged_host:2a0840",
+  "calls": [
+   "0x2a53a0"
+  ]
+ },
+ {
+  "va": "0x2a53a0",
+  "name": "membership_host_equals",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "2a53a0_membership_host_equals.c",
+  "role": "Compares membership +0x5020 (i64 host id) with a given id.",
+  "size_bytes": 18,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:membership_host_equals:2a53a0",
+  "calls": []
+ },
+ {
+  "va": "0x2a5390",
+  "name": "membership_set_host",
+  "subsystem": "omaha.networking",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": null,
+  "role": "Sets membership +0x5020 (i64 host id); not called directly anywhere in 01.33.",
+  "size_bytes": null,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:membership_set_host:2a5390",
+  "calls": []
+ },
+ {
+  "va": "0x92a3d0",
+  "name": "block_detect_thread",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night",
+  "file": "92a3d0_block_detect_thread.c",
+  "role": "BLOCK_DETECT thread (thread table 0x194C3A8): detects main-loop / job stalls and halts with 'hitch detected: mainloop world controller state ... stalled' (writes a crash folder). d1-native's D1_NO_BLOCK_DETECT disables it for software-rendered tests.",
+  "size_bytes": 2750,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:block_detect_thread:92a3d0",
   "calls": []
  }
 ]

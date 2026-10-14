@@ -38,6 +38,8 @@ struct Settings {
     double mouse_sensitivity = 2.0;
     bool mouse_invert = false;
     double mouse_zoom_scale = 1.0;
+    // skip the new-character intro cinematic
+    bool skip_intro = true;
 };
 
 void load_settings(const std::string& path);

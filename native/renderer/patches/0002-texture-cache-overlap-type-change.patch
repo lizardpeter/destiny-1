@@ -1,0 +1,14 @@
+--- a/src/video_core/texture_cache/texture_cache.cpp
++++ b/src/video_core/texture_cache/texture_cache.cpp
+@@ -327,7 +327,10 @@
+ 
+         // Size is greater but resources are not, because the tiling mode is different.
+         // Likely the address is reused for a image with a different tiling mode.
+-        if (image_info.tile_mode != cache_image.info.tile_mode) {
++        // d1-native: the same holds for a different image type (Destiny 1 places a 32^3
++        // colour-grading volume where a smaller 2D image lived).
++        if (image_info.tile_mode != cache_image.info.tile_mode ||
++            image_info.type != cache_image.info.type) {
+             if (safe_to_delete) {
+                 FreeImage(cache_image_id);
+             }

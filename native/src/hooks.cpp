@@ -104,8 +104,9 @@ static D1_SYSV uint32_t prereq_bypass(void* state, uint32_t prereq, void* ctx, i
 
 // ---- initial slice-set loading task 9 (eboot+0x7965A0): waits for the local player's unit
 // and the current activity-mode reference (resource 0x10, byte +0x1AC). Returns 1 while
-// waiting, 2 when done. D1_BYPASS=spawn (research) completes it once the local player has
-// a unit (player table DAT_0273EB80 +0xC0), to see what follows.
+// waiting, 2 when done. D1_BYPASS=spawn (research) completes it once the local player
+// exists (local player table DAT_0273EB80 +0xC0 = player datum). The player's unit
+// (+0xC4) is never spawned yet, so the game director shows the dead camera (black screen).
 using TaskFn = D1_SYSV uint32_t (*)(void*);
 static TaskFn g_task9_orig = nullptr;
 static D1_SYSV uint32_t task9_bypass(void* h) {
@@ -115,7 +116,8 @@ static D1_SYSV uint32_t task9_bypass(void* h) {
         auto* players = *reinterpret_cast<uint8_t**>(exe.base + 0x273EB80);
         if (players && *reinterpret_cast<int32_t*>(players + 0xC0) != -1) {
             static bool logged = false;
-            if (!logged) { logged = true; log("bypass: slice-set loading task 9 forced complete (player has a unit)"); }
+            if (!logged) { logged = true; log("bypass: slice-set loading task 9 forced complete (player exists, unit %d)",
+                                    *reinterpret_cast<int32_t*>(players + 0xC4)); }
             return 2;
         }
     }
@@ -137,11 +139,37 @@ using GuestBoolFn = D1_SYSV bool (*)();
 using ZoomMagFn = D1_SYSV float (*)(int32_t unit, int32_t zoom);
 using ZoomAxesFn = D1_SYSV void (*)(int32_t unit, float* yaw, float* pitch);
 static PlayerControlFn g_pc_orig = nullptr;
+static void trace_cameras();
 static int32_t g_mouse_test_dx = 0, g_mouse_test_dy = 0;  // D1_MOUSE_TEST=dx,dy (headless)
 static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32_t player, void* state,
                                         int32_t* control, float* action) {
     g_pc_orig(dt, f2, slot, player, state, control, action);
     if (player != 0 || !action) return;
+    trace_cameras();
+    if (getenv("D1_TRACE_CINE")) {  // research: why loading cinematics are suppressed
+        static int n = 0;
+        if (n++ == 0) {
+            const uint64_t b = rt().modules[0].base;
+            const uint8_t* sel = *reinterpret_cast<uint8_t**>(b + 0x26BC068);
+            const bool act = reinterpret_cast<GuestBoolFn>(b + 0x78C710)();
+            log("cine: activity selection byte0 %d (+0x12C %d), activity condition %d", sel ? sel[0] : -1,
+                sel ? sel[0x12C] : -1, act);
+            using PtrFn = D1_SYSV uint8_t* (*)(int32_t);
+            const uint8_t* a = reinterpret_cast<PtrFn>(b + 0x775770)(0);
+            if (a) {
+                log("cine: activity %p: A valid %d dest %#x, B valid %d B+0xE8 short %d, cached dest %#x", (const void*)a,
+                    a[0x4B8 + 0xE0] & 1, *reinterpret_cast<const uint32_t*>(a + 0x59C), a[0x9B8 + 0xE0] & 1,
+                    *reinterpret_cast<const int16_t*>(a + 0x9B8 + 0xE8 + 2), *reinterpret_cast<const uint32_t*>(b + 0x26CF2B0));
+                for (int off : {0x4B8, 0x9B8}) {
+                    for (int row = 0; row < 0x110; row += 32) {
+                        char hex[3 * 32 + 1] = {};
+                        for (int i = 0; i < 32; ++i) std::snprintf(hex + 3 * i, 4, "%02x ", a[off + row + i]);
+                        log("cine: +%#x %s", off + row, hex);
+                    }
+                }
+            }
+        }
+    }
     int32_t dx = 0, dy = 0;
     bool have = render::take_mouse_motion(dx, dy);
     if (!have && (g_mouse_test_dx || g_mouse_test_dy)) dx = g_mouse_test_dx, dy = g_mouse_test_dy, have = true;
@@ -184,6 +212,56 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     action[6] += pitch;
     static bool announced = false;
     if (!announced) { announced = true; log("input: mouse look active (%.2f sensitivity)", cfg.mouse_sensitivity); }
+}
+
+// ---- loading-cinematic suppression (eboot+0x766750): investment activity selection
+// (*0x26BC068) byte 0 == 1, or the face-to-face join check (0x78C710). D1_TRACE_CINE logs
+// every change of the result with the selection's first bytes (research).
+using CineFn = D1_SYSV bool (*)();
+static CineFn g_cine_orig = nullptr;
+static D1_SYSV bool cine_suppressed_hook() {
+    const bool r = g_cine_orig();
+    static std::atomic<int> last{-1};
+    if (last.exchange(r) != int(r)) {
+        const uint8_t* sel = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BC068);
+        char hex[3 * 24 + 1] = {};
+        for (int i = 0; sel && i < 24; ++i) std::snprintf(hex + 3 * i, 4, "%02x ", sel[i]);
+        log("cine: loading cinematics %s (selection %s; state %s)", r ? "suppressed" : "allowed", hex, game_state());
+    }
+    return r;
+}
+
+// ---- camera trace (D1_TRACE_CAMERA, research): director camera switches (0x8E4EE0
+// set_camera(director, type, force, float blend); the camera lives inline at director +0x10,
+// its vtable slot 0 returns the type) and, in-world, each seen director's current camera.
+using SetCameraFn = D1_SYSV uint64_t (*)(uint8_t*, int32_t, uint32_t, float);
+static SetCameraFn g_set_camera_orig = nullptr;
+static std::atomic<uint8_t*> g_directors[4];
+static int32_t camera_type(uint8_t* director) {
+    auto* cam = director + 0x10;
+    auto** vt = *reinterpret_cast<void***>(cam);
+    return reinterpret_cast<D1_SYSV int32_t (*)(void*)>(vt[0])(cam);
+}
+static D1_SYSV uint64_t set_camera_hook(uint8_t* director, int32_t type, uint32_t force, float blend) {
+    const int32_t before = camera_type(director);
+    const uint64_t r = g_set_camera_orig(director, type, force, blend);
+    for (auto& d : g_directors) {
+        uint8_t* expect = nullptr;
+        if (d.load() == director || d.compare_exchange_strong(expect, director)) break;
+    }
+    log("camera: director %p (vtable +%#llx) type %d -> %d (requested %d%s, state %s)", (void*)director,
+        (unsigned long long)(*reinterpret_cast<uint64_t*>(director) - rt().modules[0].base), before,
+        camera_type(director), type, (force & 0xFF) ? ", forced" : "", game_state());
+    return r;
+}
+static void trace_cameras() {
+    static auto last = std::chrono::steady_clock::now();
+    if (!g_set_camera_orig || std::chrono::steady_clock::now() - last < std::chrono::seconds(5)) return;
+    last = std::chrono::steady_clock::now();
+    for (auto& d : g_directors)
+        if (uint8_t* p = d.load())
+            log("camera: director %p current type %d (camera vtable +%#llx)", (void*)p, camera_type(p),
+                (unsigned long long)(*reinterpret_cast<uint64_t*>(p + 0x10) - rt().modules[0].base));
 }
 
 // ---- DemonWare transport status (eboot+0x2EB340 "started", eboot+0x2EBD40 "failed")
@@ -344,6 +422,19 @@ static D1_SYSV void step_trace_hook(void* h) {
     StepTrace& t = g_step_traces[I];
     auto* f = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + t.field);
     const int32_t a = f[0], b = f[1];
+    // character:prologue (0x7A1470) step 2 plays the intro cinematic on the player object at
+    // 0x295C0A0 (started by 0x33E0D0, playing while 0x33E140). The game stops it itself
+    // (0x33E110) on Square/Triangle once world controller +0x2E39 allows skipping;
+    // skip_intro stops it right away.
+    if (t.off == 0x7A1470 && a == 2 && settings().skip_intro) {
+        static bool done = false;
+        if (!done) {
+            done = true;
+            const uint64_t base = rt().modules[0].base;
+            reinterpret_cast<D1_SYSV void (*)(void*)>(base + 0x33E110)(reinterpret_cast<void*>(base + 0x295C0A0));
+            log("hooks: intro cinematic skipped (skip_intro)");
+        }
+    }
     t.orig(h);
     if (f[0] != a || f[1] != b) log("bootflow: %s step %d.%d -> %d.%d", t.name, a, b, f[0], f[1]);
 }
@@ -410,6 +501,18 @@ void install_game_hooks() {
         g_task9_orig = reinterpret_cast<TaskFn>(hook_function(exe.base + 0x7965A0, reinterpret_cast<const void*>(&task9_bypass)));
         log("hooks: slice-set loading task 9 bypass %s", g_task9_orig ? "on" : "FAILED");
     }
+    // BLOCK_DETECT thread (entry 0x92A3D0, thread table 0x194C3A8): halts the game with
+    // "hitch detected ... stalled" when the main loop stops progressing. D1_NO_BLOCK_DETECT
+    // (slow software-rendered test runs) makes the thread exit at once.
+    if (getenv("D1_NO_BLOCK_DETECT")) {
+        const uint8_t ret0[3] = {0x31, 0xC0, 0xC3};
+        std::memcpy(reinterpret_cast<void*>(exe.base + 0x92A3D0), ret0, 3);
+        log("hooks: BLOCK_DETECT hitch watchdog off");
+    }
+    if (getenv("D1_TRACE_CAMERA"))
+        g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
+    if (getenv("D1_TRACE_CINE"))
+        g_cine_orig = reinterpret_cast<CineFn>(hook_function(exe.base + 0x766750, reinterpret_cast<const void*>(&cine_suppressed_hook)));
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "transport")) {
         replace_function(exe.base + 0x2EB340, reinterpret_cast<const void*>(&transport_started));
         replace_function(exe.base + 0x2EBD40, reinterpret_cast<const void*>(&transport_failed));

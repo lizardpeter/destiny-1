@@ -917,3 +917,34 @@ slot x 0x1A0 + 0x18 yaw, +0x1C pitch) moves by exactly the injected delta every 
 (yaw 0 -> 6.2525 -> 6.2217 ..., i.e. -0.0307 rad per frame wrapping at 2pi; pitch +0.0077),
 so mouse counts reach the aim 1:1 with no smoothing or acceleration; mouse right turns
 right, mouse up looks up.
+
+## 2026-10-14: audio, unlimited frame rate, intro skip, and why the world is black
+
+- **Audio**: the game opens one sceAudioOut port (1024 frames, 48 kHz, format 7 = float
+  7.1 "std" order: L R C LFE side back) and Wwise mixes everything in software; no AJM
+  codec instance is created through the intro cinematic. d1-native now plays that port
+  through SDL (device downmix), paced by the device queue (~3 buffers).
+- **Frame rate**: pacing and tick length share time-control +0x08. The main loop waits
+  until last + period (`add rcx,[rsi+8]` at 0x594A3B); game_time (0x591710) runs
+  elapsed / period ticks. `fps = 0` (default) NOPs the wait and sets the period to each
+  frame's real duration (1-33.4 ms) just before 0x591710: one tick per rendered frame.
+- **Intro cinematic**: character:prologue (0x7A1470) step 2 plays it on the cinematic
+  player at 0x295C0A0; the game's own skip (Square/Triangle) is gated by world controller
+  +0x2E39. `skip_intro` calls the stop (0x33E110) instead.
+- **Loading cinematics** are suppressed by design for the prologue launch: the activity
+  selection (*0x26BC068) is {kind 1, activity 164, insertion -1} at load (0x766750), so
+  prologue intro playback / cinematic exchange / filler tasks are skipped.
+- **Black screen in activity:in_world**: the game director (c_game_director, update
+  0x8ED0F0) switches to camera type 5, c_dead_camera (vtable 0x1949ED0), every frame,
+  because the local player's unit (local player table 0x273EB80 +0xC4, read by 0x9236D0)
+  is -1. +0xC0 (player datum) is set; the player never gets a body. The null GPU still
+  counts ~440 draws per frame (UI / loading layers), and the software-rendered frames
+  are pure black (mean 0). Units are attached by 0x911C50 (player datum +0x644); the only
+  caller passing a real unit restores a previous one (0x90E840), so the spawn path itself
+  is next. Loading task 9 waits for exactly this unit; D1_BYPASS=spawn hides it.
+- shadPS4 texture cache: an equal-address overlap where only the image type differs
+  (a 32x32x32 RGBA8 volume where a smaller 2D image lived) hit UNREACHABLE; patched to
+  treat it like a tiling-mode reuse (renderer/patches/0002).
+- Test bench: lavapipe caps one allocation at 2 GiB and buffers at 4 GiB - 1, below
+  shadPS4's 4 GiB sparse arenas (test builds use 2 GiB arenas); the game's BLOCK_DETECT
+  thread (0x92A3D0) halts slow runs (D1_NO_BLOCK_DETECT).
