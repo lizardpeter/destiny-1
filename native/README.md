@@ -106,6 +106,10 @@ engine-side patch (not done yet).
 | `D1_RENDER_ASYNC=1` | (renderer build) draw a frame only when the renderer is idle, otherwise pass it through the null GPU without waiting |
 | `D1_RENDERER_LATE=<s>` | (renderer build) null GPU until `<s>` seconds into `activity:in_world`, then start the renderer |
 | `D1_GPU_LOG_ALL=1` | (renderer build) don't throttle repeated renderer warnings |
+| `D1_GPU_MEMORY_MB=<n>` | (renderer build) texture cache memory budget; integrated GPUs now default to the driver budget minus a quarter (at most 4 GB) instead of leaving 8 GB to the system |
+| `D1_PROFILE_GPU=<file>` | (Linux renderer build) sample the GPU thread's call stacks every 1 ms of its CPU time into `<file>` |
+| `D1_TRACE_IMAGE=<hex>` / `D1_TRACE_STALE=1` | (renderer build) log texture cache lookups covering an address / new images created over GPU-written data |
+| `D1_NO_RT_ARRAY_MAX=1` | (renderer build) turn off patch 0011's full-size binding of render-target arrays drawn one slice at a time |
 | `D1_NO_ARRAY_TO_VOLUME=1` / `D1_NO_VOLUME_SLICES=1` / `D1_NO_OVERLAP_GROW=1` | (renderer build) turn off the texture cache fixes for the colour-grading LUT (patches 0009 / 0004 / 0007) |
 | `D1_INLINE_FETCH=1` | (renderer build) translate vertex fetch shaders inline as buffer loads (shadPS4's slower debugging path) |
 | `D1_GPU_ID=<n>` | (renderer build) use the n-th Vulkan device instead of the automatic pick |

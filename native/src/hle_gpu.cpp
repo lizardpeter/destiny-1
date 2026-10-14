@@ -367,6 +367,8 @@ static std::mutex g_gnm_mutex;
 static std::vector<Equeue*> g_eop_eqs;
 static std::atomic<uint64_t> g_packets{0};
 static uint64_t g_op_counts[256];
+static bool g_pred_on = false;            // SET_PREDICATION active (null GPU statistics)
+static uint64_t g_pred_draws = 0, g_pred_sets = 0;
 
 // D1_GPU_STATS=1 (null GPU): every 300 flips, the average draws / dispatches / packets per
 // frame, which shows whether the game is submitting a scene or only UI / fades.
@@ -377,9 +379,11 @@ static void gpu_stats(uint64_t frame) {
     const uint64_t draw = g_op_counts[0x27] + g_op_counts[0x2D] + g_op_counts[0x35] + g_op_counts[0x38] + g_op_counts[0x25];
     const uint64_t disp = g_op_counts[0x15] + g_op_counts[0x16];
     const uint64_t pk = g_packets.load();
-    log("gpu stats @%llu: %.1f draws, %.1f dispatches, %.0f packets per frame", (unsigned long long)frame,
-        (draw - last_draw) / 300.0, (disp - last_disp) / 300.0, (pk - last_pk) / 300.0);
-    last_draw = draw, last_disp = disp, last_pk = pk;
+    static uint64_t last_pd = 0, last_ps = 0;
+    log("gpu stats @%llu: %.1f draws (%.1f predicated, %.1f SET_PREDICATION), %.1f dispatches, %.0f packets per frame",
+        (unsigned long long)frame, (draw - last_draw) / 300.0, (g_pred_draws - last_pd) / 300.0,
+        (g_pred_sets - last_ps) / 300.0, (disp - last_disp) / 300.0, (pk - last_pk) / 300.0);
+    last_draw = draw, last_disp = disp, last_pk = pk, last_pd = g_pred_draws, last_ps = g_pred_sets;
 }
 
 static void signal_eop() {
@@ -410,7 +414,12 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
         const uint32_t* b = p + i + 1;
         ++g_op_counts[op];
         ++g_packets;
+        if (g_pred_on && (h & 1) && (op == 0x27 || op == 0x2D || op == 0x35 || op == 0x38 || op == 0x25)) ++g_pred_draws;
         switch (op) {
+        case 0x20:  // SET_PREDICATION: operation in bits 18:16 of the second dword (0 = off)
+            g_pred_on = ((b[1] >> 16) & 7) != 0;
+            ++g_pred_sets;
+            break;
         case 0x47: {  // EVENT_WRITE_EOP
             uint64_t addr = b[1] | (uint64_t(b[2] & 0xFFFF) << 32);
             uint32_t data_sel = b[2] >> 29, int_sel = (b[2] >> 24) & 3;

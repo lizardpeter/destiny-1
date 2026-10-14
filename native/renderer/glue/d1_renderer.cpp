@@ -46,6 +46,8 @@
 void d1_set_pipeline_cache_dir(const char* dir);  // glue_common.cpp
 extern std::atomic<u64> d1_gpu_busy_ns, d1_gpu_wait_ns;  // glue_common.cpp, patch 0006
 extern std::atomic<u64> d1_gpu_draws, d1_gpu_dispatches;  // glue_common.cpp, patch 0008
+extern std::atomic<u64> d1_tex_uploads, d1_tex_upload_bytes, d1_tex_gc_frees, d1_tex_mem_used,
+    d1_tex_mem_budget;  // glue_common.cpp, patch 0010
 
 namespace d1 {
 void log(const char* fmt, ...);
@@ -53,6 +55,9 @@ const char* game_state();
 }
 
 namespace d1::render {
+
+void start_gpu_profiler();  // gpu_profiler.cpp
+void gpu_profiler_dump();
 
 using namespace AmdGpu;
 using Libraries::VideoOut::BufferAttributeGroup;
@@ -202,6 +207,16 @@ void update_stats() {
                 g->fps, g->game_ms, g->wait_ms, g->faults_per_frame, g->fault_ms, g->lag_ms, g->gpu_thread_ms,
                 g->device_wait_ms, g->draws_per_frame, g->dispatches_per_frame, g->compiles_per_s, (unsigned long long)g->compiles_total,
                 (unsigned long long)g->msgs_per_s);
+        static u64 up0, ub0, gc0, fl0;
+        static auto t0 = now;
+        const u64 up = d1_tex_uploads, ub = d1_tex_upload_bytes, gc = d1_tex_gc_frees;
+        const double fr = double(std::max<u64>(1, n - fl0));
+        const double secs = std::max(1e-3, std::chrono::duration<double>(now - t0).count());
+        d1::log("textures: %.1f uploads (%.2f MB) per frame | %.1f evictions/s | memory %llu of %llu MB", (up - up0) / fr,
+                (ub - ub0) / fr / 1048576.0, (gc - gc0) / secs, (unsigned long long)(d1_tex_mem_used >> 20),
+                (unsigned long long)(d1_tex_mem_budget >> 20));
+        up0 = up, ub0 = ub, gc0 = gc, fl0 = n, t0 = now;
+        gpu_profiler_dump();
     }
 }
 
@@ -487,6 +502,7 @@ bool init(const Callbacks& cb) {
         return false;
     }
     Core::Memory::Instance()->SetRasterizer(g->rasterizer.get());
+    start_gpu_profiler();
 
     static int irq_uid;
     Platform::IrqC::Instance()->Register(Platform::InterruptId::GfxEop, [](Platform::InterruptId) { g->cb.eop(); },

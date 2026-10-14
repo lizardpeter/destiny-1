@@ -1,0 +1,168 @@
+diff -ruN a/src/video_core/texture_cache/texture_cache.cpp b/src/video_core/texture_cache/texture_cache.cpp
+--- a/src/video_core/texture_cache/texture_cache.cpp	2026-10-14 13:26:33.678539153 -0400
++++ b/src/video_core/texture_cache/texture_cache.cpp	2026-10-14 13:54:25.653032100 -0400
+@@ -1,3 +1,4 @@
++#include <unordered_map>
+ #include <atomic>
+ #include <cstdlib>
+ // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
+@@ -25,6 +26,9 @@
+ // d1-native glue counters (glue_common.cpp): texture uploads and garbage collection
+ extern std::atomic<u64> d1_tex_uploads, d1_tex_upload_bytes, d1_tex_gc_frees, d1_tex_mem_used, d1_tex_mem_budget;
+ 
++// d1-native: environment switches read once per call site (getenv per draw showed in profiles)
++#define D1_ENV_SET(name) ([] { static const bool set = std::getenv(name) != nullptr; return set; }())
++
+ namespace VideoCore {
+ 
+ static constexpr u32 MAX_IMAGES = std::numeric_limits<u16>::max();
+@@ -333,7 +337,7 @@
+             image_info.resources > cache_image.info.resources &&
+             image_info.resources.levels >= cache_image.info.resources.levels &&
+             image_info.resources.layers >= cache_image.info.resources.layers &&
+-            !std::getenv("D1_NO_OVERLAP_GROW")) {
++            !D1_ENV_SET("D1_NO_OVERLAP_GROW")) {
+             return {ExpandImage(image_info, cache_image_id), -1, -1};
+         }
+ 
+@@ -526,6 +530,18 @@
+     return {merged_image_id, -1, -1};
+ }
+ 
++
++// d1-native debugging: D1_TRACE_IMAGE=<hex address> logs every lookup that covers it.
++static u64 D1TraceAddr() {
++    static const u64 a = std::getenv("D1_TRACE_IMAGE") ? std::strtoull(std::getenv("D1_TRACE_IMAGE"), nullptr, 16) : 0;
++    return a;
++}
++static std::string D1Info(const VideoCore::ImageInfo& i) {
++    return fmt::format("{} type {} {}x{}x{} lv {} ly {} tile {:#x} gsize {:#x} pitch {}", vk::to_string(i.pixel_format),
++                       u32(i.type), i.size.width, i.size.height, i.size.depth, i.resources.levels, i.resources.layers,
++                       u32(i.tile_mode), i.guest_size, i.pitch);
++}
++
+ ImageId TextureCache::ExpandImage(const ImageInfo& info, ImageId image_id) {
+     const auto new_image_id = slot_images.Insert(instance, runtime, slot_image_views, info);
+     RegisterImage(new_image_id);
+@@ -546,6 +562,27 @@
+ }
+ 
+ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
++    // d1-native: a tiled render-target array written one slice at a time with a growing slice
++    // range (Destiny 1 binds its colour-grading LUT as layers 0..k to draw slice k, k = 0..31).
++    // Each bind needed a bigger image, so the cache created and copied 32 images per frame.
++    // Remember the largest array seen at that address and bind that size from the first slice.
++    if (desc.type == BindingType::RenderTarget && desc.info.props.is_tiled &&
++        desc.info.type == AmdGpu::ImageType::Color2D && desc.info.resources.levels == 1 &&
++        desc.info.num_samples == 1 && !D1_ENV_SET("D1_NO_RT_ARRAY_MAX")) {
++        auto& di = desc.info;
++        const u64 key = di.guest_address ^ (u64(di.tile_mode) << 52) ^ (u64(di.size.width) << 40) ^
++                        (u64(di.size.height) << 28) ^ (u64(di.pixel_format) << 16);
++        static std::unordered_map<u64, u32> max_layers;
++        u32& m = max_layers[key];
++        if (m > di.resources.layers) {
++            const u32 slice = di.guest_size / di.resources.layers;
++            di.resources.layers = m;
++            di.guest_size = slice * m;
++            di.mips_layout[0].size = di.guest_size;
++        } else if (di.resources.layers > 1) {
++            m = di.resources.layers;
++        }
++    }
+     const auto& info = desc.info;
+     ASSERT(info.guest_address != 0);
+ 
+@@ -554,6 +591,14 @@
+                          [&](ImageId image_id, Image& image) { image_ids.push_back(image_id); });
+ 
+     ImageId image_id{};
++    const bool d1_trace = D1TraceAddr() && info.guest_address <= D1TraceAddr() &&
++                          D1TraceAddr() < info.guest_address + info.guest_size;
++    if (d1_trace) {
++        LOG_WARNING(Render_Vulkan, "TRACE find {:#x} bind {} req {}", info.guest_address, u32(desc.type), D1Info(info));
++        for (const auto& c : image_ids)
++            LOG_WARNING(Render_Vulkan, "TRACE   cand {} {:#x} {} flags {:#x}", c.index, slot_images[c].info.guest_address,
++                        D1Info(slot_images[c].info), u32(slot_images[c].flags));
++    }
+ 
+     // Check for a perfect match first
+     for (const auto& cache_id : image_ids) {
+@@ -589,7 +634,7 @@
+     // it as 3D). Same bytes, layers == depth: build the volume from the array's contents. Without
+     // this the volume was created from guest memory, which never sees GPU writes, so the colour
+     // grading used stale data (tinted, crushed image).
+-    if (!image_id && info.type == AmdGpu::ImageType::Color3D && !std::getenv("D1_NO_ARRAY_TO_VOLUME")) {
++    if (!image_id && info.type == AmdGpu::ImageType::Color3D && !D1_ENV_SET("D1_NO_ARRAY_TO_VOLUME")) {
+         for (const auto& cache_id : image_ids) {
+             auto& cache_image = slot_images[cache_id];
+             const auto& ci = cache_image.info;
+@@ -636,7 +681,7 @@
+             info.size.height == image_resolved.info.size.height &&
+             info.resources.levels <= image_resolved.info.resources.levels &&
+             u32(std::max(view_slice, 0)) + info.resources.layers <= image_resolved.info.size.depth &&
+-            !std::getenv("D1_NO_VOLUME_SLICES");
++            !D1_ENV_SET("D1_NO_VOLUME_SLICES");
+         if (exact_fmt && info.pixel_format != image_resolved.info.pixel_format) {
+             // Cannot reuse this image as we need the exact requested format.
+             image_id = {};
+@@ -648,7 +693,7 @@
+                 image_resolved.info.type != AmdGpu::ImageType::Color3D &&
+                 info.resources.levels >= image_resolved.info.resources.levels &&
+                 info.resources.layers >= image_resolved.info.resources.layers &&
+-                !std::getenv("D1_NO_OVERLAP_GROW")) {
++                !D1_ENV_SET("D1_NO_OVERLAP_GROW")) {
+                 // d1-native: same bytes, same size, more layers or levels (Destiny 1 binds its
+                 // colour-grading slices as one slice and as an 8-layer array): grow the cached
+                 // image once, keeping its contents, instead of rebuilding it on every bind.
+@@ -677,6 +722,28 @@
+         }
+     }
+     // Create and register a new image
++    if (!image_id && D1_ENV_SET("D1_TRACE_STALE")) {
++        // d1-native debugging: a new image over bytes the GPU wrote through another image is
++        // filled from guest memory, which doesn't have those writes (how the LUT bug looked).
++        for (const auto& cache_id : image_ids) {
++            const auto& ci = slot_images[cache_id];
++            if (True(ci.flags & ImageFlagBits::GpuModified) && ci.info.guest_address <= info.guest_address &&
++                info.guest_address < ci.info.guest_address + ci.info.guest_size) {
++                static std::unordered_map<u64, u32> seen;
++                if (seen[info.guest_address ^ (u64(info.type) << 60)]++ < 3) {
++                    LOG_WARNING(Render_Vulkan,
++                                "Stale image: {:#x} {} type {} {}x{}x{} layers {} tile {:#x} (bind {}) over GPU-written {:#x} {} "
++                                "type {} {}x{}x{} layers {} tile {:#x}",
++                                info.guest_address, vk::to_string(info.pixel_format), u32(info.type), info.size.width,
++                                info.size.height, info.size.depth, info.resources.layers, u32(info.tile_mode),
++                                u32(desc.type), ci.info.guest_address, vk::to_string(ci.info.pixel_format),
++                                u32(ci.info.type), ci.info.size.width, ci.info.size.height, ci.info.size.depth,
++                                ci.info.resources.layers, u32(ci.info.tile_mode));
++                }
++                break;
++            }
++        }
++    }
+     if (!image_id) {
+         image_id = slot_images.Insert(instance, runtime, slot_image_views, info);
+         RegisterImage(image_id);
+@@ -685,6 +752,9 @@
+     Image& image = slot_images[image_id];
+     image.tick_accessed_last = scheduler.CurrentTick();
+     TouchImage(image);
++    if (d1_trace) {
++        LOG_WARNING(Render_Vulkan, "TRACE   -> {} {} mip {} slice {}", image_id.index, D1Info(image.info), view_mip, view_slice);
++    }
+ 
+     // If the image requested is a subresource of the image from cache record its location.
+     if (view_mip > 0) {
+@@ -1071,7 +1141,11 @@
+ 
+ void TextureCache::GarbageCollectImages() {
+     if (instance.CanReportMemoryUsage()) {
+-        total_used_memory = instance.GetDeviceMemoryUsage();
++        // d1-native: the budget query is a driver/kernel call (lavapipe reads /proc); it ran on
++        // every submit. Refresh it every 32 collector ticks.
++        if ((gc_tick & 31) == 0 || total_used_memory == 0) {
++            total_used_memory = instance.GetDeviceMemoryUsage();
++        }
+     }
+     d1_tex_mem_used = total_used_memory;
+     if (total_used_memory < trigger_gc_memory) {

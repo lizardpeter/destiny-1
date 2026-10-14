@@ -29,6 +29,8 @@ void log(const char* fmt, ...);
 std::atomic<u64> d1_gpu_busy_ns{0};  // patch 0006: GPU-thread busy time
 std::atomic<u64> d1_gpu_wait_ns{0};  // patch 0006: time blocked on device execution
 std::atomic<u64> d1_gpu_draws{0}, d1_gpu_dispatches{0};  // patch 0008
+std::atomic<u64> d1_tex_uploads{0}, d1_tex_upload_bytes{0}, d1_tex_gc_frees{0}, d1_tex_mem_used{0},
+    d1_tex_mem_budget{0};  // patch 0010
 
 namespace Common::Log {
 

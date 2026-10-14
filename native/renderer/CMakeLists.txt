@@ -103,7 +103,8 @@ add_library(d1_shad_video STATIC ${REL_SOURCES}
   ${CMAKE_CURRENT_SOURCE_DIR}/glue/core_glue.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_renderer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_window.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_present.cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/glue/d1_present.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/glue/gpu_profiler.cpp)
 add_dependencies(d1_shad_video d1_host_shaders)
 target_compile_features(d1_shad_video PRIVATE cxx_std_23)
 # shims first so they override emulator-core headers
