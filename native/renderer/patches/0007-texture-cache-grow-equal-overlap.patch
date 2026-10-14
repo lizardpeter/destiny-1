@@ -23,3 +23,56 @@
          // Size and resources are less than or equal, use image view.
          if (image_info.pixel_format != cache_image.info.pixel_format ||
              image_info.guest_size <= cache_image.info.guest_size || pow2_padding_only) {
+@@ -589,21 +605,37 @@
+         } else if (!slices_of_volume && image_resolved.info.resources < info.resources) {
+             // The image was clearly picked up wrong.
+             // d1-native: say which images, so the overlap can be fixed rather than recreated.
+-            LOG_WARNING(Render_Vulkan,
+-                        "Image overlap resolve failed: requested {:#x} {} {}x{}x{} levels {} layers {} "
+-                        "tile {:#x} size {:#x}; resolved {:#x} {} {}x{}x{} levels {} layers {} tile {:#x} "
+-                        "size {:#x} (view mip {} slice {})",
+-                        info.guest_address, vk::to_string(info.pixel_format), info.size.width,
+-                        info.size.height, info.size.depth, info.resources.levels,
+-                        info.resources.layers, u32(info.tile_mode), info.guest_size,
+-                        image_resolved.info.guest_address,
+-                        vk::to_string(image_resolved.info.pixel_format),
+-                        image_resolved.info.size.width, image_resolved.info.size.height,
+-                        image_resolved.info.size.depth, image_resolved.info.resources.levels,
+-                        image_resolved.info.resources.layers, u32(image_resolved.info.tile_mode),
+-                        image_resolved.info.guest_size, view_mip, view_slice);
+-            FreeImage(image_id);
+-            image_id = {};
++            if (image_resolved.info.pixel_format == info.pixel_format &&
++                image_resolved.info.size == info.size &&
++                image_resolved.info.type != AmdGpu::ImageType::Color3D &&
++                info.resources.levels >= image_resolved.info.resources.levels &&
++                info.resources.layers >= image_resolved.info.resources.layers &&
++                !std::getenv("D1_NO_OVERLAP_GROW")) {
++                // d1-native: same bytes, same size, more layers or levels (Destiny 1 binds its
++                // colour-grading slices as one slice and as an 8-layer array): grow the cached
++                // image once, keeping its contents, instead of rebuilding it on every bind.
++                LOG_WARNING(Render_Vulkan, "Growing image {:#x} to {} levels {} layers (was {} / {})",
++                            info.guest_address, info.resources.levels, info.resources.layers,
++                            image_resolved.info.resources.levels, image_resolved.info.resources.layers);
++                image_id = ExpandImage(info, image_id);
++                view_mip = view_slice = -1;
++            } else {
++                LOG_WARNING(Render_Vulkan,
++                            "Image overlap resolve failed: requested {:#x} {} {}x{}x{} levels {} layers {} "
++                            "tile {:#x} size {:#x}; resolved {:#x} {} {}x{}x{} levels {} layers {} tile {:#x} "
++                            "size {:#x} (view mip {} slice {})",
++                            info.guest_address, vk::to_string(info.pixel_format), info.size.width,
++                            info.size.height, info.size.depth, info.resources.levels,
++                            info.resources.layers, u32(info.tile_mode), info.guest_size,
++                            image_resolved.info.guest_address,
++                            vk::to_string(image_resolved.info.pixel_format),
++                            image_resolved.info.size.width, image_resolved.info.size.height,
++                            image_resolved.info.size.depth, image_resolved.info.resources.levels,
++                            image_resolved.info.resources.layers, u32(image_resolved.info.tile_mode),
++                            image_resolved.info.guest_size, view_mip, view_slice);
++                FreeImage(image_id);
++                image_id = {};
++            }
+         }
+     }
+     // Create and register a new image
