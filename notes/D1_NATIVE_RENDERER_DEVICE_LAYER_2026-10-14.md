@@ -82,6 +82,32 @@ Buffer objects keep their GPU address at `+0x28` (vertex) or `+0x30` (index).
 Main draw callers, per frame: `0x82BE10` (2,111), `0x82BD10` (2,099), `0x8A9CD0` (1,463),
 `0x7E16A0` (758), `0x7DA370` (303), `0x845F10` (194).
 
+## Scale of a frame (observer, `D1_NATIVE_GFX=observe`)
+
+Measured over 600 frames in-world at the prologue spawn with the null GPU. Per-frame
+averages and distinct counts are over those frames.
+
+| Measure | Value |
+|---|---|
+| draws per frame | 7,480–7,530 |
+| texture binds per frame | 2,080–2,250 |
+| vertex buffer binds per frame | ~8,800 |
+| constant allocations per frame | ~9,500 (~865 KB) |
+| render-target sets per frame | 21 (≈ passes) |
+| device instances | **5, used from 4 threads** (the engine already records in parallel) |
+| distinct vertex / pixel shaders | ~81 / ~233 |
+| distinct VS+PS programs | ~263 |
+| vertex declarations | ~40 |
+| distinct pipeline states | ~370–400 (program, declaration, primitive, blend, depth, raster, stencil, target format) |
+| distinct textures | ~310 |
+| distinct vertex / index buffers | ~1,050 / ~510 |
+| color targets | 19 |
+
+These numbers are small enough to precompile every pipeline and to create every resource
+once. Because there are four recording threads, the native renderer can record Vulkan
+command buffers in parallel (one secondary command buffer or command pool per device
+instance).
+
 ## Native renderer plan (outline)
 
 1. **Hook the device API.** Keep the engine's own redundancy caches (it already skips

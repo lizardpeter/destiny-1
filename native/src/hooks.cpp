@@ -81,6 +81,11 @@ static void* hook_function(uint64_t guest, const void* host) {
     return tramp;
 }
 
+// Exported for other subsystems (native_gfx.cpp): hook an eboot function by offset.
+void* hook_eboot_function(uint64_t off, const void* host) {
+    return hook_function(rt().modules[0].base + off, host);
+}
+
 // ---- bootflow prerequisite bypass (eboot+0x792ED0)
 // int check_prerequisite(state*, int prereq, ctx*, int* reason): 0 satisfied, 1 pending, 2 failed.
 // With D1_BYPASS=prereq a failed prerequisite is logged and reported as satisfied.

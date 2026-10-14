@@ -11,6 +11,16 @@ toward) while that happens.
   (see `notes/D1_NATIVE_RENDERER_DEVICE_LAYER_2026-10-14.md`). shadPS4 code may be studied
   and reused (for example its GCN → SPIR-V shader translator). It stays the fallback until
   the native path covers everything.
+- **Vulkan 1.4 (latest core version).** The native renderer targets Vulkan 1.4 core and
+  uses its features directly:
+  - dynamic rendering and dynamic rendering local read;
+  - synchronization2;
+  - push descriptors (core in 1.4);
+  - maintenance5/6;
+  - host image copy where the device exposes it.
+
+  Roadmap 2026 features such as `VK_EXT_descriptor_heap`, which is still provisional, are
+  optional extras only, never requirements.
 - **Keep the render resolution option** (`render_resolution` / `D1_RENDER_RESOLUTION`) and
   the window, fullscreen and v-sync options.
 

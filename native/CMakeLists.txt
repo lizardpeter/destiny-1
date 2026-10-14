@@ -39,6 +39,7 @@ add_executable(d1-native
   src/hle_http.cpp
   src/hle_npwebapi.cpp
   src/hooks.cpp
+  src/native_gfx.cpp
   src/settings.cpp
   src/discord.cpp
   ${IMPORT_NAMES})

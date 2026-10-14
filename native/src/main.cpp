@@ -41,6 +41,7 @@ void register_guest_thread(const char* name);
 void dump_all_threads();
 void print_gpu_summary();
 void install_game_hooks();
+void native_gfx_install();
 void print_call_counts();
 struct Thread;
 Thread* ensure_self(const char* name);
@@ -229,6 +230,7 @@ int main(int argc, char** argv) {
         }
         link_all();
         install_game_hooks();
+        native_gfx_install();
     } catch (const std::exception& e) {
         log("load failed: %s", e.what());
         os::error_box(std::string("Could not load the game: ") + e.what() +

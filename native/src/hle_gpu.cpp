@@ -324,6 +324,7 @@ HLE("sceVideoOutColorSettingsSetGamma_", vo_noop)
 HLE("sceVideoOutAdjustColor_", vo_noop)
 
 static std::atomic<uint64_t> g_frames{0};
+uint64_t gpu_flip_count() { return g_frames.load(); }
 static void gpu_stats(uint64_t frame);
 static void do_flip(int32_t index, int64_t arg) {
     std::vector<Equeue*> qs;
