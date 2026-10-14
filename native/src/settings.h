@@ -22,7 +22,7 @@ struct Settings {
     int window_height = 720;
     bool fullscreen = false;
     // "on" (vsync, Fifo), "off" (Mailbox: no vsync wait, no tearing), "off-tearing" (Immediate)
-    std::string vsync = "off";
+    std::string vsync = "off-tearing";
     // stats overlay (FPS, resolutions, v-sync, GPU) shown at start; F3 toggles it in game
     bool overlay = false;
     // frame-rate cap for the game's own limiter; 0 = unlimited (one game tick per frame)

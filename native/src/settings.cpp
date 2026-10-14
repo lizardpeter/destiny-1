@@ -36,9 +36,10 @@ fullscreen = false             # [D1_FULLSCREEN=1]
 
 # V-sync: on | off | off-tearing
 #   on          wait for the display refresh (smoothest, adds latency)
-#   off         present the newest frame without waiting, no tearing (default)
-#   off-tearing present immediately (lowest latency, may tear)
-vsync = off                    # [D1_VSYNC]
+#   off         present the newest frame at the next refresh, no tearing
+#   off-tearing present immediately (lowest latency, may tear; default). With G-Sync /
+#               FreeSync, cap fps a few frames under the refresh rate to avoid tearing.
+vsync = off-tearing            # [D1_VSYNC]
 
 # Stats overlay (FPS, render/window resolution, v-sync, GPU). F3 toggles it while running.
 overlay = false                # [D1_OVERLAY=1]
