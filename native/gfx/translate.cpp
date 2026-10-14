@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -748,10 +749,15 @@ void Translator::emit_interp(const Inst& in) {
     if (in.op == Op::V_INTERP_P1_F32) return;  // the second half (p2) produces the value
     const bool flat = in.op == Op::V_INTERP_MOV_F32;
     auto& map = flat ? ps_flat_inputs_ : ps_inputs_;
+    const uint32_t loc = d_.remap_inputs ? d_.input_location[attr & 31] : attr;
+    if (loc == 0xFF) {  // the vertex shader does not export this semantic
+        write_v(uint32_t(in.dst.vgpr()), m_.c_u32(0));
+        return;
+    }
     Id& var = map[attr];
     if (!var) {
         var = global(m_.t_ptr(SCInput, tv4f_), SCInput);
-        m_.decorate(var, DecLocation, {attr});
+        m_.decorate(var, DecLocation, {loc});
         if (flat) m_.decorate(var, DecFlat);
         (flat ? r_.ps_flat_inputs : r_.ps_inputs) |= 1u << attr;
         if ((r_.ps_flat_inputs & r_.ps_inputs) >> attr & 1) problem("attribute read both flat and interpolated");
@@ -1150,4 +1156,56 @@ Result translate(const ShaderDesc& d) {
     return r;
 }
 
+}  // namespace d1::gcn
+
+namespace d1::gcn {
+std::vector<uint32_t> rect_list_gs(uint32_t param_exports) {
+    using namespace d1::spv;
+    Module m;
+    m.capability(CapShader);
+    m.capability(Capability(2));  // Geometry
+    const Id tvoid = m.t_void(), tf = m.t_f32(), tv4 = m.t_vec(tf, 4), tu = m.t_u32();
+    const Id arr = m.t_array(tv4, 3);
+    const Id p_in = m.t_ptr(SCInput, arr), p_in_v = m.t_ptr(SCInput, tv4), p_out = m.t_ptr(SCOutput, tv4);
+    (void)tu;
+    std::vector<Id> iface;
+    struct Var { Id in, out; };
+    std::vector<Var> vars;
+    {
+        Var v{m.variable(p_in, SCInput), m.variable(p_out, SCOutput)};
+        m.decorate(v.in, DecBuiltIn, {BuiltInPosition});
+        m.decorate(v.out, DecBuiltIn, {BuiltInPosition});
+        vars.push_back(v);
+    }
+    for (uint32_t l = 0; l < 32; ++l)
+        if (param_exports >> l & 1) {
+            Var v{m.variable(p_in, SCInput), m.variable(p_out, SCOutput)};
+            m.decorate(v.in, DecLocation, {l});
+            m.decorate(v.out, DecLocation, {l});
+            vars.push_back(v);
+        }
+    for (auto& v : vars) iface.push_back(v.in), iface.push_back(v.out);
+    const Id fn = m.begin_function(tvoid, m.t_func(tvoid));
+    std::vector<std::array<Id, 4>> vals;
+    for (auto& v : vars) {
+        std::array<Id, 4> x{};
+        for (uint32_t k = 0; k < 3; ++k)
+            x[k] = m.op_r(OpLoad, tv4, {m.op_r(OpAccessChain, p_in_v, {v.in, m.c_u32(k)})});
+        x[3] = m.op_r(OpFSub, tv4, {m.op_r(OpFAdd, tv4, {x[1], x[2]}), x[0]});
+        vals.push_back(x);
+    }
+    for (uint32_t k = 0; k < 4; ++k) {
+        for (size_t i = 0; i < vars.size(); ++i) m.op(OpStore, {vars[i].out, vals[i][k]});
+        m.op(Opcode(218), {});  // OpEmitVertex
+    }
+    m.op(Opcode(219), {});  // OpEndPrimitive
+    m.op(OpReturn, {});
+    m.end_function();
+    m.entry_point(ExecutionModel(3), fn, "main", iface);  // Geometry
+    m.execution_mode(fn, ExecutionMode(22));               // Triangles
+    m.execution_mode(fn, ExecutionMode(29));               // OutputTriangleStrip
+    m.execution_mode(fn, ExecutionMode(26), {4});          // OutputVertices
+    m.execution_mode(fn, ExecutionMode(0), {1});           // Invocations
+    return m.binary();
+}
 }  // namespace d1::gcn

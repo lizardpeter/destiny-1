@@ -38,7 +38,8 @@
     X(vkCmdBindVertexBuffers) X(vkCmdBindIndexBuffer) X(vkCmdPushDescriptorSet) X(vkCmdDraw) \
     X(vkCmdDrawIndexed) X(vkCmdDispatch) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdCopyBuffer) \
     X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) X(vkCmdBlitImage) X(vkCmdClearColorImage) \
-    X(vkCmdClearDepthStencilImage) X(vkCmdSetStencilReference) X(vkCmdPushConstants) \
+    X(vkCmdClearDepthStencilImage) X(vkCmdSetStencilReference) X(vkCmdPushConstants) X(vkCmdClearAttachments) \
+    X(vkCmdSetDepthBias) X(vkCmdSetStencilCompareMask) X(vkCmdSetStencilWriteMask) X(vkCmdCopyImage) X(vkCmdBindVertexBuffers2) \
     X(vkCreateSwapchainKHR) X(vkDestroySwapchainKHR) X(vkGetSwapchainImagesKHR) X(vkAcquireNextImageKHR) \
     X(vkQueuePresentKHR)
 

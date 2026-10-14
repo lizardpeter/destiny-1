@@ -45,6 +45,10 @@ struct ShaderDesc {
     const uint8_t* fetch = nullptr;  // vertex: fetch shader
     uint32_t fetch_size = 0;
     TexDim tex_dims[16] = {};        // per texture API slot (from the bound T#s)
+    // pixel: PS attribute index -> vertex parameter location (SPI_PS_INPUT_CNTL OFFSET, from
+    // the Gnm semantic tables of the PS and the VS it runs with); 0xFF = not exported (reads 0)
+    bool remap_inputs = false;
+    uint8_t input_location[32] = {};
 };
 
 struct Binding {
@@ -77,4 +81,11 @@ struct Result {
 
 Result translate(const ShaderDesc& d);
 
+}  // namespace d1::gcn
+
+namespace d1::gcn {
+// Geometry shader that turns each GCN rect-list primitive (three corners of a rectangle) into
+// two triangles: the fourth corner is v1 + v2 - v0 for the position and every parameter.
+// `param_exports`: the vertex shader's parameter locations.
+std::vector<uint32_t> rect_list_gs(uint32_t param_exports);
 }  // namespace d1::gcn

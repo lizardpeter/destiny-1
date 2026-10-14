@@ -160,6 +160,8 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     ef.features.independentBlend = f.features.independentBlend;
     ef.features.samplerAnisotropy = f.features.samplerAnisotropy;
     ef.features.depthClamp = f.features.depthClamp;
+    ef.features.geometryShader = f.features.geometryShader;  // GCN rect lists
+    ef.features.robustBufferAccess = f.features.robustBufferAccess;  // GCN buffer reads are bounds-checked too
     ef.features.depthBiasClamp = f.features.depthBiasClamp;
     ef.features.fillModeNonSolid = f.features.fillModeNonSolid;
     ef.features.textureCompressionBC = f.features.textureCompressionBC;

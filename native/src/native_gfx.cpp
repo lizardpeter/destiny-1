@@ -15,9 +15,12 @@
 #include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "formats.h"
+#include "nrender.h"
 #include "hle.h"
 #include "runtime.h"
 #include "tiling.h"
@@ -273,6 +276,258 @@ D1_SYSV void h_apply_targets(uint64_t dev) {
     o_apply_targets(dev);
 }
 
+
+// ---------------------------------------------------------------------------- native rendering
+// D1_NATIVE_GFX=render: the device API calls are captured into ng::Draw records (registers,
+// descriptors and shader objects as the engine's device object holds them), matched to the
+// command buffers the game submits (by their DCB write position) and executed by our own
+// Vulkan renderer (gfx/nrender.cpp). The original functions still run, so the null GPU keeps
+// the game's fences and flips going.
+namespace nr {
+
+uint64_t g_base = 0;  // eboot base
+template <class T>
+T eb(uint64_t off) {
+    T v;
+    std::memcpy(&v, reinterpret_cast<const void*>(g_base + off), sizeof v);
+    return v;
+}
+
+using BuildVsharpFn = D1_SYSV void (*)(void*, uint64_t, uint32_t, uint32_t, uint32_t);
+using SetMemTypeFn = D1_SYSV void (*)(void*, uint32_t);
+BuildVsharpFn build_vsharp;
+SetMemTypeFn set_mem_type;
+
+struct DevState {
+    ng::Draw::Cb cb[ng::kStages][16] = {};
+    uint32_t vb_count[32] = {};
+};
+
+std::mutex g_m;
+std::unordered_map<uint64_t, DevState*> g_devs;
+std::vector<ng::Draw*> g_pending;
+uint32_t g_seq = 0;
+int g_every = 1;            // execute every Nth frame
+int g_dump_every = 0;       // write every Nth executed frame (0: none)
+uint64_t g_executed_frames = 0;
+bool g_frame_executed = false;
+
+DevState* dev_state(uint64_t dev) {
+    thread_local uint64_t last_dev = 0;
+    thread_local DevState* last = nullptr;
+    if (dev == last_dev) return last;
+    std::lock_guard lk(g_m);
+    auto& d = g_devs[dev];
+    if (!d) d = new DevState;
+    last_dev = dev, last = d;
+    return d;
+}
+
+// engine resource handle -> buffer object (pool table at *0x1A238A0)
+uint64_t resolve_handle(uint32_t h) {
+    const uint64_t tbl = *reinterpret_cast<const uint64_t*>(eb<uint64_t>(0x1A238A0));
+    const int32_t hs = int32_t(h) >> 13;  // as the engine computes it (handles with bit 31 use more pool bits)
+    const uint64_t pool = tbl + uint64_t(((uint32_t(hs) >> 18) | 0x3FF) & uint32_t(hs)) * 0x40;
+    const uint64_t pbase = field<uint64_t>(pool, 0x10);
+    const uint64_t off = uint64_t(h & 0x1FFF) * field<uint32_t>(pool, 0x30);
+    const uint64_t mask = uint64_t(int64_t(field<int32_t>(pool, 0x34)));
+    return (pbase + off) - (mask & field<uint64_t>(pbase + off, 8));
+}
+
+int gnm_stage_index(uint32_t gnm_stage) { return gnm_stage == 1 ? 1 : gnm_stage == 2 ? 0 : -1; }
+
+uint32_t vertex_count(uint32_t prim, uint32_t n) {
+    switch (prim) {
+    case 0: return n;
+    case 1: return n * 2;
+    case 2: return n + 1;
+    case 3: case 6: return n * 3;
+    case 4: case 5: return n + 2;
+    case 7: return n * 4;
+    default: return 0;
+    }
+}
+
+// Common state of every draw, read from the device object.
+ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
+    auto* d = new ng::Draw;
+    d->caller = caller ? caller - g_base : 0;
+    d->prim = uint8_t(eb<uint32_t>(0x15D13C0 + uint64_t(engine_prim) * 4));
+    d->vs = reinterpret_cast<const uint8_t*>(field<uint64_t>(dev, kVsShader));
+    d->ps = reinterpret_cast<const uint8_t*>(field<uint64_t>(dev, kPsShader));
+    const uint64_t ctx = field<uint64_t>(dev, 0x50);
+    d->order = ctx ? field<uint64_t>(ctx, 0x10) : 0;
+    DevState* ds = dev_state(dev);
+    // vertex buffers: one V# per declaration element, as set_vertex_buffer builds them
+    if (const uint64_t decl = field<uint64_t>(dev, kVertexDecl)) {
+        const uint32_t n = std::min(field<uint32_t>(decl, 0), 16u);
+        d->num_vb = n;
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t fmt = field<uint32_t>(decl, 0x14 + 8 * i);
+            const uint32_t off = field<uint8_t>(decl, 0x18 + 8 * i), stream = field<uint8_t>(decl, 0x19 + 8 * i) & 31;
+            const uint32_t stride = field<uint32_t>(decl, 4 + 4 * (stream & 3));
+            const uint32_t h = field<uint32_t>(dev, 0x1D78 + 4 * stream);
+            if (h == 0xFFFFFFFFu || !stride) continue;
+            const uint64_t obj = resolve_handle(h);
+            const uint64_t base = field<uint64_t>(obj, 0x28) + off + field<uint32_t>(dev, 0x1DF8 + 4 * stream);
+            build_vsharp(d->vb[i], base, fmt, stride, ds->vb_count[stream]);
+        }
+    }
+    for (int s = 0; s < 2; ++s) {
+        const uint32_t gnm = s ? 1 : 2;
+        for (int i = 0; i < 16; ++i) {
+            d->tex[s][i] = reinterpret_cast<const uint32_t*>(field<uint64_t>(dev, 0x1E78 + gnm * 0x80 + i * 8));
+            d->smp[s][i] = reinterpret_cast<const uint32_t*>(field<uint64_t>(dev, (s ? 0x2278 : 0x22F8) + i * 8));
+            d->cb[s][i] = ds->cb[s][i];
+        }
+    }
+    d->clip = field<uint32_t>(dev, 0x25D0);
+    d->su_sc_mode = field<uint32_t>(dev, 0x25D4);
+    d->blend = field<uint32_t>(dev, 0x25D8);
+    d->depth_ctl = field<uint32_t>(dev, 0x25DC);
+    d->stencil_ctl = field<uint32_t>(dev, 0x25E0);
+    d->stencil_ref = field<uint32_t>(dev, 0x25E4);
+    d->target_mask = eb<uint32_t>(0x15D16E0 + uint64_t(field<uint32_t>(dev, kBlendIndex)) * 0x24);
+    const uint64_t rast = 0x15D2424 + uint64_t(field<uint32_t>(dev, kRasterIndex)) * 0xC;
+    d->poly_offset = eb<float>(rast) * 2.0f;
+    d->poly_scale = eb<float>(rast + 4) * eb<float>(0x165FE78);
+    for (int i = 0; i < 4; ++i) d->vp[i] = field<int32_t>(dev, 0x2578 + 4 * i);
+    d->znear = field<float>(dev, 0x2588), d->zfar = field<float>(dev, 0x258C), d->zk = eb<float>(0x165FEA0);
+    for (int i = 0; i < 5; ++i) std::memcpy(d->color[i], reinterpret_cast<const void*>(dev + kColorTarget0 + 0x2C * i), 44);
+    std::memcpy(d->depth, reinterpret_cast<const void*>(dev + 0x26B0), 52);
+    return d;
+}
+
+void push(ng::Draw* d) {
+    std::lock_guard lk(g_m);
+    d->seq = g_seq++;
+    g_pending.push_back(d);
+}
+
+// Collect the DCB ranges of a submission, following INDIRECT_BUFFER packets.
+void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::pair<uint64_t, uint64_t>>& out) {
+    out.push_back({uint64_t(p), uint64_t(p) + uint64_t(dwords) * 4});
+    if (depth >= 4) return;
+    for (uint32_t i = 0; i < dwords;) {
+        const uint32_t h = p[i];
+        const uint32_t type = h >> 30;
+        if (type == 3) {
+            const uint32_t op = (h >> 8) & 0xFF, count = (h >> 16) & 0x3FFF;
+            if ((op == 0x3F || op == 0x33) && i + 3 < dwords) {
+                const uint64_t a = uint64_t(p[i + 1]) | (uint64_t(p[i + 2] & 0xFFFF) << 32);
+                if (a) dcb_ranges(reinterpret_cast<const uint32_t*>(a), p[i + 3] & 0xFFFFF, depth + 1, out);
+            }
+            i += count + 2;
+        } else if (type == 2) {
+            i += 1;
+        } else {
+            i += ((h >> 16) & 0x3FFF) + 2;
+        }
+    }
+}
+
+}  // namespace nr
+
+using DrawInstancedFn = D1_SYSV void (*)(uint64_t, uint32_t, uint32_t, uint64_t, uint32_t);
+using DrawQuadsFn = D1_SYSV void (*)(uint64_t, uint32_t, uint64_t, int32_t);
+using DrawInlineFn = D1_SYSV void (*)(uint64_t, uint32_t, int32_t, const void*, int32_t);
+using ClearFn = D1_SYSV void (*)(uint64_t, uint32_t);
+DrawInstancedFn o_draw_instanced;
+DrawQuadsFn o_draw_quads;
+DrawInlineFn o_draw_inline;
+ClearFn o_clear;
+
+D1_SYSV void r_draw_indexed(uint64_t dev, uint64_t prim, uint64_t a, int32_t first, uint32_t count) {
+    if (field<uint8_t>(dev, 0x26)) {
+        ng::Draw* d = nr::capture(dev, uint32_t(prim), uint64_t(__builtin_return_address(0)));
+        d->kind = ng::Draw::Indexed;
+        const uint64_t ib = field<uint64_t>(dev, 0x1D70);
+        const uint32_t isz = ib ? field<uint32_t>(ib, 0x38) : 0;
+        d->index32 = isz != 0;
+        d->index_addr = ib ? field<uint64_t>(ib, 0x30) + uint64_t(uint32_t((isz * 2 + 2) * first)) : 0;
+        d->count = count;
+        nr::push(d);
+    }
+    o_draw_indexed(dev, prim, a, first, count);
+}
+D1_SYSV void r_draw(uint64_t dev, uint64_t prim, uint32_t count) {
+    if (field<uint8_t>(dev, 0x26)) {
+        ng::Draw* d = nr::capture(dev, uint32_t(prim), uint64_t(__builtin_return_address(0)));
+        d->kind = ng::Draw::Auto;
+        d->count = count;
+        nr::push(d);
+    }
+    o_draw(dev, prim, count);
+}
+D1_SYSV void r_draw_instanced(uint64_t dev, uint32_t prim, uint32_t count, uint64_t a, uint32_t instances) {
+    if (field<uint8_t>(dev, 0x26)) {
+        ng::Draw* d = nr::capture(dev, prim, uint64_t(__builtin_return_address(0)));
+        d->kind = ng::Draw::Auto;
+        d->count = count, d->instances = instances;
+        nr::push(d);
+    }
+    o_draw_instanced(dev, prim, count, a, instances);
+}
+// indexed from the engine's shared 16-bit index buffer (*device->manager)
+D1_SYSV void r_draw_quads(uint64_t dev, uint32_t prim, uint64_t first, int32_t prims) {
+    ng::Draw* d = nr::capture(dev, prim, uint64_t(__builtin_return_address(0)));
+    d->kind = ng::Draw::Indexed;
+    d->index_addr = field<uint64_t>(field<uint64_t>(dev, 0), 0) + (first & 0xFFFFFFFF) * 2;
+    d->count = nr::vertex_count(prim, uint32_t(prims));
+    nr::push(d);
+    o_draw_quads(dev, prim, first, prims);
+}
+D1_SYSV void r_draw_inline(uint64_t dev, uint32_t prim, int32_t prims, const void* data, int32_t stride) {
+    const uint64_t decl = field<uint64_t>(dev, kVertexDecl);
+    if (decl && data) {
+        ng::Draw* d = nr::capture(dev, prim, uint64_t(__builtin_return_address(0)));
+        d->kind = ng::Draw::Auto;
+        d->count = nr::vertex_count(prim, uint32_t(prims));
+        d->inline_vertices.assign(static_cast<const uint8_t*>(data),
+                                  static_cast<const uint8_t*>(data) + size_t(d->count) * uint32_t(stride));
+        std::memset(d->vb, 0, sizeof d->vb);
+        const uint32_t n = std::min(field<uint32_t>(decl, 0), 16u);
+        d->num_vb = n;
+        for (uint32_t i = 0; i < n; ++i)
+            nr::build_vsharp(d->vb[i], field<uint8_t>(decl, 0x18 + 8 * i),  // offset into inline_vertices
+                             field<uint32_t>(decl, 0x14 + 8 * i), uint32_t(stride), d->count);
+        nr::push(d);
+    }
+    o_draw_inline(dev, prim, prims, data, stride);
+}
+// clear(flags): bits 2..5 color MRT 0..3 with the color at +0x40, 0x40 depth (+0x20, stored
+// reversed unless +0x24), 0x80 stencil (+0x25)
+D1_SYSV void r_clear(uint64_t dev, uint32_t flags) {
+    if (flags & 0xFC) {
+        ng::Draw* d = nr::capture(dev, 0);
+        d->kind = ng::Draw::Clear;
+        d->clear_flags = uint8_t(flags);
+        std::memcpy(d->clear_color, reinterpret_cast<const void*>(dev + 0x40), 16);
+        const float z = field<float>(dev, 0x20);
+        d->clear_depth = field<uint8_t>(dev, 0x24) ? z : nr::eb<float>(0x165FEB4) - z;
+        d->clear_stencil = field<uint8_t>(dev, 0x25);
+        nr::push(d);
+    }
+    o_clear(dev, flags);
+}
+D1_SYSV uint64_t r_alloc_constants(uint64_t dev, uint32_t stage, uint32_t slot, uint32_t bytes) {
+    const uint64_t p = o_alloc_constants(dev, stage, slot, bytes);
+    const int s = nr::gnm_stage_index(stage);
+    if (s >= 0 && slot < 16) nr::dev_state(dev)->cb[s][slot] = {p, bytes};
+    return p;
+}
+D1_SYSV void r_set_vertex_buffer(uint64_t dev, uint32_t handle, uint32_t stream, uint32_t offset, int32_t count) {
+    const uint64_t decl = field<uint64_t>(dev, kVertexDecl);
+    const uint32_t s = stream & 0xFFFF;
+    const uint32_t stride = decl && s < 32 ? field<uint32_t>(decl, 4 + 4 * (s & 3)) : 0;
+    if (handle != 0xFFFFFFFFu && s < 32 && stride) {  // the cases the engine resolves the handle in
+        uint32_t n = field<uint32_t>(nr::resolve_handle(handle), 0x30);
+        if (offset != 0) n = count ? uint32_t(count) : n - (stride ? offset / stride : 0);
+        nr::dev_state(dev)->vb_count[s] = n;
+    }
+    o_set_vertex_buffer(dev, handle, stream, offset, count);
+}
+
 template <class F>
 bool hook(uint64_t off, F host, F& orig, const char* name) {
     orig = reinterpret_cast<F>(hook_eboot_function(off, reinterpret_cast<const void*>(host)));
@@ -285,7 +540,34 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
 // Called once the eboot is loaded and relocated (with the other game hooks).
 void native_gfx_install() {
     const char* mode = getenv("D1_NATIVE_GFX");
-    if (!mode || std::strcmp(mode, "observe") != 0) return;
+    if (!mode) return;
+    if (std::strcmp(mode, "render") == 0) {
+        nr::g_base = rt().modules[0].base;
+        nr::build_vsharp = reinterpret_cast<nr::BuildVsharpFn>(nr::g_base + 0xF7CF90);
+        if (const char* v = getenv("D1_NG_EVERY")) nr::g_every = std::max(1, std::atoi(v));
+        if (const char* v = getenv("D1_NG_DUMP_EVERY")) nr::g_dump_every = std::max(0, std::atoi(v));
+        ng::Options opt;
+        opt.frames_dir = getenv("D1_NG_FRAMES");
+        opt.no_cull = getenv("D1_NG_NOCULL") != nullptr;
+        opt.dump_targets = getenv("D1_NG_TARGETS") != nullptr;
+        if (!ng::init(opt)) {
+            log("native gfx: renderer unavailable; not capturing");
+            return;
+        }
+        bool ok = true;
+        ok &= hook(0x7E15D0, &r_draw_indexed, o_draw_indexed, "draw_indexed");
+        ok &= hook(0x7E17C0, &r_draw, o_draw, "draw");
+        ok &= hook(0x7E1710, &r_draw_instanced, o_draw_instanced, "draw_instanced");
+        ok &= hook(0x7E1840, &r_draw_quads, o_draw_quads, "draw_shared_indices");
+        ok &= hook(0x7E1960, &r_draw_inline, o_draw_inline, "draw_inline");
+        ok &= hook(0x7E2A00, &r_clear, o_clear, "clear");
+        ok &= hook(0x7DF630, &r_alloc_constants, o_alloc_constants, "alloc_constants");
+        ok &= hook(0x7DEC20, &r_set_vertex_buffer, o_set_vertex_buffer, "set_vertex_buffer");
+        log("native gfx: rendering natively (every %d frame%s)%s", nr::g_every, nr::g_every == 1 ? "" : "s",
+            ok ? "" : " (some hooks failed)");
+        return;
+    }
+    if (std::strcmp(mode, "observe") != 0) return;
     g_obs = new Observer;
     bool ok = true;
     ok &= hook(0x7E15D0, &h_draw_indexed, o_draw_indexed, "draw_indexed");
@@ -296,6 +578,56 @@ void native_gfx_install() {
     ok &= hook(0x7DEE30, &h_set_index_buffer, o_set_index_buffer, "set_index_buffer");
     ok &= hook(0x7E0430, &h_apply_targets, o_apply_targets, "apply_render_targets");
     log("native gfx: observing the engine GPU device layer%s", ok ? "" : " (some hooks failed)");
+}
+
+// hle_gpu.cpp: the game submitted command buffers. Execute the captured draws that belong to
+// them, in submission order.
+void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
+    if (!nr::g_base || !ng::active()) return;
+    std::vector<std::pair<uint64_t, uint64_t>> ranges;
+    for (uint32_t k = 0; k < count; ++k)
+        if (dcbs[k] && sizes[k]) nr::dcb_ranges(dcbs[k], sizes[k] / 4, 0, ranges);
+    std::vector<std::pair<uint64_t, ng::Draw*>> mine;
+    {
+        std::lock_guard lk(nr::g_m);
+        auto& pend = nr::g_pending;
+        size_t keep = 0;
+        for (ng::Draw* d : pend) {
+            // position in the submission: (range in traversal order, offset inside it)
+            int64_t rng = -1;
+            for (size_t r = 0; r < ranges.size(); ++r)
+                if (d->order >= ranges[r].first && d->order < ranges[r].second) {
+                    rng = int64_t(r);
+                    break;
+                }
+            if (rng >= 0) mine.push_back({uint64_t(rng) << 40 | ((d->order - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull), d});
+            else if (nr::g_seq - d->seq < 200000) pend[keep++] = d;
+            else delete d;  // never submitted
+        }
+        pend.resize(keep);
+    }
+    std::stable_sort(mine.begin(), mine.end(), [](auto& a, auto& b) { return a.first < b.first; });
+    const bool run = (gpu_flip_count() % uint64_t(nr::g_every)) == 0;
+    if (run && !mine.empty()) {
+        std::vector<ng::Draw*> draws;
+        for (auto& [k, d] : mine) draws.push_back(d);
+        ng::execute(draws);
+        nr::g_frame_executed = true;
+    }
+    for (auto& [k, d] : mine) delete d;
+}
+
+// hle_gpu.cpp: the frame in video-out buffer `addr` is being flipped.
+void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
+    if (!nr::g_base || !ng::active()) return;
+    if (nr::g_frame_executed) {
+        ++nr::g_executed_frames;
+        if (nr::g_dump_every && nr::g_executed_frames % uint64_t(nr::g_dump_every) == 0)
+            ng::flip(uint64_t(addr), width, height, gpu_flip_count());
+        else ng::flip(0, width, height, gpu_flip_count());
+        if (nr::g_executed_frames % 10 == 0) ng::print_stats();
+    }
+    nr::g_frame_executed = false;
 }
 
 }  // namespace d1

@@ -478,7 +478,11 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
     if (eop) signal_eop();
 }
 
+void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);  // native_gfx.cpp
+void native_gfx_flip(void* addr, uint32_t width, uint32_t height);
+
 static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
+    native_gfx_submit(count, dcbs, dcb_sizes);
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && dcb_sizes[k]) run_dcb(dcbs[k], dcb_sizes[k] / 4, 0);
     return SCE_OK;
@@ -508,6 +512,7 @@ static int32_t sceGnmSubmitAndFlipCommandBuffers(uint32_t count, uint32_t* const
         return render::submit_and_flip(count, dcbs, dcb_sizes, ccbs, ccb_sizes, buf, arg);
     }
     submit(count, dcbs, dcb_sizes);
+    if (buf < 16) native_gfx_flip(g_vo.buffers[buf], g_vo.attr.width, g_vo.attr.height);
     if (gpu_real()) {  // a skipped frame: what the patched prepareFlip would have written
         frame_end();
         if (buf < 16) g_vo.labels[buf] = 1;
