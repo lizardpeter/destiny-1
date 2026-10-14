@@ -140,12 +140,184 @@ using ZoomMagFn = D1_SYSV float (*)(int32_t unit, int32_t zoom);
 using ZoomAxesFn = D1_SYSV void (*)(int32_t unit, float* yaw, float* pitch);
 static PlayerControlFn g_pc_orig = nullptr;
 static void trace_cameras();
+static std::atomic<int32_t> g_spawn_entity{-1};
+static int client_references(uint64_t b, int type, uint8_t** out, int max);
 static int32_t g_mouse_test_dx = 0, g_mouse_test_dy = 0;  // D1_MOUSE_TEST=dx,dy (headless)
 static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32_t player, void* state,
                                         int32_t* control, float* action) {
     g_pc_orig(dt, f2, slot, player, state, control, action);
     if (player != 0 || !action) return;
     trace_cameras();
+    if (getenv("D1_TRACE_SPAWN")) {  // research: why the local player gets no unit
+        static auto next = std::chrono::steady_clock::now();
+        if (std::chrono::steady_clock::now() >= next) {
+            next = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            const uint64_t b = rt().modules[0].base;
+            // tag handle -> data (same arithmetic as the engine's tag lookups)
+            auto tag = [b](uint32_t h) -> const uint8_t* {
+                if (h == 0xFFFFFFFFu) return nullptr;
+                const int32_t hi = int32_t(h) >> 13;
+                const uint64_t slot = uint64_t((((uint32_t(hi) >> 18) | 0x3FF) & uint32_t(hi))) * 0x40;
+                const uint8_t* tbl = *reinterpret_cast<uint8_t**>(*reinterpret_cast<uint64_t*>(b + 0x1A238A0));
+                const uint8_t* p = *reinterpret_cast<uint8_t* const*>(tbl + 0x10 + slot);
+                const uint64_t off = uint64_t((h & 0x1FFF) * *reinterpret_cast<const int32_t*>(tbl + 0x30 + slot));
+                const uint64_t mask = uint64_t(int64_t(*reinterpret_cast<const int32_t*>(tbl + 0x34 + slot))) &
+                                      *reinterpret_cast<const uint64_t*>(p + 8 + off);
+                return p + off - mask;
+            };
+            using U32Fn = D1_SYSV uint32_t (*)();
+            const uint32_t t840 = reinterpret_cast<U32Fn>(b + 0x240840)();
+            const uint32_t t880 = reinterpret_cast<U32Fn>(b + 0x240880)();
+            const uint8_t* p840 = tag(t840);
+            const uint8_t* p880 = tag(t880);
+            int32_t mode = -2;
+            const bool have_mode = reinterpret_cast<D1_SYSV bool (*)(int32_t*)>(b + 0x10C500)(&mode);
+            auto* players = *reinterpret_cast<uint8_t**>(b + 0x273EB80);
+            const int32_t datum = players ? *reinterpret_cast<int32_t*>(players + 0xC0) : -1;
+            const int32_t unit = players ? *reinterpret_cast<int32_t*>(players + 0xC4) : -1;
+            const bool can = datum != -1 && reinterpret_cast<D1_SYSV bool (*)(int32_t)>(b + 0x415700)(datum);
+            log("spawn: player %#x unit %d can_spawn %d | mode ref %s %d | tag840 %#x (+0x1C %d) tag880 %#x (+0x1C %d)",
+                datum, unit, can, have_mode ? "set" : "unset", mode, t840, p840 ? p840[0x1C] : -1, t880,
+                p880 ? p880[0x1C] : -1);
+            using PtrU32Fn = D1_SYSV uint64_t (*)(uint32_t);
+            const bool blocked = reinterpret_cast<D1_SYSV bool (*)()>(b + 0x3D5F30)();
+            const int32_t ent = g_spawn_entity.load();
+            const uint64_t pinfo = ent != -1 ? reinterpret_cast<PtrU32Fn>(b + 0x1192B0)(ent) : 0;
+            const uint64_t pa = ent != -1 ? reinterpret_cast<PtrU32Fn>(b + 0x3F3CE0)(ent) : 0;
+            const uint64_t pb = ent != -1 ? reinterpret_cast<PtrU32Fn>(b + 0x3F3DE0)(ent) : 0;
+            // first gate of 0x415700: slice-set state (0x3430B0 -> 0x3455E0 / 0x345610 -> 0x12D730)
+            using U64Fn = D1_SYSV uint64_t (*)();
+            using BoolU64Fn = D1_SYSV bool (*)(uint64_t);
+            const uint64_t ss = reinterpret_cast<U64Fn>(b + 0x3430B0)();
+            const bool ss_ok = reinterpret_cast<BoolU64Fn>(b + 0x3455E0)(ss);
+            bool ss_gate = false;
+            if (ss_ok) {
+                const uint64_t v = reinterpret_cast<D1_SYSV uint64_t (*)(uint64_t)>(b + 0x345610)(ss);
+                uint64_t tmp = v;
+                ss_gate = reinterpret_cast<D1_SYSV bool (*)(uint64_t*)>(b + 0x12D730)(&tmp);
+            }
+            log("spawn: entity %#x slice gate %d/%d", ent, ss_ok, ss_gate);
+            if (ent != -1) {
+                const uint64_t arr = *reinterpret_cast<uint64_t*>(b + 0x2689588);
+                const uint64_t stride = *reinterpret_cast<uint32_t*>(b + 0x2689590);
+                const uint8_t* e = reinterpret_cast<const uint8_t*>(arr + (uint32_t(ent) & 0x1FFF) * stride);
+                const uint32_t def = *reinterpret_cast<const uint32_t*>(e + 0x50);
+                const uint8_t* d = tag(def);
+                log("spawn: entity data %p +0x4C player %d +0x50 definition %#x -> %p: +0x1F8 %#x +0x208 %#x +0x318 %#x",
+                    (const void*)e, *reinterpret_cast<const int32_t*>(e + 0x4C), def, (const void*)d,
+                    d ? *reinterpret_cast<const uint32_t*>(d + 0x1F8) : 0, d ? *reinterpret_cast<const uint32_t*>(d + 0x208) : 0,
+                    d ? *reinterpret_cast<const uint32_t*>(d + 0x318) : 0);
+                {
+                    // player configuration (0x912240 -> 0x73DAC0 -> player data +0x1660): needs
+                    // 0x52B090, 0x549510 and player +0x613 bit 1; body tag = player +0x85C
+                    const uint8_t* pl = *reinterpret_cast<uint8_t* const*>(*reinterpret_cast<uint64_t*>(b + 0x273EA80) + 8) +
+                                        (*reinterpret_cast<const uint32_t*>(e + 0x4C) & 0xFFFF) * 0x2AF0;
+                    const bool g1 = reinterpret_cast<D1_SYSV bool (*)()>(b + 0x52B090)();
+                    const bool g2 = reinterpret_cast<D1_SYSV bool (*)()>(b + 0x549510)();
+                    char hex[3 * 16 + 1] = {};
+                    for (int k = 0; k < 16; ++k) std::snprintf(hex + 3 * k, 4, "%02x ", pl[0x850 + k]);
+                    log("spawn: player config gates %d %d +0x613 %#x | +0x850 %s| +0x1660 %d configured %d | character %#llx", g1, g2, pl[0x613], hex,
+                        *reinterpret_cast<const int32_t*>(pl + 0x1660), pl[0x2840],
+                        (unsigned long long)*reinterpret_cast<const uint64_t*>(pl + 0x710));
+                    {
+                        // producer of the peer subscription state (0x58B570): runs unless 0x906F70;
+                        // members of the investment object id from 0x587520 (*0x26BC510 entries 0x30, kind 3)
+                        const bool cli = reinterpret_cast<D1_SYSV bool (*)()>(b + 0x906F70)();
+                        const uint64_t grp = reinterpret_cast<D1_SYSV uint64_t (*)()>(b + 0x587520)();
+                        const uint8_t* reg = *reinterpret_cast<uint8_t* const*>(b + 0x26BC510);
+                        if (const uint8_t* pm = *reinterpret_cast<uint8_t* const*>(b + 0x26BC448)) {
+                            char hx[3 * 0x68 + 1] = {};
+                            for (int k = 0; k < 0x68; ++k) std::snprintf(hx + 3 * k, 4, "%02x ", pm[0x28 + k]);
+                            log("spawn: peer members %p group %#llx count %d flags %#x | m0 %s", (const void*)pm,
+                                (unsigned long long)*reinterpret_cast<const uint64_t*>(pm + 0x14),
+                                *reinterpret_cast<const int32_t*>(pm + 0x20), *reinterpret_cast<const uint16_t*>(pm + 0x8a), hx);
+                        }
+                        log("spawn: peer subscription producer client %d group %#llx registry %p kind0 %d id0 %#llx",
+                            cli, (unsigned long long)grp, (const void*)reg, reg ? reg[0] : -1,
+                            reg ? (unsigned long long)*reinterpret_cast<const uint64_t*>(reg + 1) : 0ULL);
+                    }
+                    // roster the character data cache (0x58D940) follows: *0x26BC3C0 +0x10, 16 bytes each
+                    if (const uint8_t* ro = *reinterpret_cast<uint8_t* const*>(b + 0x26BC3C0)) {
+                        for (int k = 0; k < 4; ++k)
+                            log("spawn: roster[%d] %#llx %#x", k, (unsigned long long)*reinterpret_cast<const uint64_t*>(ro + 0x10 + k * 16),
+                                *reinterpret_cast<const uint16_t*>(ro + 0x18 + k * 16));
+                    }
+                }
+                {
+                    uint8_t* lr[4];
+                    const int nl = client_references(b, 0x10, lr, 4);
+                    for (int k = 0; k < nl; ++k) {
+                        char hx[3 * 32 + 1] = {};
+                        for (int row = 0x100; row < 0x1C0; row += 32) {
+                            for (int q = 0; q < 32; ++q) std::snprintf(hx + 3 * q, 4, "%02x ", lr[k][row + q]);
+                            log("spawn: lifetime ref %d %p +%#x %s", k, (void*)lr[k], row, hx);
+                        }
+                    }
+                }
+                if (d) {
+                    // authority state (0x4098E0): @0x299 spawn-ready needs @0x298, published
+                    // @0x250 == @0x2C8 (player byte +0x738) and 0x77B920 (state 0x7680F0 == 4)
+                    const bool st4 = reinterpret_cast<D1_SYSV bool (*)()>(b + 0x77B920)();
+                    log("spawn: fireteam @0x250 %d @0x2C8 %d @0x290 %#x @0x298 %d @0x299 %d state4 %d", *reinterpret_cast<const int32_t*>(d + 0x250),
+                        *reinterpret_cast<const int32_t*>(d + 0x2C8), *reinterpret_cast<const uint32_t*>(d + 0x290), d[0x298], d[0x299], st4);
+                }
+            }
+            const uint16_t ctx = *reinterpret_cast<uint16_t*>(b + 0x25D6FF8);
+            int16_t refs0c = -1;
+            if (ctx) {
+                const uint64_t pool = *reinterpret_cast<uint64_t*>(b + 0x1AD5000);
+                const uint64_t stride = *reinterpret_cast<uint32_t*>(b + 0x1AD5010);
+                const uint8_t* mgr = *reinterpret_cast<uint8_t**>(b + 0x1AD5030 + ctx * stride + pool);
+                if (mgr) refs0c = *reinterpret_cast<const int16_t*>(mgr + 0x2BD1E + 0xC * 4);
+                // 0x1195F0 binds entity +0x50 to the type-0xC reference whose owner id (first 8
+                // bytes of the object at [ref +0x208] + [ref +0x210]) equals entity +0x18
+                struct Iter { const uint8_t* mgr; int16_t idx; int16_t pad; int32_t type; bool valid; uint8_t p2[7]; };
+                struct Out { uint32_t handle; uint32_t pad; int64_t off; };
+                using IterFn = D1_SYSV bool (*)(Iter*, Out*);
+                if (mgr) {  // groups: count @+0xC, start @+0x10, key @+0x14 (stride 0x14, count @+8)
+                    const int32_t ng = *reinterpret_cast<const int32_t*>(mgr + 8);
+                    for (int32_t g = 0; g < ng && g < 64; ++g) {
+                        const int32_t* gr = reinterpret_cast<const int32_t*>(mgr + 0xC + g * 0x14);
+                        log("spawn: ref group %d count %d start %d key %#x %#x %#x", g, gr[0], gr[1], gr[2], gr[3], gr[4]);
+                    }
+                    const int16_t st = *reinterpret_cast<const int16_t*>(mgr + 0x2BD1C + 0xC * 4);
+                    for (int16_t i = 0; i < refs0c && i < 32; ++i)
+                        log("spawn: ref0c[%d] entry %d", i, *reinterpret_cast<const int16_t*>(mgr + 0x2A51C + (st + i) * 2));
+                }
+                for (int16_t i = 0; mgr && i < refs0c && i < 32; ++i) {
+                    Iter it{mgr, i, 0, 0xC, true, {}};
+                    Out o{0xFFFFFFFFu, 0, 0};
+                    if (!reinterpret_cast<IterFn>(b + 0x100CB80)(&it, &o)) { log("spawn: ref0c[%d] -", i); continue; }
+                    const uint8_t* obj = tag(o.handle);
+                    const uint8_t* r = obj ? obj + o.off : nullptr;
+                    const uint32_t inner = r ? *reinterpret_cast<const uint32_t*>(r + 0x208) : 0xFFFFFFFFu;
+                    const uint8_t* io = tag(inner);
+                    const uint64_t key = io ? *reinterpret_cast<const uint64_t*>(io + *reinterpret_cast<const int64_t*>(r + 0x210)) : 0;
+                    if (r && i == 0) {
+                        char hex[3 * 64 + 1] = {};
+                        for (int row = 0x100; row < 0x2A0; row += 32) {
+                            for (int k = 0; k < 32; ++k) std::snprintf(hex + 3 * k, 4, "%02x ", r[row + k]);
+                            log("spawn: ref0c[0] +%#x %s", row, hex);
+                        }
+                    }
+                    log("spawn: ref0c[%d] handle %#x off %#llx inner %#x owner field +%#llx = %#llx", i, o.handle,
+                        (long long)o.off, inner, r ? (long long)*reinterpret_cast<const int64_t*>(r + 0x210) : -1LL,
+                        (unsigned long long)key);
+                }
+            }
+            if (ent != -1) {
+                const uint64_t arr = *reinterpret_cast<uint64_t*>(b + 0x2689588);
+                const uint64_t stride = *reinterpret_cast<uint32_t*>(b + 0x2689590);
+                const uint64_t* e = reinterpret_cast<const uint64_t*>(arr + (uint32_t(ent) & 0x1FFF) * stride);
+                log("spawn: entity +8 %#llx +0x10 %#llx +0x18 %#llx +0x20 %#llx +0x28 %#llx +0x30 %#llx +0x38 %#llx",
+                    (unsigned long long)e[1], (unsigned long long)e[2], (unsigned long long)e[3], (unsigned long long)e[4],
+                    (unsigned long long)e[5], (unsigned long long)e[6], (unsigned long long)e[7]);
+            }
+            log("spawn: activity/membership block %d | player info %#llx (+9 %d) data3f3ce0 %#llx data3f3de0 %#llx | type-0xC refs %d",
+                blocked, (unsigned long long)pinfo, pinfo ? reinterpret_cast<const uint8_t*>(pinfo)[9] : -1,
+                (unsigned long long)pa, (unsigned long long)pb, refs0c);
+        }
+    }
     if (getenv("D1_TRACE_CINE")) {  // research: why loading cinematics are suppressed
         static int n = 0;
         if (n++ == 0) {
@@ -262,6 +434,118 @@ static void trace_cameras() {
         if (uint8_t* p = d.load())
             log("camera: director %p current type %d (camera vtable +%#llx)", (void*)p, camera_type(p),
                 (unsigned long long)(*reinterpret_cast<uint64_t*>(p + 0x10) - rt().modules[0].base));
+}
+
+// ---- activity lifetime state (eboot+0x10C500): byte +0x1AC of the object behind client
+// reference type 0x10 (0x1072C0). Player spawning (0x415700) only proceeds in states 3/6
+// and loading task 9 (0x7965A0) waits for it. The object (class handlers 0x4044B0 bind,
+// 0x4044F0 receive: +0x1AC = published byte, 0x404550 publish: authoritative byte +0x1AD)
+// never gets a value: nothing in the client writes +0x1AD, so the state comes from the
+// activity's script owner (the activity host). Until that is served, the spawn bypass
+// reports state 3 while the game has none; D1_FORCE_LIFETIME=<n> picks another value.
+using LifetimeFn = D1_SYSV bool (*)(int32_t*);
+static LifetimeFn g_lifetime_orig = nullptr;
+static int32_t g_force_lifetime = -1;
+static D1_SYSV bool lifetime_hook(int32_t* out) {
+    if (g_lifetime_orig(out)) return true;
+    static bool logged = false;
+    if (!logged) { logged = true; log("hooks: activity lifetime state unset; reporting %d", g_force_lifetime); }
+    *out = g_force_lifetime;
+    return true;
+}
+
+// ---- player spawn check (eboot+0x415700, called per player simulation entity by the
+// spawning update 0x412800). D1_TRACE_SPAWN logs its calls (throttled).
+using CanSpawnFn = D1_SYSV bool (*)(int32_t);
+static CanSpawnFn g_can_spawn_orig = nullptr;
+static bool g_trace_spawn = false;
+static bool g_publish_fireteam = false;
+
+// ---- fireteam publish (stand-in for the unidentified source of fireteam data)
+// A player simulation entity's definition (+0x50) is the fireteam client reference (type 0xC,
+// 16 of them, objects of content type 0x80802236) whose fireteam id (object +0x258) equals
+// the fireteam id the entity was created with (+0x18, from the player's membership
+// properties @0xA0; with one player it is the character id); 0x1195F0 does the binding. The fireteam data (0x808022A5, 0x78 bytes
+// at object +0x218, id at +0x40) reaches the object through a content-declared data binding
+// whose handler is 0x409710 (copy, rebind players, refresh); nothing in the retail
+// client publishes it, and the activity host's client-reference message (7) does not reach
+// these objects (no message delegate at +0x108). Until the publisher is found, the first
+// free fireteam reference gets the player's fireteam id through that same handler.
+static const uint8_t* tag_data(uint64_t b, uint32_t h) {
+    if (h == 0xFFFFFFFFu) return nullptr;
+    const int32_t hi = int32_t(h) >> 13;
+    const uint64_t slot = uint64_t((((uint32_t(hi) >> 18) | 0x3FF) & uint32_t(hi))) * 0x40;
+    const uint8_t* tbl = *reinterpret_cast<uint8_t**>(*reinterpret_cast<uint64_t*>(b + 0x1A238A0));
+    const uint8_t* p = *reinterpret_cast<uint8_t* const*>(tbl + 0x10 + slot);
+    const uint64_t off = uint64_t((h & 0x1FFF) * *reinterpret_cast<const int32_t*>(tbl + 0x30 + slot));
+    const uint64_t mask = uint64_t(int64_t(*reinterpret_cast<const int32_t*>(tbl + 0x34 + slot))) &
+                          *reinterpret_cast<const uint64_t*>(p + 8 + off);
+    return p + off - mask;
+}
+// client references of a type (manager per context: registry {start, count} @+0x2BD1C per
+// type, index list @+0x2A51C, entries @+0x520 x 0x38 = {u32 handle, u32, i64 offset, ...})
+static int client_references(uint64_t b, int type, uint8_t** out, int max) {
+    const uint16_t ctx = *reinterpret_cast<uint16_t*>(b + 0x25D6FF8);
+    if (!ctx) return 0;
+    const uint64_t pool = *reinterpret_cast<uint64_t*>(b + 0x1AD5000);
+    const uint64_t stride = *reinterpret_cast<uint32_t*>(b + 0x1AD5010);
+    const uint8_t* mgr = *reinterpret_cast<uint8_t**>(b + 0x1AD5030 + ctx * stride + pool);
+    if (!mgr) return 0;
+    const int16_t start = *reinterpret_cast<const int16_t*>(mgr + 0x2BD1C + type * 4);
+    const int16_t count = *reinterpret_cast<const int16_t*>(mgr + 0x2BD1E + type * 4);
+    int n = 0;
+    for (int16_t i = 0; i < count && n < max; ++i) {
+        const int16_t e = *reinterpret_cast<const int16_t*>(mgr + 0x2A51C + (start + i) * 2);
+        if (e < 0) continue;
+        const uint8_t* ent = mgr + 0x520 + e * 0x38;
+        const uint32_t h = *reinterpret_cast<const uint32_t*>(ent);
+        const uint8_t* obj = tag_data(b, h);
+        if (obj) out[n++] = const_cast<uint8_t*>(obj + *reinterpret_cast<const int64_t*>(ent + 8));
+    }
+    return n;
+}
+static void publish_fireteam(int32_t entity) {
+    const uint64_t b = rt().modules[0].base;
+    const uint64_t arr = *reinterpret_cast<uint64_t*>(b + 0x2689588);
+    const uint64_t stride = *reinterpret_cast<uint32_t*>(b + 0x2689590);
+    const uint8_t* e = reinterpret_cast<const uint8_t*>(arr + (uint32_t(entity) & 0x1FFF) * stride);
+    if (*reinterpret_cast<const int32_t*>(e + 0x50) != -1) return;
+    const uint64_t id = *reinterpret_cast<const uint64_t*>(e + 0x18);
+    if (!id) return;
+    uint8_t* refs[32];
+    const int n = client_references(b, 0xC, refs, 32);
+    uint8_t* free_ref = nullptr;
+    for (int i = 0; i < n; ++i) {
+        const uint64_t owner = *reinterpret_cast<const uint64_t*>(refs[i] + 0x258);
+        if (owner == id) return;  // published; binding happens in the handler
+        if (!owner && !free_ref) free_ref = refs[i];
+    }
+    if (!free_ref) return;
+    alignas(16) uint8_t data[0x78] = {};
+    // @0 0x80800540 {i32, u32, bool, bool @9, bool, i8, i8}: the spawn check (0x415700)
+    // requires @9 (read through the binding at object +0x1F8)
+    data[9] = 1;
+    // @0x10 0x80802619, its i32 @0x28: the authority state (0x4098E0) only becomes
+    // spawn-ready while it equals the player's byte at player data +0x738 (players at
+    // *(0x273EA80)+8, 0x2AF0 each; entity +0x4C low 16 bits = player index)
+    const uint8_t* players = *reinterpret_cast<uint8_t* const*>(*reinterpret_cast<uint64_t*>(b + 0x273EA80) + 8);
+    const int32_t team = int8_t(players[0x738 + (*reinterpret_cast<const uint32_t*>(e + 0x4C) & 0xFFFF) * 0x2AF0]);
+    std::memcpy(data + 0x38, &team, 4);
+    std::memcpy(data + 0x40, &id, 8);
+    struct Typed { uint32_t type; uint32_t pad; const void* data; } v{
+        **reinterpret_cast<uint32_t**>(b + 0x19B2AD8), 0, data};  // 0x808022A5
+    reinterpret_cast<D1_SYSV void (*)(uint8_t*, Typed*)>(b + 0x409710)(free_ref, &v);
+    log("hooks: fireteam %#llx published to fireteam reference %p; player entity %#x definition now %#x",
+        (unsigned long long)id, (void*)free_ref, entity, *reinterpret_cast<const int32_t*>(e + 0x50));
+}
+
+static D1_SYSV bool can_spawn_hook(int32_t entity) {
+    g_spawn_entity = entity;
+    if (g_publish_fireteam) publish_fireteam(entity);
+    const bool r = g_can_spawn_orig(entity);
+    static std::atomic<int> n{0};
+    if (g_trace_spawn && n++ % 300 == 0) log("spawn: check entity %#x -> %d (call %d)", entity, r, n.load());
+    return r;
 }
 
 // ---- DemonWare transport status (eboot+0x2EB340 "started", eboot+0x2EBD40 "failed")
@@ -508,6 +792,14 @@ void install_game_hooks() {
         const uint8_t ret0[3] = {0x31, 0xC0, 0xC3};
         std::memcpy(reinterpret_cast<void*>(exe.base + 0x92A3D0), ret0, 3);
         log("hooks: BLOCK_DETECT hitch watchdog off");
+    }
+    g_trace_spawn = getenv("D1_TRACE_SPAWN") != nullptr;
+    g_publish_fireteam = getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "spawn");
+    if (g_trace_spawn || g_publish_fireteam)
+        g_can_spawn_orig = reinterpret_cast<CanSpawnFn>(hook_function(exe.base + 0x415700, reinterpret_cast<const void*>(&can_spawn_hook)));
+    if (const char* v = getenv("D1_FORCE_LIFETIME"); v || (getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "spawn"))) {
+        g_force_lifetime = v ? std::atoi(v) : 3;
+        g_lifetime_orig = reinterpret_cast<LifetimeFn>(hook_function(exe.base + 0x10C500, reinterpret_cast<const void*>(&lifetime_hook)));
     }
     if (getenv("D1_TRACE_CAMERA"))
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));

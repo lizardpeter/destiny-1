@@ -13,6 +13,7 @@ _None recovered (retail build stripped most asserts)._
 
 | VA | name | class | evidence | pseudo-C | role |
 |---|---|---|---|---|---|
+| `0x33e110` | cinematic_player_stop |  | Static decompilation plus d1-native runtime traces (frame timing, prologue cinematic, cinematic suppression), 2026-10-13 night | [`33e110_cinematic_player_stop.c`](decompiled/33e110_cinematic_player_stop.c) | Stops the cinematic playing on a cinematic player object (the prologue intro uses the one at 0x295C0A0). |
 | `0x900ad0` | player_camera_impulse_offset |  | Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13 | [`900ad0_player_camera_impulse_offset.c`](decompiled/900ad0_player_camera_impulse_offset.c) | Sums up to 8 timed camera impulses (shake / kick curves at 0x273DA50) into a yaw/pitch offset; the player update adds recoil and the stick look on top. |
 
 ## Classes (33)

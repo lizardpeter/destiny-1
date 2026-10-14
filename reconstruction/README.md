@@ -64,7 +64,7 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
 - 9 Bungie source files named in the binary (all placeholders, nothing reconstructed yet).
 - ~2,350 RTTI classes placed across 37 folders; the renderer is mostly invisible
   to RTTI, so `engine/graphics` is thin until functions are traced.
-- 242 decompiled functions:
+- 282 decompiled functions:
   - 33 from the graphics work: the TFX VM and extern ABI, the Frame extern, auto-exposure, the
     Engine Configuration snapshot, the global channel store, and `c_sun_manager`.
   - 81 from the online work (2026-10-13), spread across `omaha/networking/bap`,
@@ -87,6 +87,14 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
     the pad poll and engine gamepad state, the input abstraction game system (dead zones,
     per-player state, look rate) and the player control game system down to the per-frame
     yaw/pitch deltas, plus weapon zoom scaling and camera impulses
+  - 16 from timing, cinematics, the host acknowledgement and the GPU device init
+    (2026-10-13/14): the frame limiter and game time, the intro and loading-cinematic
+    paths, BLOCK_DETECT, and the hardcoded display size
+  - 24 from the spawn path (2026-10-14), in `omaha/simulation`, `omaha/world_controller`
+    and `spasaha/investment`: player spawning and its gates, the player simulation entity
+    and its client-reference definition, the type-0xC and lifetime reference classes,
+    the activity host's client-reference message, the player configuration build, the
+    character data cache and the investment peer subscription roster
     - main loop timing, job system, logging, the engine heap
     - NP toolkit and DemonWare entry points
 - The online protocol (every BAP message class, activity-host message types and handlers,

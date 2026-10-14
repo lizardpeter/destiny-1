@@ -288,7 +288,7 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
             },
             _ = tick.tick() => {
                 if role == Role::ActivityHost && chan.is_some() {
-                    if let Some((ty, data)) = ah_state.keepalive() {
+                    for (ty, data) in ah_state.keepalive() {
                         notify_seq += 1;
                         let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ty, &data));
                         send(&mut sock, &mut chan, &msg).await?;

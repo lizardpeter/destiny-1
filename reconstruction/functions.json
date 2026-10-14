@@ -3223,5 +3223,344 @@
   "size_bytes": 3886,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gpu_device_init:7e40a0",
   "calls": []
+ },
+ {
+  "va": "0x412800",
+  "name": "player_spawning_update",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "412800_player_spawning_update.c",
+  "role": "Player spawning update: per player simulation entity (table 0x2689580) checks can_spawn (0x415700, call sites 0x412BFA and 0x412DCF), runs the respawn timer, picks a spawn location (0x3DD9C0 spawn tag, candidates via 0x415170) and creates the body from the player configuration (body tag *0x66AE60(player) at player data +0x1660; object create 0x308CA0 at 0x413A6F). No body tag = no unit.",
+  "size_bytes": 9740,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_spawning_update:412800",
+  "calls": [
+   "0x415700",
+   "0x415170",
+   "0x3dd9c0",
+   "0x66ae60",
+   "0x308ca0"
+  ]
+ },
+ {
+  "va": "0x415700",
+  "name": "player_can_spawn",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "415700_player_can_spawn.c",
+  "role": "Spawn gate for a player simulation entity: slice-set gate (0x3430B0/0x3455E0/0x345610/0x12D730), entity definition data valid (0x1192B0, byte +9 = spawn-ready flag of the type-0xC reference's active data), activity lifetime state 3 or 6 (0x10C500, else 'can't spawn due to the current activity lifetime state'), tags 0x240840/0x240880 +0x1C, the reference's data blocks (0x3F3CE0/0x3F3DE0) and 0x3D5F30.",
+  "size_bytes": 870,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_can_spawn:415700",
+  "calls": [
+   "0x1192b0",
+   "0x10c500",
+   "0x240840",
+   "0x240880",
+   "0x3d5f30"
+  ]
+ },
+ {
+  "va": "0x302640",
+  "name": "simulation_player_entity_create",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "302640_simulation_player_entity_create.c",
+  "role": "Creates a player simulation entity (pool 0x2689580): init 0x301470 from the player update (id at +0x18 = membership properties @0xA0, else +0x28), then 0x1195F0 binds its definition (+0x50) to the matching type-0xC client reference.",
+  "size_bytes": 181,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_player_entity_create:302640",
+  "calls": [
+   "0x301470",
+   "0x1195f0"
+  ]
+ },
+ {
+  "va": "0x301470",
+  "name": "simulation_player_entity_init",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "301470_simulation_player_entity_init.c",
+  "role": "Player simulation entity init: copies the 0x38-byte identity (+8..+0x40; +0x18 = binding id), +0x44 index, +0x48 handle, +0x4C player, sets definition +0x50 = -1, +0x54/+0x150/+0x154 = -1.",
+  "size_bytes": 245,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:simulation_player_entity_init:301470",
+  "calls": []
+ },
+ {
+  "va": "0x1195f0",
+  "name": "player_entity_bind_definition",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "1195f0_player_entity_bind_definition.c",
+  "role": "Binds player simulation entities to type-0xC client references: iterates the type-0xC references (manager +0x2BD4E count) and sets entity +0x50 (0x301C60) to the reference whose id (object at [ref+0x208] + [ref+0x210], i.e. +0x258) equals the given 8-byte id; 0x1293F0 records the entity on the reference (+0x1F0).",
+  "size_bytes": 1130,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_entity_bind_definition:1195f0",
+  "calls": [
+   "0x301c60",
+   "0x1293f0",
+   "0x1294c0",
+   "0x108470"
+  ]
+ },
+ {
+  "va": "0x301c60",
+  "name": "player_entity_set_definition",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "301c60_player_entity_set_definition.c",
+  "role": "Setter: entity +0x50 = definition (type-0xC client reference handle).",
+  "size_bytes": 4,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_entity_set_definition:301c60",
+  "calls": []
+ },
+ {
+  "va": "0x1192b0",
+  "name": "player_entity_definition_info",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "1192b0_player_entity_definition_info.c",
+  "role": "Entity handle -> active data of its definition reference (0x1192E0: binding at object +0x1F8/+0x200; the local authority copy +0x290 when the local machine owns it, else the published +0x218). Byte +9 = spawn-ready.",
+  "size_bytes": 34,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_entity_definition_info:1192b0",
+  "calls": []
+ },
+ {
+  "va": "0x119210",
+  "name": "player_entity_definition_identity",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "119210_player_entity_definition_identity.c",
+  "role": "Entity -> identity block of its definition reference ([+0x208] + [+0x210] = object +0x258: u64 id, u8, i8 @+9).",
+  "size_bytes": 154,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_entity_definition_identity:119210",
+  "calls": []
+ },
+ {
+  "va": "0x409710",
+  "name": "player_reference_on_data",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "409710_player_reference_on_data.c",
+  "role": "Type-0xC client reference data handler (class table 0x19A35C0, event hash 0x3088896A, data type 0x808022A5): copies 0x78 bytes to object +0x218, rebinds entities when the id at +0x258 changes (0x1195F0 old and new), refreshes. Used by d1-native's spawn bypass to publish the player's id.",
+  "size_bytes": 441,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_reference_on_data:409710",
+  "calls": [
+   "0x1195f0"
+  ]
+ },
+ {
+  "va": "0x409430",
+  "name": "player_reference_bind_active",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "409430_player_reference_bind_active.c",
+  "role": "Points the reference's bindings: +0x208/+0x210 -> +0x258 (identity), +0x318/+0x320 -> +0x288, +0x1F8/+0x200 -> +0x290 (local authority state) when an entity is bound and 0x108470 == 0 (local authority), else +0x218 (published data).",
+  "size_bytes": 728,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_reference_bind_active:409430",
+  "calls": [
+   "0x1293b0",
+   "0x108470"
+  ]
+ },
+ {
+  "va": "0x4098e0",
+  "name": "player_reference_build_authority_state",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "4098e0_player_reference_build_authority_state.c",
+  "role": "Authority producer for the type-0xC reference (event hash 0x24D7DDECB): fills the local state at +0x290 (slice-set value, +0x298 valid when < 0x80 and not 0x9141F0, +0x299 spawn-ready when +0x298, published i32 +0x250 == player byte +0x738 (+0x2C8) and 0x77B920), +0x29A..+0x2CE from player data; remote authority copies the owner's state instead.",
+  "size_bytes": 1456,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_reference_build_authority_state:4098e0",
+  "calls": [
+   "0x77b920",
+   "0x9141f0"
+  ]
+ },
+ {
+  "va": "0x4044f0",
+  "name": "activity_lifetime_reference_on_data",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "4044f0_activity_lifetime_reference_on_data.c",
+  "role": "Activity lifetime reference (client reference type 0x10) data handler: copies the published byte (type *0x19B2B18) to +0x1AC, which 0x10C500 reports.",
+  "size_bytes": 95,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_lifetime_reference_on_data:4044f0",
+  "calls": []
+ },
+ {
+  "va": "0x404550",
+  "name": "activity_lifetime_reference_publish",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "404550_activity_lifetime_reference_publish.c",
+  "role": "Activity lifetime reference authority producer: publishes the byte at +0x1AD (type *0x19B2B20). No client code writes +0x1AD.",
+  "size_bytes": 141,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_lifetime_reference_publish:404550",
+  "calls": []
+ },
+ {
+  "va": "0x29d7e0",
+  "name": "host_message_client_reference",
+  "subsystem": "omaha.world_controller",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "29d7e0_host_message_client_reference.c",
+  "role": "Activity host message 7: decodes {reference id 0x808004B1 {u32 group key, i8, i16 index}, type handle 0x80800046, value} (0x2D2B20), finds the reference (0x1071D0) and calls its message delegate at entry +0x108 (0x353340). Player and lifetime references have no delegate there.",
+  "size_bytes": 362,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:host_message_client_reference:29d7e0",
+  "calls": [
+   "0x2d2b20",
+   "0x1071d0",
+   "0x353340"
+  ]
+ },
+ {
+  "va": "0x1071d0",
+  "name": "client_reference_lookup",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "1071d0_client_reference_lookup.c",
+  "role": "Client reference id {key, i8, index} -> entry {handle, offset, ...}: groups at manager +0xC (count, start, key; stride 0x14, group count +8), entries at +0x520 + index * 0x38 (+ slot * 0x18).",
+  "size_bytes": 231,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:client_reference_lookup:1071d0",
+  "calls": [
+   "0x1076c0"
+  ]
+ },
+ {
+  "va": "0x100cb80",
+  "name": "client_reference_iterate",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "100cb80_client_reference_iterate.c",
+  "role": "Client reference iterator {manager, i16 index, i32 type, bool}: type registry +0x2BD1C {start, count}, index list +0x2A51C, entry +0x520 + e * 0x38 -> {handle, offset}.",
+  "size_bytes": 352,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:client_reference_iterate:100cb80",
+  "calls": []
+ },
+ {
+  "va": "0x912240",
+  "name": "player_configuration_build",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "912240_player_configuration_build.c",
+  "role": "Builds the player configuration (0x1098 bytes, type *0x19B1BA0) from the player's character data (+0x850 race/gender/class, +0x85C body tag, appearance, gear) when 0x52B090, 0x549510 and player +0x613 bit 1 hold.",
+  "size_bytes": 2256,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_configuration_build:912240",
+  "calls": [
+   "0x66acc0"
+  ]
+ },
+ {
+  "va": "0x911850",
+  "name": "player_apply_character_data",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "911850_player_apply_character_data.c",
+  "role": "Applies a character data cache entry to a player: player +0x613 |= 2, copies the character data to +0x850 (0x104A2B0), builds the configuration (0x912240) and installs it (0x73DAC0 -> 0x66AE90 -> player data +0x1660).",
+  "size_bytes": 531,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_apply_character_data:911850",
+  "calls": [
+   "0x912240",
+   "0x73dac0"
+  ]
+ },
+ {
+  "va": "0x58dae0",
+  "name": "character_data_cache_apply",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "58dae0_character_data_cache_apply.c",
+  "role": "For each player, finds its character id (player +0x710) in the character data cache (20 entries of 0xE48, sorted by id) and applies ready entries (state 5 or due) via 0x911850.",
+  "size_bytes": 421,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:character_data_cache_apply:58dae0",
+  "calls": [
+   "0x911850"
+  ]
+ },
+ {
+  "va": "0x58d940",
+  "name": "character_data_cache_update",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "58d940_character_data_cache_update.c",
+  "role": "Keeps the character data cache in step with the peer subscription manager's list; entries in states 1-3 resolve through investment family 0 (0x58DC90: slot 0 by account id -> character id @8 -> slot 1), state 4 builds the data (0x58DDE0).",
+  "size_bytes": 405,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:character_data_cache_update:58d940",
+  "calls": [
+   "0x57d940",
+   "0x58dc90",
+   "0x58dde0"
+  ]
+ },
+ {
+  "va": "0x57d1d0",
+  "name": "investment_peer_subscription_manager_update",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "57d1d0_investment_peer_subscription_manager_update.c",
+  "role": "c_investment_peer_subscription_manager: diffs the desired roster (0x58B760, set from the simulation queue) against its own and subscribes / unsubscribes investment family 0 per member account (0x56BCD0 / 0x56BD50).",
+  "size_bytes": 1655,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:investment_peer_subscription_manager_update:57d1d0",
+  "calls": [
+   "0x58b760"
+  ]
+ },
+ {
+  "va": "0x58b570",
+  "name": "investment_peer_subscription_publish",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "58b570_investment_peer_subscription_publish.c",
+  "role": "Simulation host side of c_investment_peer_subscription_proxy: lists the members of the local account's roster group (investment roster 0x26BC448, flags 0x15) and enqueues simulation-queue element 0x2B (s_investment_peer_subscription_state, 0x150 bytes) when it changes.",
+  "size_bytes": 423,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:investment_peer_subscription_publish:58b570",
+  "calls": [
+   "0x587520",
+   "0x57f880",
+   "0x57f9b0"
+  ]
+ },
+ {
+  "va": "0x104a290",
+  "name": "investment_peer_subscription_apply",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "104a290_investment_peer_subscription_apply.c",
+  "role": "Simulation-queue handler for element 0x2B: copies the 0x150-byte state into the desired roster (0x26BC798).",
+  "size_bytes": 27,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:investment_peer_subscription_apply:104a290",
+  "calls": []
+ },
+ {
+  "va": "0x66ae90",
+  "name": "player_set_configuration",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_SPAWN / gdb runs into activity:in_world (player gets a unit), 2026-10-14",
+  "file": "66ae90_player_set_configuration.c",
+  "role": "Installs a player configuration at player data +0x1660 (0x104F3A0), resetting dependent state when the body changes.",
+  "size_bytes": 271,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_set_configuration:66ae90",
+  "calls": []
  }
 ]

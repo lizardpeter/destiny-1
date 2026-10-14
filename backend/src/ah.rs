@@ -212,6 +212,16 @@ pub const HOST_SYNC_TOKEN: u32 = 27;
 const TYPE_SYNC_TOKEN: &str = "0x80800d31";
 pub const KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Host -> client message: client reference message (type 7, 0x29D7E0). Payload
+/// (0x2D2B20): reference id 0x808004B1 {u32 group key, i8 (not -1), i16 index in the group},
+/// payload type (0x80800046, a type handle), then a value of that type. The client looks the
+/// reference up in the client reference manager (0x1071D0) and hands the value to the
+/// object's message delegate at entry +0x108 (0x353340). The player (type 0xC) and activity
+/// lifetime (type 0x10) references have no delegate there, so their state does not come
+/// this way (findings/LOG.md, 2026-10-14 spawn).
+#[allow(dead_code)]
+pub const HOST_CLIENT_REFERENCE: u32 = 7;
+
 /// Per-connection activity host state.
 #[derive(Default)]
 pub struct Host {
@@ -224,14 +234,14 @@ pub struct Host {
 
 impl Host {
     /// Periodic host message once the client has joined.
-    pub fn keepalive(&mut self) -> Option<(u32, Vec<u8>)> {
+    pub fn keepalive(&mut self) -> Vec<(u32, Vec<u8>)> {
         if !self.joined {
-            return None;
+            return Vec::new();
         }
         self.sync_token += 1;
         let mut w = BitWriter::default();
         invest::encode(&mut w, TYPE_SYNC_TOKEN, &Value::Struct(vec![Some(Value::Int(self.sync_token))]));
-        Some((HOST_SYNC_TOKEN, w.finish()))
+        vec![(HOST_SYNC_TOKEN, w.finish())]
     }
 
     /// Host startup request (activity host manager request kind 3), after the kind byte:

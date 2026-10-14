@@ -173,6 +173,20 @@ fn encode_scalar(w: &mut BitWriter, m: &Member, v: Option<&Value>) {
         2 => w.bit(v.int() != 0),
         11 => w.bits(match v { Value::Float(f) => f.to_bits() as u64, other => (other.int() as f32).to_bits() as u64 }, 32),
         3..=10 => w.bits((v.int().wrapping_add(m.bias as i64)) as u64 & mask(m.bits), m.bits),
+        // type handle (0x102C1D0): presence bit, then u32; -1 = absent
+        23 => {
+            let t = v.int() as u32;
+            w.bit(t != u32::MAX);
+            if t != u32::MAX {
+                w.bits(t as u64, 32);
+            }
+        }
+        // 8-byte identifier (0x102D280 -> 0x808004AC: u8[8] in memory order)
+        35 => {
+            for b in (v.int() as u64).to_le_bytes() {
+                w.bits(b as u64, 8);
+            }
+        }
         k => panic!("investment kind {k} not supported for encoding"),
     }
 }
@@ -187,6 +201,14 @@ fn decode_scalar(r: &mut BitReader, m: &Member) -> Value {
             // sign-extend to the field width (8/16/32/64 by kind)
             let w = match m.kind { 3 | 7 => 8, 4 | 8 => 16, 5 | 9 => 32, _ => 64 };
             Value::Int(if w == 64 { v } else { ((v << (64 - w)) >> (64 - w)) as i64 })
+        }
+        23 => Value::Int(if r.bit() { r.bits(32) as u32 as i64 } else { -1 }),
+        35 => {
+            let mut b = [0u8; 8];
+            for x in &mut b {
+                *x = r.bits(8) as u8;
+            }
+            Value::Int(u64::from_le_bytes(b) as i64)
         }
         k => panic!("investment kind {k} not supported for decoding"),
     }
@@ -559,6 +581,31 @@ pub fn profile_baseline() -> FamilyUpdate {
     FamilyUpdate { family: FAMILY_PROFILE, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
 }
 
+/// Family 0 (peer view of an account, rooted at the account id): what every peer in an
+/// activity subscribes to for each member (c_investment_peer_subscription_manager, 0x57D1D0,
+/// fed by the roster the simulation host enqueues, 0x58B570). Slot 0 0x80801921 {soid,
+/// character id @8, ...}; slot 1 0x808017FD {soid, {race, gender, class}, appearance,
+/// loadout 0x80801855 @0x30, ...}. The character data cache (0x58D940 / 0x58DC90) resolves
+/// account -> character through them and builds the player configuration (body, gear;
+/// 0x911850 -> player data +0x1660) the spawner needs: without it the player gets no body.
+pub const FAMILY_PEER: u32 = 0;
+pub const TYPE_PEER_ACCOUNT: &str = "0x80801921";
+pub const TYPE_PEER_CHARACTER: &str = "0x808017fd";
+
+pub fn peer_baseline() -> FamilyUpdate {
+    use Value::*;
+    let active = characters().last().cloned();
+    let mut objects = vec![Object {
+        ty: TYPE_PEER_ACCOUNT,
+        soid: ACCOUNT_ID,
+        value: Struct(vec![Some(Int(ACCOUNT_ID)), active.as_ref().map(|c| Int(c.id))]),
+    }];
+    if let Some(ch) = active {
+        objects.push(Object { ty: TYPE_PEER_CHARACTER, soid: ch.id, value: character_head(&ch) });
+    }
+    FamilyUpdate { family: FAMILY_PEER, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_PEER), flags: 1, objects }
+}
+
 /// Baseline of a family the client subscribes to (BAP message 12). Families we hold no
 /// objects for get an empty baseline (the client logs "object-count of zero" but marks the
 /// family live, which is what the peer-subscription check waits for).
@@ -566,6 +613,7 @@ pub fn family_baseline(family: u32, root: i64) -> Option<FamilyUpdate> {
     Some(match family {
         FAMILY_ACCOUNT if root == ACCOUNT_ID => account_baseline(),
         FAMILY_PROFILE if root == ACCOUNT_ID => profile_baseline(),
+        FAMILY_PEER if root == ACCOUNT_ID => peer_baseline(),
         _ => FamilyUpdate { family, root, version: crate::account::next_version(family), flags: 1, objects: vec![] },
     })
 }

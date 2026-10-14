@@ -959,3 +959,55 @@ patches both: at 2560x1440 video out registers 2560x1440 buffers and the title, 
 loading screens render at full 2560x1440 with correct layout (the UI keeps its 1920x1080
 reference canvas at 0x166EE18 and scales). 3D scenes at higher resolutions still need
 checking on real hardware (the software test bench is too slow to reach them quickly).
+
+## 2026-10-14: the player spawns (black screen fixed)
+
+The dead camera came from a chain of three missing pieces of server-side state. With all
+three supplied the local player gets a unit in activity:in_world and the director keeps
+camera type 4 instead of the dead camera (5).
+
+- **Player definition** (`can_spawn` 0x415700, first gate `0x1192B0(entity) == 0`): a
+  player simulation entity's definition (+0x50) is a client reference of type 0xC (16 per
+  world, content type 0x80802236, group key 0x4786C0E0 indices 5..20 in the prologue).
+  0x1195F0 binds the entity to the reference whose 8-byte id at object +0x258 equals the
+  id the entity was created with (+0x18 = membership properties @0xA0; with one player
+  that is the character id). The id arrives as data of type 0x808022A5 (0x78 bytes:
+  @0 0x80800540 {i32, u32, bool, bool, bool, i8, i8}, @0x10 0x80802619, @0x40 0x80800646
+  {u64 id, u8, i8, member list}, @0x70, @0x74) through a content-declared data binding:
+  the class's handler table (0x19A35C0: {event hash, handler}) maps 0x3088896A to
+  0x409710, which copies it to +0x218 and rebinds players. Nothing in the client
+  publishes it, and the activity host's client-reference message (7, 0x29D7E0) only reaches
+  objects with a message delegate at +0x108, which these do not have.
+- **Spawn-ready flag**: when the local machine is the reference's authority (0x108470 ==
+  0), 0x409430 points the active data (+0x1F8/+0x200) at the local copy +0x290, which
+  0x4098E0 builds. Its bool @+0x299 (what `can_spawn` reads as `info+9`) is set only while
+  the published i32 at +0x250 (0x80802619 @0x28) equals the player's byte at player data
+  +0x738 (players at *(0x273EA80)+8, 0x2AF0 each) and 0x77B920 (state 0x7680F0 == 4).
+- **Activity lifetime state** (0x10C500, client reference type 0x10, byte +0x1AC):
+  states 3 and 6 allow spawning. The object's class (0x4044B0 / 0x4044F0 receive /
+  0x404550 publish) copies a published byte into +0x1AC and publishes its own +0x1AD; no
+  client code writes +0x1AD, so the value belongs to the activity's script owner.
+- **Body** (spawn location found, then `*0x66AE60(player) == -1`, so no object is
+  created): the player configuration at player data +0x1660 (0x1098 bytes, body tag
+  first) is built by 0x912240 from the player's character data (+0x850: race, gender,
+  class, ...; flag +0x613 bit 1), which 0x911850 applies from the character data cache
+  (0x58D940 / 0x58DAE0, 20 entries of 0xE48 keyed by character id). The cache follows
+  the peer subscription manager (c_investment_peer_subscription_manager, 0x57D1D0),
+  whose roster the simulation host enqueues as simulation-queue element 0x2B
+  (s_investment_peer_subscription_state, producer 0x58B570 from the investment roster
+  0x26BC448, handler 0x104A290). The manager subscribes **investment family 0** for each
+  member account; the cache looks up slot 0 0x80801921 {soid = account id, @8 character
+  id} and then slot 1 0x808017FD {soid = character id, {race, gender, class},
+  appearance, loadout 0x80801855, ...}.
+
+What changed:
+- backend: family 0 baseline for the account (peer account + peer character objects).
+  With it the client builds the player configuration (body tag 0x80A6A06C for the test
+  character) on its own.
+- d1-native (`spawn` bypass): publishes the player's id (and the matching @0x250 value,
+  valid flag @9) to the first free type-0xC reference through the game's own handler
+  0x409710, and reports activity lifetime state 3 while the game has none
+  (D1_FORCE_LIFETIME overrides). Both stand in for activity-host state whose delivery path
+  is not found yet; D1_TRACE_SPAWN logs every gate.
+- backend: engine-type kinds 23 (type handle: presence bit + u32) and 35 (8-byte id) in the
+  bitstream codec; client-reference message types merged into the schema.
