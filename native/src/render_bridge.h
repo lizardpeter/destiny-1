@@ -42,6 +42,8 @@ int32_t submit_and_flip(uint32_t count, uint32_t* const* dcbs, const uint32_t* d
                         const uint32_t* ccb_sizes, uint32_t buf, int64_t arg);
 void cpu_flip(int32_t index, int64_t arg);
 void submit_done();
+bool idle();        // no submitted work left on the GPU thread
+void wait_idle();   // block until idle()
 
 // Guest memory visible to the GPU, and CPU writes to pages the GPU caches.
 void on_map(uint64_t addr, uint64_t size);

@@ -102,6 +102,11 @@ engine-side patch (not done yet).
 | `D1_PEEK=off,*off` / `D1_POKE=secs:off+delta=value;…` | research aids: dump / write eboot-relative memory (`*` dereferences a pointer) |
 | `D1_GPU_LOG=t\|d\|i\|w\|e` | (renderer build) renderer log level; each repeated warning prints 20 times, then once per 10,000 |
 | `D1_PIPELINE_CACHE=0` | (renderer build) don't keep compiled shaders and pipelines in `<data>/shader_cache` between runs |
+| `D1_RENDER_EVERY=N` | (renderer build) draw only every Nth frame; the frames between go through the null GPU, so the game keeps its normal speed and network timing on a slow GPU or software rendering (debugging: in-world screenshots on lavapipe) |
+| `D1_RENDER_ASYNC=1` | (renderer build) draw a frame only when the renderer is idle, otherwise pass it through the null GPU without waiting |
+| `D1_RENDERER_LATE=<s>` | (renderer build) null GPU until `<s>` seconds into `activity:in_world`, then start the renderer |
+| `D1_GPU_LOG_ALL=1` | (renderer build) don't throttle repeated renderer warnings |
+| `D1_NO_ARRAY_TO_VOLUME=1` / `D1_NO_VOLUME_SLICES=1` / `D1_NO_OVERLAP_GROW=1` | (renderer build) turn off the texture cache fixes for the colour-grading LUT (patches 0009 / 0004 / 0007) |
 | `D1_INLINE_FETCH=1` | (renderer build) translate vertex fetch shaders inline as buffer loads (shadPS4's slower debugging path) |
 | `D1_GPU_ID=<n>` | (renderer build) use the n-th Vulkan device instead of the automatic pick |
 

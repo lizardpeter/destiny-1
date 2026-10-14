@@ -175,6 +175,40 @@ HLE("sceKernelAddGpuExceptionEvent", sceKernelAddGpuExceptionEvent)
 // handles command buffers.
 static bool g_gpu_real = false;
 static bool gpu_real() { return kHaveRenderer && g_gpu_real; }
+// D1_RENDERER_LATE=<s> (test aid): run on the null GPU until the game has been in
+// activity:in_world for <s> seconds, then start the renderer. Lets a slow software Vulkan
+// device look at the world without its frame times changing how the game gets there.
+// Command buffers use the real packet builders from the start.
+static bool g_late = false;
+static double g_late_secs = 0;
+static render::Callbacks g_late_cb{};
+static bool builders_real() { return kHaveRenderer && (g_gpu_real || g_late); }
+static void maybe_attach_renderer();
+
+// D1_RENDER_EVERY=N: with the renderer on, draw only every Nth frame; the frames in between go
+// through the null GPU (labels, EOP and flips without drawing). For slow GPUs and software
+// rendering, so the game keeps its real speed (and its network timeouts) while frames still
+// come out. Before a skipped frame the renderer is drained, so the order of GPU work holds;
+// D1_RENDER_ASYNC=1 skips without waiting whenever the renderer is still busy instead.
+static int g_render_every = 0;
+static bool g_render_async = false;
+static int g_frame_mode = -1;  // current frame: -1 undecided, 0 null, 1 renderer
+static uint64_t g_frame_no = 0;
+static bool frame_rendered() {
+    if (!gpu_real() || (g_render_every <= 1 && !g_render_async)) return true;
+    if (g_frame_mode < 0) {
+        bool draw;
+        if (g_render_async) draw = render::idle();
+        else if (!(draw = g_frame_no % uint64_t(g_render_every) == 0)) render::wait_idle();
+        g_frame_mode = draw ? 1 : 0;
+    }
+    return g_frame_mode == 1;
+}
+static void frame_end() {
+    g_frame_mode = -1;
+    ++g_frame_no;
+}
+
 bool gpu_active() { return gpu_real(); }
 
 // ------------------------------------------------------------------ video out
@@ -316,11 +350,13 @@ static void do_flip(int32_t index, int64_t arg) {
 }
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {
     note_guest_frame();
-    if (gpu_real()) {
+    if (gpu_real() && frame_rendered()) {
+        frame_end();
         { std::lock_guard lk(g_vo.m); ++g_vo.status.flip_pending_num; }
         render::cpu_flip(index, arg);
         return SCE_OK;
     }
+    if (gpu_real()) frame_end();
     do_flip(index, arg);
     return SCE_OK;
 }
@@ -352,10 +388,12 @@ static void signal_eop() {
     for (auto* q : qs) q->trigger(0x40, kFilterGraphics, 0x40);
 }
 
+// GPU timestamps (EOP / RELEASE_MEM "GPU clock 64"): the same clock the renderer's command
+// processor writes (shadPS4: high_resolution_clock in ns), so frames that go through the null GPU
+// (D1_RENDER_EVERY, D1_RENDERER_LATE) don't make the game's GPU timings jump backwards.
 static uint64_t gpu_clock() {
-    timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return uint64_t(t.tv_sec) * 100000000ull + uint64_t(t.tv_nsec) / 10;  // 100 MHz
+    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::high_resolution_clock::now().time_since_epoch()).count());
 }
 
 static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
@@ -436,7 +474,7 @@ static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb
 
 static int32_t sceGnmSubmitCommandBuffers(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes,
                                           uint32_t* const* ccbs, const uint32_t* ccb_sizes) {
-    if (gpu_real()) {
+    if (gpu_real() && frame_rendered()) {
         render::submit(count, dcbs, dcb_sizes, ccbs, ccb_sizes);
         return SCE_OK;
     }
@@ -447,7 +485,9 @@ static int32_t sceGnmSubmitAndFlipCommandBuffers(uint32_t count, uint32_t* const
                                                  uint32_t* const* ccbs, const uint32_t* ccb_sizes, uint32_t,
                                                  uint32_t buf, uint32_t mode, int64_t arg) {
     note_guest_frame();
-    if (gpu_real()) {
+    maybe_attach_renderer();
+    if (gpu_real() && frame_rendered()) {
+        frame_end();
         {
             std::lock_guard lk(g_vo.m);
             ++g_vo.status.flip_pending_num;
@@ -456,6 +496,10 @@ static int32_t sceGnmSubmitAndFlipCommandBuffers(uint32_t count, uint32_t* const
         return render::submit_and_flip(count, dcbs, dcb_sizes, ccbs, ccb_sizes, buf, arg);
     }
     submit(count, dcbs, dcb_sizes);
+    if (gpu_real()) {  // a skipped frame: what the patched prepareFlip would have written
+        frame_end();
+        if (buf < 16) g_vo.labels[buf] = 1;
+    }
     do_flip(int32_t(buf), arg);
     return SCE_OK;
 }
@@ -482,14 +526,14 @@ static void write_nop(uint32_t* p, uint32_t n) {
     std::memset(p + 1, 0, (n - 1) * 4);
 }
 static uint32_t sceGnmDrawInitDefaultHardwareState(uint32_t* cmd, uint32_t size) {
-    if (gpu_real()) return render::draw_init_default_hw_state(cmd, size);
+    if (builders_real()) return render::draw_init_default_hw_state(cmd, size);
     if (size < 0x100) return 0;
     write_nop(cmd, 0x100);
     return 0x100;
 }
 HLE("sceGnmDrawInitDefaultHardwareState", sceGnmDrawInitDefaultHardwareState)
 static uint32_t sceGnmDispatchInitDefaultHardwareState(uint32_t* cmd, uint32_t size) {
-    if (gpu_real()) return render::dispatch_init_default_hw_state(cmd, size);
+    if (builders_real()) return render::dispatch_init_default_hw_state(cmd, size);
     if (size < 0x100) return 0;
     write_nop(cmd, 0x100);
     return 0x100;
@@ -500,7 +544,7 @@ HLE("sceGnmDispatchInitDefaultHardwareState", sceGnmDispatchInitDefaultHardwareS
 // for the null GPU.
 #define D1_SHADER_SETTER(NAME, CALL, ...)                                   \
     static int32_t NAME(uint32_t* cmd, uint32_t size, const uint32_t* regs __VA_OPT__(, ) __VA_ARGS__) { \
-        if (gpu_real()) return CALL;                                        \
+        if (builders_real()) return CALL;                                   \
         if (!cmd) return -1;                                                \
         write_nop(cmd, size);                                               \
         return SCE_OK;                                                      \
@@ -522,6 +566,13 @@ HLE("sceGnmSetHsShader", sceGnmSetHsShader)
 HLE("sceGnmSetLsShader", sceGnmSetLsShader)
 static int32_t sceGnmInsertWaitFlipDone(uint32_t* cmd, uint32_t size, int32_t, uint32_t buf) {
     if (gpu_real()) return render::insert_wait_flip_done(cmd, size, buf);
+    if (builders_real() && size == 7 && buf < 16) {
+        // WAIT_REG_MEM (memory, equal) on the video out label: label == 0
+        const uint64_t a = reinterpret_cast<uint64_t>(&g_vo.labels[buf]) & ~3ull;
+        const uint32_t pkt[7] = {0xC0053C00u, 0x13u, uint32_t(a), uint32_t(a >> 32), 0u, 0xFFFFFFFFu, 10u};
+        std::memcpy(cmd, pkt, sizeof pkt);
+        return SCE_OK;
+    }
     write_nop(cmd, size);
     return SCE_OK;
 }
@@ -542,8 +593,52 @@ void gpu_init() {
     static const std::string cache_dir = rt().data_root + "/shader_cache";
     cb.cache_dir = cache_dir.c_str();
     cb.present_mode = st.vsync == "on" ? "Fifo" : st.vsync == "off-tearing" ? "Immediate" : "Mailbox";
+    if (const char* v = getenv("D1_RENDER_EVERY")) g_render_every = std::max(0, std::atoi(v));
+    if (const char* v = getenv("D1_RENDER_ASYNC")) g_render_async = v[0] == '1';
+    if (g_render_every > 1 || g_render_async)
+        log("GPU: drawing %s (the other frames go through the null GPU)",
+            g_render_async ? "whenever the renderer is idle" : ("every " + std::to_string(g_render_every) + "th frame").c_str());
+    if (const char* v = getenv("D1_RENDERER_LATE")) {
+        g_late = true;
+        g_late_secs = std::atof(v);
+        g_late_cb = cb;
+        log("GPU: null GPU until %.0f s into activity:in_world, then the renderer (D1_RENDERER_LATE)", g_late_secs);
+        return;
+    }
     g_gpu_real = render::init(cb);
     if (!g_gpu_real) log("GPU: null GPU (nothing is drawn)");
+}
+
+void for_each_guest_region(void (*fn)(uint64_t addr, uint64_t size));  // hle_kernel.cpp
+
+// Called at each frame submission: start the renderer once the late-attach point is reached.
+static void maybe_attach_renderer() {
+    if (!g_late || g_gpu_real) return;
+    static std::chrono::steady_clock::time_point t_world{};
+    const char* st = game_state();
+    if (!st || std::strcmp(st, "activity:in_world") != 0) {
+        t_world = {};
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (t_world == std::chrono::steady_clock::time_point{}) t_world = now;
+    if (std::chrono::duration<double>(now - t_world).count() < g_late_secs) return;
+    g_late = false;
+    if (!render::init(g_late_cb)) {
+        log("GPU: late renderer start failed; staying on the null GPU");
+        return;
+    }
+    for_each_guest_region([](uint64_t a, uint64_t n) { render::on_map(a, n); });
+    {
+        std::lock_guard lk(g_vo.m);
+        if (g_vo.registered > 0) {
+            void* addrs[16];
+            for (int i = 0; i < g_vo.registered && i < 16; ++i) addrs[i] = g_vo.buffers[i];
+            render::register_buffers(0, addrs, g_vo.registered, g_vo.attr);
+        }
+    }
+    g_gpu_real = true;
+    log("GPU: renderer started (late attach)");
 }
 
 void gpu_on_map(uint64_t addr, uint64_t size) {

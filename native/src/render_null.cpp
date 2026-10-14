@@ -7,6 +7,8 @@ bool init(const Callbacks&) { return false; }
 bool overlay_enabled() { return false; }
 void set_overlay(bool) {}
 bool active() { return false; }
+bool idle() { return true; }
+void wait_idle() {}
 void register_buffers(int32_t, void* const*, int32_t, const VoAttr&) {}
 void submit(uint32_t, uint32_t* const*, const uint32_t*, uint32_t* const*, const uint32_t*) {}
 int32_t submit_and_flip(uint32_t, uint32_t* const*, const uint32_t*, uint32_t* const*, const uint32_t*, uint32_t,

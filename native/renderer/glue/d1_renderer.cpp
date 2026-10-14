@@ -544,6 +544,14 @@ void cpu_flip(s32 index, s64 arg) {
     g->liverpool->SendCommand([index, arg] { flip_on_gpu(index, arg); });
 }
 
+bool idle() {
+    return !g || g->liverpool->IsGpuIdle();
+}
+
+void wait_idle() {
+    if (g) g->liverpool->WaitGpuIdle();
+}
+
 void submit_done() {
     std::scoped_lock lk{g->submit_mutex};
     g->liverpool->SubmitDone();

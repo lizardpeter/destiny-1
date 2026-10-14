@@ -73,7 +73,8 @@ void VLog(Class log_class, Level level, const char* file, int line, const char* 
             std::lock_guard lk(cm);
             n = ++seen[format.data()];
         }
-        if (n > 20 && n % 10000 != 0) return;
+        static const bool all = std::getenv("D1_GPU_LOG_ALL") != nullptr;  // debugging: no throttle
+        if (!all && n > 20 && n % 10000 != 0) return;
         if (n == 20) d1::log("[gpu] (the next message repeats; further copies are suppressed)");
     }
     static const char* names[] = {"T", "D", "I", "W", "E", "C", "-"};

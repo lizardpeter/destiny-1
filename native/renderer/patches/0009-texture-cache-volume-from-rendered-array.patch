@@ -1,0 +1,43 @@
+--- a/src/video_core/texture_cache/texture_cache.cpp	2026-10-14 12:33:16.991523305 -0400
++++ b/src/video_core/texture_cache/texture_cache.cpp	2026-10-14 12:40:35.648632748 -0400
+@@ -556,6 +556,13 @@
+         if (cache_image.info.size != info.size) {
+             continue;
+         }
++        // d1-native: an array with more layers in a different tiling is a different resource
++        // that shares the bytes (Destiny 1's 32x32 thin target and the 8-layer thick slices of
++        // its LUT have the same size); matching them grew the thin one and lost the slices.
++        if (cache_image.info.tile_mode != info.tile_mode &&
++            cache_image.info.resources.layers != info.resources.layers) {
++            continue;
++        }
+         if (!IsVulkanFormatCompatible(cache_image.info.pixel_format, info.pixel_format) ||
+             (cache_image.info.type != info.type && info.size != Extent3D{1, 1, 1})) {
+             continue;
+@@ -566,6 +573,26 @@
+         image_id = cache_id;
+     }
+ 
++    // d1-native: a volume read over a 2D array that the GPU rendered slice by slice (Destiny 1
++    // renders its 32^3 colour-grading LUT as 32 layers of a thick-tiled render target, then samples
++    // it as 3D). Same bytes, layers == depth: build the volume from the array's contents. Without
++    // this the volume was created from guest memory, which never sees GPU writes, so the colour
++    // grading used stale data (tinted, crushed image).
++    if (!image_id && info.type == AmdGpu::ImageType::Color3D && !std::getenv("D1_NO_ARRAY_TO_VOLUME")) {
++        for (const auto& cache_id : image_ids) {
++            auto& cache_image = slot_images[cache_id];
++            const auto& ci = cache_image.info;
++            if (ci.guest_address == info.guest_address && ci.type != AmdGpu::ImageType::Color3D &&
++                ci.size.width == info.size.width && ci.size.height == info.size.height &&
++                ci.resources.layers == info.size.depth && ci.resources.levels >= info.resources.levels &&
++                IsVulkanFormatCompatible(ci.pixel_format, info.pixel_format) &&
++                True(cache_image.flags & ImageFlagBits::GpuModified)) {
++                image_id = ExpandImage(info, cache_id);
++                break;
++            }
++        }
++    }
++
+     // Try to resolve overlaps (if any)
+     int view_mip{-1};
+     int view_slice{-1};

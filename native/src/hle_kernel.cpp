@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstring>
 #include <map>
+#include <vector>
 #include <set>
 #include <string_view>
 #include <mutex>
@@ -203,6 +204,16 @@ static const std::pair<const uint64_t, Region>* region_of(uint64_t a) {
     if (it == g_regions.begin()) return nullptr;
     --it;
     return a < it->first + it->second.size ? &*it : nullptr;
+}
+
+// Every guest mapping the GPU has been told about (late renderer attach replays them).
+void for_each_guest_region(void (*fn)(uint64_t addr, uint64_t size)) {
+    std::vector<std::pair<uint64_t, uint64_t>> v;
+    {
+        std::lock_guard lk(g_mem_mutex);
+        for (auto& [a, r] : g_regions) v.emplace_back(a, r.size);
+    }
+    for (auto& [a, n] : v) fn(a, n);
 }
 
 uint64_t guest_region_extent(uint64_t addr) {
