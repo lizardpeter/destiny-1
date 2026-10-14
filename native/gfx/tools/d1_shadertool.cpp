@@ -17,6 +17,7 @@
 
 #include "../gcn.h"
 #include "../translate.h"
+#include "../vk/vk.h"
 
 using namespace d1::gcn;
 
@@ -32,7 +33,7 @@ static std::vector<uint8_t> read_file(const char* path) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) {
+    if (argc < 3 && !(argc == 2 && std::string(argv[1]) == "vkinfo")) {
         std::fprintf(stderr, "usage: %s decode|dis <file>...\n", argv[0]);
         return 2;
     }
@@ -43,6 +44,20 @@ int main(int argc, char** argv) {
         for (auto& in : p.insts) std::printf("%5x: %s\n", in.pc, disassemble(in).c_str());
         for (auto& e : p.problems) std::printf("PROBLEM: %s\n", e.c_str());
         return p.problems.empty() && p.ended ? 0 : 1;
+    }
+    if (cmd == "vkinfo") {  // create the native renderer's Vulkan 1.4 context
+        d1::vk::Context ctx;
+        char err[256] = {};
+        if (!d1::vk::create_context(ctx, -1, nullptr, 0, err, sizeof err)) {
+            std::printf("Vulkan: %s\n", err);
+            return 1;
+        }
+        std::printf("Vulkan %u.%u.%u on %s (host image copy %s, external host memory %s)\n",
+                    VK_API_VERSION_MAJOR(ctx.api_version), VK_API_VERSION_MINOR(ctx.api_version),
+                    VK_API_VERSION_PATCH(ctx.api_version), ctx.name, ctx.host_image_copy ? "yes" : "no",
+                    ctx.external_memory_host ? "yes" : "no");
+        d1::vk::destroy_context(ctx);
+        return 0;
     }
     if (cmd == "translate") {
         size_t ok = 0, total = 0;

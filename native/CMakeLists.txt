@@ -25,6 +25,28 @@ add_custom_command(
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_import_names.py ${IMPORT_SURFACE} ${IMPORT_NAMES}
   DEPENDS ${IMPORT_SURFACE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_import_names.py)
 
+# Native renderer library: our own GCN decoder, SPIR-V builder, shader translator and Vulkan
+# layer. Vulkan headers: Khronos Vulkan-Headers (header-only, fetched at configure time); the
+# loader is opened at run time.
+include(FetchContent)
+FetchContent_Declare(vulkan_headers
+  GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+  GIT_TAG v1.4.365
+  GIT_SHALLOW TRUE)
+FetchContent_GetProperties(vulkan_headers)
+if(NOT vulkan_headers_POPULATED)
+  FetchContent_Populate(vulkan_headers)
+endif()
+add_library(d1_gfx STATIC
+  gfx/gcn_decode.cpp
+  gfx/spirv.cpp
+  gfx/translate.cpp
+  gfx/vk/vk_context.cpp)
+target_include_directories(d1_gfx PUBLIC gfx ${vulkan_headers_SOURCE_DIR}/include)
+if(NOT WIN32)
+  target_link_libraries(d1_gfx PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
 add_executable(d1-native
   src/main.cpp
   src/loader.cpp
@@ -40,9 +62,6 @@ add_executable(d1-native
   src/hle_npwebapi.cpp
   src/hooks.cpp
   src/native_gfx.cpp
-  gfx/gcn_decode.cpp
-  gfx/spirv.cpp
-  gfx/translate.cpp
   src/settings.cpp
   src/discord.cpp
   ${IMPORT_NAMES})
@@ -55,7 +74,7 @@ else()
   target_sources(d1-native PRIVATE src/os_posix.cpp)
 endif()
 target_include_directories(d1-native PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(d1-native PRIVATE Threads::Threads)
+target_link_libraries(d1-native PRIVATE Threads::Threads d1_gfx)
 target_compile_options(d1-native PRIVATE -Wall -Wno-unused-function -fno-omit-frame-pointer)
 if(NOT WIN32)
   # Logs print 64-bit values with %llx (correct on both systems; uint64_t is unsigned long here).
@@ -71,7 +90,8 @@ else()
   target_sources(d1-native PRIVATE src/render_null.cpp)
 endif()
 
-# Development tool for the native shader translator (decode / disassemble GCN programs).
+# Development tool for the native shader translator (decode / disassemble / translate).
 if(NOT WIN32)
-  add_executable(d1-shadertool gfx/tools/d1_shadertool.cpp gfx/gcn_decode.cpp gfx/spirv.cpp gfx/translate.cpp)
+  add_executable(d1-shadertool gfx/tools/d1_shadertool.cpp)
+  target_link_libraries(d1-shadertool PRIVATE d1_gfx)
 endif()
