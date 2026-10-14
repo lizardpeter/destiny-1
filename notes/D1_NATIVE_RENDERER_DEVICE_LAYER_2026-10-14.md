@@ -130,3 +130,56 @@ instance).
    3. the world: G-buffer, lighting, post.
 
    Each step is checked against the shadPS4 path, which stays as the reference and fallback.
+
+## Shader objects and resource slots (confirmed from in-world dumps)
+
+**Vertex shader object** (what `set_vs_shader` receives):
+
+| Offset | Content |
+|---|---|
+| `+0` | fetch shader size |
+| `+8` | fetch shader address |
+| `+0x14` | Gnm `VsShader` |
+
+**Pixel shader object:** the Gnm `PsShader` starts at `+0`.
+
+**Gnm shader layout:**
+- **Common data** (8 bytes): code size in bits 0..22; **number of input usage slots** in
+  bits 24..31.
+- **Stage registers:**
+  - VS: 7 dwords: `PGM_LO`, `PGM_HI`, `RSRC1`, `RSRC2`, `VS_OUT_CONFIG`, `POS_FORMAT`,
+    `PA_CL_VS_OUT_CNTL`.
+  - PS: 12 dwords: `PGM_LO`, `PGM_HI`, `RSRC1`, `RSRC2`, `Z_FORMAT`, `COL_FORMAT`,
+    `PS_INPUT_ENA`, `PS_INPUT_ADDR`, `PS_IN_CONTROL`, `BARYC_CNTL`, `DB_SHADER_CONTROL`,
+    `CB_SHADER_MASK`.
+- **4 bytes:** input / export semantic counts.
+- **Input usage slots**, 4 bytes each: `{usage type, API slot, start SGPR, flags}`.
+  Flags `0x3` on a `T#` = 8 dwords.
+- Code address = `PGM_LO << 8 | PGM_HI << 40`. User SGPR count = `RSRC2 >> 1 & 0x1F`.
+
+**Usage types seen in-world**, over 409 programs:
+
+| Type | Count |
+|---|---:|
+| `S#` immediate | 1,002 |
+| constant buffer `V#` immediate | 768 |
+| `T#` immediate | 462 |
+| extended user data pointer | 340 |
+| fetch-shader sub-pointer + vertex buffer table | 92 each |
+| resource table | 88 |
+| sampler table | 2 |
+
+Slots with a start register of 16 or more live in the **extended user data** in memory: the
+shader loads them through the pointer in `s[2:3]`.
+
+**Example pixel shader:** `ExtUD[1]@s2  T#[0]@s4 (8 dwords)  S#[1]@s16  CB[0]@s20`. The
+`T#` sits in `s[4:11]`, and the sampler and constant buffer come from the extended user
+data.
+
+**Translation rule:** every resource access is resolved statically, from the usage slots
+plus the SMRD loads that follow them, to `(type, API slot)`. The API slot matches the engine
+device calls (`set_texture(stage, slot)` and the constant-buffer slot of `alloc_constants`),
+so each slot becomes a Vulkan push-descriptor binding.
+
+Decoder check: all 409 programs (VS, PS and fetch) seen in-world decode cleanly with
+`d1-shadertool` (67,102 instructions, 102 distinct opcodes).
