@@ -60,10 +60,11 @@ discord_app_id = 1559335126528426075   # [D1_DISCORD_APP_ID]
 game_log = true                # [D1_GAME_LOG]
 
 # Mouse look (raw counts go straight into the game's aim, no stick emulation, no
-# acceleration, no aim assist). Sensitivity uses the Source-engine scale: 1.0 = 0.022
-# degrees per count (Destiny 2 PC sensitivity x 0.3 gives the same speed).
+# acceleration, no aim assist). Sensitivity uses the Destiny 2 PC scale (also Modern
+# Warfare 2019 / Overwatch): 1.0 = 0.0066 degrees per count, so the same number feels the
+# same as in Destiny 2. 1.5 at 3200 DPI is 28.9 cm per 360.
 # Zoom scale: 1 = the game's own aim-down-sights slowdown, 0 = the same speed when zoomed.
-mouse_sensitivity = 2.0        # [D1_MOUSE_SENSITIVITY]
+sensitivity = 1.5              # [D1_SENSITIVITY]
 mouse_invert = false           # [D1_MOUSE_INVERT=1]
 mouse_zoom_scale = 1.0         # [D1_MOUSE_ZOOM_SCALE]
 
@@ -95,7 +96,12 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "name") s.name = v;
     else if (key == "game_log") s.game_log = truthy(v);
     else if (key == "skip_intro") s.skip_intro = truthy(v);
-    else if (key == "mouse_sensitivity") s.mouse_sensitivity = std::atof(v.c_str());
+    else if (key == "sensitivity") s.mouse_sensitivity = std::atof(v.c_str());
+    else if (key == "mouse_sensitivity") {  // older configs: Source scale (0.022 degrees per count)
+        s.mouse_sensitivity = std::atof(v.c_str()) * 0.022 / 0.0066;
+        log("settings: mouse_sensitivity (Source scale) %s = sensitivity %.2f on the Destiny 2 scale; "
+            "use 'sensitivity' instead", v.c_str(), s.mouse_sensitivity);
+    }
     else if (key == "mouse_invert") s.mouse_invert = truthy(v);
     else if (key == "mouse_zoom_scale") s.mouse_zoom_scale = std::atof(v.c_str());
     else log("settings: unknown key '%s'", key.c_str());
@@ -139,7 +145,7 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_DISCORD_APP_ID")) s.discord_app_id = v;
     if (const char* v = getenv("D1_NAME")) s.name = v;
     if (const char* v = getenv("D1_SKIP_INTRO")) s.skip_intro = truthy(v);
-    if (const char* v = getenv("D1_MOUSE_SENSITIVITY")) s.mouse_sensitivity = std::atof(v);
+    if (const char* v = getenv("D1_SENSITIVITY")) s.mouse_sensitivity = std::atof(v);
     if (const char* v = getenv("D1_MOUSE_INVERT")) s.mouse_invert = truthy(v);
     if (const char* v = getenv("D1_MOUSE_ZOOM_SCALE")) s.mouse_zoom_scale = std::atof(v);
     {

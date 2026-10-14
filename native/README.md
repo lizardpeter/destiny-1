@@ -182,7 +182,7 @@ alongside. Settings in `d1-native.cfg`:
 
 | setting | default | meaning |
 |---|---|---|
-| `mouse_sensitivity` | 2.0 | Source-engine scale: 1.0 = 0.022 degrees per count (Destiny 2 PC sensitivity x 0.3) |
+| `sensitivity` | 1.5 | Destiny 2 PC scale (same as Modern Warfare 2019): 1.0 = 0.0066 degrees per count; 1.5 at 3200 DPI = 28.9 cm/360. Older configs' `mouse_sensitivity` (Source scale, 0.022) is converted |
 | `mouse_invert` | false | inverted vertical look |
 | `mouse_zoom_scale` | 1.0 | 1 = the game's own aim-down-sights slowdown, 0 = none |
 

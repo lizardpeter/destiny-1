@@ -372,6 +372,7 @@ static uint64_t g_pred_draws = 0, g_pred_sets = 0;
 
 // D1_GPU_STATS=1 (null GPU): every 300 flips, the average draws / dispatches / packets per
 // frame, which shows whether the game is submitting a scene or only UI / fades.
+void print_call_rates(uint64_t frames);  // hooks.cpp
 static void gpu_stats(uint64_t frame) {
     static const bool on = getenv("D1_GPU_STATS") != nullptr;
     if (!on || frame % 300) return;
@@ -384,6 +385,7 @@ static void gpu_stats(uint64_t frame) {
         (unsigned long long)frame, (draw - last_draw) / 300.0, (g_pred_draws - last_pd) / 300.0,
         (g_pred_sets - last_ps) / 300.0, (disp - last_disp) / 300.0, (pk - last_pk) / 300.0);
     last_draw = draw, last_disp = disp, last_pk = pk, last_pd = g_pred_draws, last_ps = g_pred_sets;
+    print_call_rates(300);
 }
 
 static void signal_eop() {

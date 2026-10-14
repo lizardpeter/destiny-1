@@ -390,7 +390,7 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
             }
         }
     }
-    const double rad_per_count = cfg.mouse_sensitivity * 0.022 * 3.14159265358979 / 180.0;
+    const double rad_per_count = cfg.mouse_sensitivity * 0.0066 * 3.14159265358979 / 180.0;  // Destiny 2 scale
     const float yaw = float(-dx * rad_per_count * yaw_scale);
     const float pitch = float((cfg.mouse_invert ? dy : -dy) * rad_per_count * pitch_scale);
     static int traced = 0;
@@ -775,6 +775,22 @@ static void install_call_counters(const char* list) {
         g_counters.push_back({off, counter});
     }
     log("hooks: %zu call counters", g_counters.size());
+}
+// Per-frame rates since the last call (null GPU statistics, every 300 flips): non-zero only.
+void print_call_rates(uint64_t frames) {
+    static std::vector<uint64_t> prev;
+    prev.resize(g_counters.size());
+    std::string line;
+    for (size_t i = 0; i < g_counters.size(); ++i) {
+        const uint64_t c = *g_counters[i].count;
+        if (c != prev[i]) {
+            char b[64];
+            std::snprintf(b, sizeof b, " %llx=%.1f", (unsigned long long)g_counters[i].off, double(c - prev[i]) / double(frames));
+            line += b;
+        }
+        prev[i] = c;
+    }
+    if (!line.empty()) log("calls per frame:%s", line.c_str());
 }
 void print_call_counts() {
     for (auto& c : g_counters) log("count eboot+%#llx: %llu", (unsigned long long)c.off, (unsigned long long)*c.count);
