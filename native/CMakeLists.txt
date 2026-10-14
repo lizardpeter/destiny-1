@@ -41,6 +41,8 @@ add_executable(d1-native
   src/hooks.cpp
   src/native_gfx.cpp
   gfx/gcn_decode.cpp
+  gfx/spirv.cpp
+  gfx/translate.cpp
   src/settings.cpp
   src/discord.cpp
   ${IMPORT_NAMES})
@@ -71,5 +73,5 @@ endif()
 
 # Development tool for the native shader translator (decode / disassemble GCN programs).
 if(NOT WIN32)
-  add_executable(d1-shadertool gfx/tools/d1_shadertool.cpp gfx/gcn_decode.cpp)
+  add_executable(d1-shadertool gfx/tools/d1_shadertool.cpp gfx/gcn_decode.cpp gfx/spirv.cpp gfx/translate.cpp)
 endif()

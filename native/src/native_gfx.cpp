@@ -134,7 +134,7 @@ void dump_shader_object(const char* kind, uint64_t obj) {
         }
     }
     if (kind[0] == 'v') {  // fetch shader
-        const uint32_t fsize = field<uint32_t>(obj, 0);
+        const uint32_t fsize = field<uint32_t>(obj, 0) & 0x7FFFFF;  // high bits: flags
         const uint64_t fcode = field<uint64_t>(obj, 8);
         if (fsize && fsize < 0x10000 && fcode) {
             std::snprintf(path, sizeof path, "%s/%s_%llx.fetch", dir, kind, (unsigned long long)obj);
