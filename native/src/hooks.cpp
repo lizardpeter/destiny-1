@@ -176,8 +176,9 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     static int traced = 0;
     if (getenv("D1_MOUSE_TRACE") && traced < 40) {
         ++traced;
-        log("mouse: dt %.4f counts %d,%d game look %.5f,%.5f + mouse %.5f,%.5f (zoom %.3f,%.3f)", dt, dx, dy,
-            action[5], action[6], yaw, pitch, yaw_scale, pitch_scale);
+        const float* facing = reinterpret_cast<const float*>(globals + 0x20 + slot * 0x1A0 + 0x18);
+        log("mouse: dt %.4f counts %d,%d game look %.5f,%.5f + mouse %.5f,%.5f (zoom %.3f,%.3f) facing %.4f,%.4f",
+            dt, dx, dy, action[5], action[6], yaw, pitch, yaw_scale, pitch_scale, facing[0], facing[1]);
     }
     action[5] += yaw;
     action[6] += pitch;

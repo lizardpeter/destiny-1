@@ -912,3 +912,8 @@ mouse buttons map to the PS4 buttons (README). Headless check (`D1_MOUSE_TEST=40
 D1_MOUSE_TRACE=1`, saved account, `D1_BYPASS=...,profile,spawn`): from activity:in_world
 on, every player update adds -0.0307 rad yaw / +0.0077 rad pitch (sensitivity 2) with look
 unlocked and no zoom.
+Runtime check of the effect: the slot's desired facing (player_control_globals +0x20 +
+slot x 0x1A0 + 0x18 yaw, +0x1C pitch) moves by exactly the injected delta every update
+(yaw 0 -> 6.2525 -> 6.2217 ..., i.e. -0.0307 rad per frame wrapping at 2pi; pitch +0.0077),
+so mouse counts reach the aim 1:1 with no smoothing or acceleration; mouse right turns
+right, mouse up looks up.
