@@ -1,8 +1,10 @@
 // GCN (gfx7) -> SPIR-V translation. See translate.h for the execution model.
 #include "translate.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <set>
@@ -69,6 +71,11 @@ private:
             std::snprintf(b, sizeof b, "v%u", i);
             m_.name(v, b);
         }
+        return v;
+    }
+    Id spill_var(uint32_t vgpr, uint32_t lane) {
+        Id& v = spills_[vgpr * 64 + (lane & 63)];
+        if (!v) v = global(tpu_, SCPrivate, m_.c_u32(0));
         return v;
     }
     Id scc() {
@@ -164,6 +171,7 @@ private:
     void emit_exp(const Inst& in);
     void emit_interp(const Inst& in);
     void emit_fetch_call();
+    void emit_buffer_load(const Inst& in, size_t index);
 
     const ShaderDesc& d_;
     Result& r_;
@@ -182,11 +190,13 @@ private:
     Id frag_coord_ = 0, front_facing_ = 0, position_out_ = 0, frag_depth_ = 0;
     Id vertex_index_ = 0, instance_index_ = 0;
     std::vector<Id> attrib_vars_;
+    std::map<uint32_t, Id> spills_;
 };
 
 // ---------------------------------------------------------------------------- origins
 void Translator::analyse_origins(const Program& p) {
     std::vector<Origin> cur(104);
+    std::map<uint32_t, Origin> spilled;  // (VGPR * 64 + lane) -> origin of the spilled SGPR
     for (uint32_t i = 0; i < 16 && i < 104; ++i) cur[i] = {Origin::User, i, 0, 0, 0};
     auto slot_at = [&](uint32_t reg) -> const UsageSlot* {
         for (const auto& s : d_.slots)
@@ -212,12 +222,21 @@ void Translator::analyse_origins(const Program& p) {
                 }
                 cur[in.dst.code + i] = o;
             }
+        } else if (in.op == Op::V_WRITELANE_B32 && in.src[0].code < 104 && in.src[1].is_inline_const()) {
+            spilled[uint32_t(in.dst.vgpr()) * 64 + (inline_constant(in.src[1].code) & 63)] = cur[in.src[0].code];
+        } else if (in.op == Op::V_READLANE_B32 && in.dst.code < 104) {
+            const bool ok = in.src[1].is_inline_const() && in.src[0].is_vgpr();
+            cur[in.dst.code] = ok ? spilled[uint32_t(in.src[0].vgpr()) * 64 + (inline_constant(in.src[1].code) & 63)] : Origin{};
         } else if (in.op == Op::S_MOV_B32 && in.dst.code < 104 && in.src[0].code < 104) {
             cur[in.dst.code] = cur[in.src[0].code];
         } else if (in.op == Op::S_MOV_B64 && in.dst.code < 103 && in.src[0].code < 103) {
             cur[in.dst.code] = cur[in.src[0].code];
             cur[in.dst.code + 1] = cur[in.src[0].code + 1];
-        } else if ((in.enc == Enc::SOP1 || in.enc == Enc::SOP2 || in.enc == Enc::SOPK || in.enc == Enc::SMRD ||
+        } else if (in.enc == Enc::SMRD) {
+            const uint32_t nb = in.op == Op::S_BUFFER_LOAD_DWORD ? 1 : in.op == Op::S_BUFFER_LOAD_DWORDX2 ? 2
+                              : in.op == Op::S_BUFFER_LOAD_DWORDX4 ? 4 : in.op == Op::S_BUFFER_LOAD_DWORDX8 ? 8 : 16;
+            for (uint32_t i = 0; i < nb && in.dst.code + i < 104; ++i) cur[in.dst.code + i] = {};
+        } else if ((in.enc == Enc::SOP1 || in.enc == Enc::SOP2 || in.enc == Enc::SOPK ||
                     (in.enc == Enc::VOP3 && in.opnum < 0x100) || in.op == Op::V_READFIRSTLANE_B32 ||
                     in.op == Op::V_READLANE_B32) &&
                    in.dst.code < 104) {
@@ -348,7 +367,7 @@ void Translator::emit_fetch_call() {
             a.components = uint8_t(in.enc == Enc::MTBUF ? in.opnum + 1 : in.opnum + 1);
             a.vgpr = in.vdata;
             if (o.kind != Origin::Table) problem("fetch shader load from an unknown vertex buffer");
-            if (in.enc == Enc::MUBUF) problem("fetch shader buffer_load_format (format from the V#)");
+            if (in.enc == Enc::MUBUF) a.dfmt = a.nfmt = 0xFF;  // format comes from the V# at draw time
             r_.attribs.push_back(a);
             // integer formats stay integers; everything else arrives as float
             const bool is_int = in.nfmt == 4 || in.nfmt == 5;  // UINT / SINT
@@ -706,8 +725,18 @@ void Translator::emit_vop(const Inst& in) {
         wf(r);
         return;
     }
-    case Op::V_READLANE_B32: write_s(in.dst.code - 256, u(0)); return;  // SGPR spill slot: own value
-    case Op::V_WRITELANE_B32: wu(u(0)); return;                    // (lane select ignored)
+    // SGPR spills into VGPR lanes: lane-select is a constant, values are uniform; each
+    // (VGPR, lane) becomes its own private variable
+    case Op::V_WRITELANE_B32: {
+        if (!in.src[1].is_inline_const()) { problem("v_writelane with a register lane select"); return; }
+        st(spill_var(uint32_t(in.dst.vgpr()), inline_constant(in.src[1].code)), u(0));
+        return;
+    }
+    case Op::V_READLANE_B32: {
+        if (!in.src[1].is_inline_const() || !in.src[0].is_vgpr()) { write_s(in.dst.code, u(0)); return; }
+        write_s(in.dst.code, ld(spill_var(uint32_t(in.src[0].vgpr()), inline_constant(in.src[1].code)), tu_));
+        return;
+    }
     default:
         if (in.enc == Enc::VOPC || (in.enc == Enc::VOP3 && in.opnum < 0x100)) return emit_cmp(in);
         problem(std::string("vector instruction ") + op_name(in.op));
@@ -803,7 +832,9 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     ResRef smp{};
     if (sampling) smp = resolve(in.ssamp, index, kUsageImmSampler);
     if (!tex.ok || (sampling && !smp.ok)) {
-        problem(std::string(op_name(in.op)) + " with an unresolved " + (!tex.ok ? "T#" : "S#"));
+        char at[32];
+        std::snprintf(at, sizeof at, getenv("D1_TRANSLATE_VERBOSE") ? " (at %#x)" : "", in.pc);
+        problem(std::string(op_name(in.op)) + " with an unresolved " + (!tex.ok ? "T#" : "S#") + at);
         return;
     }
     const TexDim td = tex.api < 16 ? d_.tex_dims[tex.api] : TexDim::Tex2D;
@@ -929,6 +960,43 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     write_result(v, false);
 }
 
+// Typed / untyped buffer loads outside the fetch shader (skinning matrices and the like): the
+// engine binds these as constant buffers (V# stride 16), so they read the same storage buffer.
+void Translator::emit_buffer_load(const Inst& in, size_t index) {
+    const ResRef cb = resolve(in.srsrc, index, kUsageImmConstBuffer);
+    if (!cb.ok) {
+        problem(std::string(op_name(in.op)) + " from an unresolved buffer");
+        return;
+    }
+    uint32_t n = 0;
+    if (in.enc == Enc::MTBUF) {
+        // 32-bit formats only (copied as raw dwords; float/uint/sint all keep their bits)
+        static const uint8_t dwords[16] = {0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 0, 3, 4, 0};
+        if (!dwords[in.dfmt] || (in.nfmt != 4 && in.nfmt != 5 && in.nfmt != 7)) {
+            problem("typed buffer load format " + std::to_string(in.dfmt) + "/" + std::to_string(in.nfmt));
+            return;
+        }
+        n = std::min<uint32_t>(dwords[in.dfmt], in.opnum + 1);
+    } else if (in.op == Op::BUFFER_LOAD_DWORD) {
+        n = 1;
+    } else {
+        problem(std::string(op_name(in.op)) + " outside a fetch shader");
+        return;
+    }
+    Id addr = m_.c_u32(in.mem_offset);
+    uint32_t va = in.vaddr;
+    if (in.idxen) addr = m_.op_r(OpIAdd, tu_, {addr, m_.op_r(OpIMul, tu_, {ld(vreg(va++), tu_), m_.c_u32(16)})});
+    if (in.offen) addr = m_.op_r(OpIAdd, tu_, {addr, ld(vreg(va++), tu_)});
+    addr = m_.op_r(OpIAdd, tu_, {addr, read_u(in.soffset, in)});
+    const Id base = m_.op_r(OpShiftRightLogical, tu_, {addr, m_.c_u32(2)});
+    const Id var = cbuffer_var(cb.api);
+    const Id pu = m_.t_ptr(SCStorageBuffer, tu_);
+    for (uint32_t i = 0; i < n; ++i) {
+        const Id p = m_.op_r(OpAccessChain, pu, {var, m_.c_u32(0), m_.op_r(OpIAdd, tu_, {base, m_.c_u32(i)})});
+        write_v(in.vdata + i, ld(p, tu_));
+    }
+}
+
 void Translator::emit(const Inst& in, size_t index) {
     switch (in.enc) {
     case Enc::SOP1: case Enc::SOP2: case Enc::SOPK: case Enc::SOPC:
@@ -940,6 +1008,27 @@ void Translator::emit(const Inst& in, size_t index) {
     case Enc::VINTRP: return emit_interp(in);
     case Enc::MIMG: return emit_mimg(in, index);
     case Enc::EXP: return emit_exp(in);
+    case Enc::MTBUF: case Enc::MUBUF: return emit_buffer_load(in, index);
+    case Enc::DS:
+        if (in.op == Op::DS_SWIZZLE_B32) {
+            // quad-permute mode (offset bit 15) with one source lane for the whole quad: the
+            // manual derivative pattern; a quad broadcast does exactly that
+            const uint32_t off = uint32_t(in.ds_offset1) << 8 | in.ds_offset0;
+            const uint32_t sel = off & 3;
+            const bool uniform = ((off >> 2) & 3) == sel && ((off >> 4) & 3) == sel && ((off >> 6) & 3) == sel;
+            if ((off & 0x8000) && uniform) {
+                m_.capability(CapGroupNonUniform);
+                m_.capability(CapGroupNonUniformQuad);
+                const Id v = m_.op_r(OpGroupNonUniformQuadBroadcast, tu_,
+                                     {m_.c_u32(3 /*Subgroup*/), ld(vreg(uint32_t(in.src[0].vgpr())), tu_), m_.c_u32(sel)});
+                write_v(uint32_t(in.dst.vgpr()), v);
+                return;
+            }
+            problem("ds_swizzle pattern " + std::to_string(off));
+            return;
+        }
+        problem(std::string("instruction ") + op_name(in.op));
+        return;
     default:
         problem(std::string("instruction ") + op_name(in.op));
     }

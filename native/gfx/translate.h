@@ -58,7 +58,7 @@ struct VertexAttrib {
     uint32_t location;
     uint32_t vb_slot;      // vertex buffer index in the vertex buffer table
     uint32_t offset;       // byte offset inside the element
-    uint8_t dfmt, nfmt;    // buffer data / number format (MTBUF)
+    uint8_t dfmt, nfmt;    // buffer data / number format (MTBUF); 0xFF: from the V# at draw time
     uint8_t components;    // VGPRs written
     uint8_t vgpr;          // first destination VGPR
 };

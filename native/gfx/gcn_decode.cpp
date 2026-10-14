@@ -300,6 +300,12 @@ Program decode(const uint8_t* code, uint32_t max_bytes) {
                 if (in.src[k].code == 255) lit = true;
         in.op = T.t[size_t(in.enc)][in.opnum];
         if (in.op == Op::V_MADMK_F32 || in.op == Op::V_MADAK_F32) lit = true;
+        // v_readlane / v_writelane: the lane select is a scalar operand, and v_readlane's
+        // destination is an SGPR
+        if (in.op == Op::V_READLANE_B32 || in.op == Op::V_WRITELANE_B32) {
+            if (in.enc == Enc::VOP2 && in.src[1].code >= 256) in.src[1].code = uint16_t(in.src[1].code - 256);
+            if (in.op == Op::V_READLANE_B32 && in.dst.code >= 256) in.dst.code = uint16_t(in.dst.code - 256);
+        }
         if (lit) {
             if (!word(i + in.size, in.literal)) {
                 p.problems.push_back("truncated literal");

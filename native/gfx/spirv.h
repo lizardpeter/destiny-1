@@ -43,7 +43,7 @@ enum Opcode : uint16_t {
     OpBitwiseXor = 198, OpBitwiseAnd = 199, OpNot = 200, OpBitFieldSExtract = 202, OpBitFieldUExtract = 203,
     OpDPdx = 207, OpDPdy = 208, OpLoopMerge = 246, OpSelectionMerge = 247, OpLabel = 248, OpBranch = 249,
     OpBranchConditional = 250, OpSwitch = 251, OpKill = 252, OpReturn = 253, OpUnreachable = 255,
-    OpGroupNonUniformShuffle = 345, OpDemoteToHelperInvocation = 5380,
+    OpGroupNonUniformShuffle = 345, OpGroupNonUniformQuadBroadcast = 365, OpDemoteToHelperInvocation = 5380,
 };
 
 // GLSL.std.450 extended instructions.
@@ -70,7 +70,7 @@ enum ExecutionModel : uint32_t { ExecVertex = 0, ExecFragment = 4, ExecGLCompute
 enum ExecutionMode : uint32_t { ModeOriginUpperLeft = 7, ModeDepthReplacing = 12, ModeLocalSize = 17 };
 enum Capability : uint32_t {
     CapShader = 1, CapImageGatherExtended = 25, CapImageQuery = 50, CapDerivativeControl = 51, CapGroupNonUniform = 61,
-    CapGroupNonUniformShuffle = 66, CapDemoteToHelperInvocation = 5379,
+    CapGroupNonUniformShuffle = 66, CapGroupNonUniformQuad = 68, CapDemoteToHelperInvocation = 5379,
 };
 enum Dim : uint32_t { Dim1D = 0, Dim2D = 1, Dim3D = 2, DimCube = 3, DimBuffer = 5 };
 
