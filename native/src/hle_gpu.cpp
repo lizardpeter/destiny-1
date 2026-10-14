@@ -249,10 +249,10 @@ HLE("sceVideoOutAddVblankEvent", sceVideoOutAddVblankEvent)
 struct ResolutionStatus { int32_t full_w, full_h, pane_w, pane_h; uint64_t refresh; float screen_size; uint16_t flags; uint16_t reserved0; uint32_t reserved1[3]; };
 static int32_t sceVideoOutGetResolutionStatus(int32_t, ResolutionStatus* r) {
     std::memset(r, 0, sizeof *r);
-    // The game sizes its render targets for 1080p whatever is reported here (tried 4K); output
-    // resolution is the window's, internal resolution needs an engine-side change.
-    r->full_w = r->pane_w = 1920;
-    r->full_h = r->pane_h = 1080;
+    // The game ignores this for its render targets (hardcoded 1920x1080 in the GPU device
+    // init, patched by hooks.cpp for render_resolution); report the same size anyway.
+    r->full_w = r->pane_w = settings().render_width;
+    r->full_h = r->pane_h = settings().render_height;
     r->refresh = 3;  // 59.94 Hz
     r->screen_size = 50.0f;
     return SCE_OK;

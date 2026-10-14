@@ -17,6 +17,9 @@ struct Settings {
     std::string backend = "local";
     // research hooks needed to get past sign-in for now (see README)
     std::string bypass = "prereq,transport,localres,spawn";
+    // internal render resolution (the game's own render targets; 1920x1080 on the console)
+    int render_width = 1920;
+    int render_height = 1080;
     // window
     int window_width = 1280;
     int window_height = 720;

@@ -518,6 +518,22 @@ void install_game_hooks() {
         replace_function(exe.base + 0x2EBD40, reinterpret_cast<const void*>(&transport_failed));
         log("hooks: DemonWare transport reported as started");
     }
+    // Internal render resolution: the GPU device init (0x7E40A0) stores the display size as
+    // immediates (`mov [r13+0x28F8], 1920` / `mov [r13+0x28FC], 1080`) and sizes the display
+    // buffers and render targets from them.
+    if (settings().render_width != 1920 || settings().render_height != 1080) {
+        auto* w = reinterpret_cast<uint8_t*>(exe.base + 0x7E40D6);
+        auto* h = reinterpret_cast<uint8_t*>(exe.base + 0x7E40E1);
+        uint32_t ow, oh;
+        std::memcpy(&ow, w, 4), std::memcpy(&oh, h, 4);
+        if (ow == 1920 && oh == 1080) {
+            const uint32_t nw = uint32_t(settings().render_width), nh = uint32_t(settings().render_height);
+            std::memcpy(w, &nw, 4), std::memcpy(h, &nh, 4);
+            log("hooks: internal render resolution %ux%u", nw, nh);
+        } else {
+            log("hooks: render resolution patch FAILED (unexpected bytes)");
+        }
+    }
     g_pc_orig = reinterpret_cast<PlayerControlFn>(hook_function(exe.base + 0x91B500, reinterpret_cast<const void*>(&player_control_hook)));
     if (!g_pc_orig) log("hooks: mouse look hook FAILED");
     if (const char* t = getenv("D1_MOUSE_TEST")) std::sscanf(t, "%d,%d", &g_mouse_test_dx, &g_mouse_test_dy);

@@ -29,6 +29,10 @@ name = Guardian                # [D1_NAME]
 # Backend: local (start d1-backend from this folder), off, or a server's host name / IP.
 backend = local                # [D1_BACKEND]
 
+# Internal render resolution: the size the game itself renders at (1920x1080 on the
+# console), e.g. 2560x1440 or 3840x2160. Not an upscale: every render target is this size.
+render_resolution = 1920x1080  # [D1_RENDER_RESOLUTION=2560x1440]
+
 # Window size in pixels and fullscreen (F11 or Alt+Enter toggles while running).
 window_width = 1280            # [D1_WINDOW_SIZE=1920x1080]
 window_height = 720
@@ -79,6 +83,7 @@ static void apply_setting(const std::string& key, const std::string& v) {
     if (key == "game_dir") s.game_dir = v;
     else if (key == "backend") s.backend = v;
     else if (key == "bypass") s.bypass = v;
+    else if (key == "render_resolution") std::sscanf(v.c_str(), "%dx%d", &s.render_width, &s.render_height);
     else if (key == "window_width") s.window_width = std::atoi(v.c_str());
     else if (key == "window_height") s.window_height = std::atoi(v.c_str());
     else if (key == "fullscreen") s.fullscreen = truthy(v);
@@ -120,6 +125,11 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_GAME_DIR")) s.game_dir = v;
     if (const char* v = getenv("D1_BACKEND")) s.backend = v;
     if (const char* v = getenv("D1_BYPASS")) s.bypass = v;
+    if (const char* v = getenv("D1_RENDER_RESOLUTION")) std::sscanf(v, "%dx%d", &s.render_width, &s.render_height);
+    if (s.render_width < 640 || s.render_height < 360 || s.render_width > 7680 || s.render_height > 4320) {
+        log("settings: render_resolution %dx%d out of range; using 1920x1080", s.render_width, s.render_height);
+        s.render_width = 1920, s.render_height = 1080;
+    }
     if (const char* v = getenv("D1_WINDOW_SIZE")) std::sscanf(v, "%dx%d", &s.window_width, &s.window_height);
     if (const char* v = getenv("D1_FULLSCREEN")) s.fullscreen = truthy(v);
     if (const char* v = getenv("D1_VSYNC")) s.vsync = v;
@@ -141,6 +151,7 @@ void load_settings(const std::string& path) {
         }
     }
     log("settings: name %s", s.name.c_str());
+    log("settings: render resolution %dx%d", s.render_width, s.render_height);
     log("settings: %s (game %s, backend %s, window %dx%d%s, vsync %s, fps %s, discord %s)", g_path.c_str(), s.game_dir.c_str(), s.backend.c_str(), s.window_width,
         s.window_height, s.fullscreen ? " fullscreen" : "", s.vsync.c_str(),
         s.fps ? std::to_string(s.fps).c_str() : "unlimited",

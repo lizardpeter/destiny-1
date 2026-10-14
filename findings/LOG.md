@@ -948,3 +948,14 @@ right, mouse up looks up.
 - Test bench: lavapipe caps one allocation at 2 GiB and buffers at 4 GiB - 1, below
   shadPS4's 4 GiB sparse arenas (test builds use 2 GiB arenas); the game's BLOCK_DETECT
   thread (0x92A3D0) halts slow runs (D1_NO_BLOCK_DETECT).
+
+## 2026-10-14: internal render resolution
+
+The game never asks the system for a resolution (no Neo/Pro mode, sceVideoOutGetResolution
+Status ignored): the GPU device init (0x7E40A0) hardcodes the display size as two
+immediates, `mov [r13+0x28F8], 1920` (0x7E40D0) and `mov [r13+0x28FC], 1080` (0x7E40DA),
+and everything else sizes from those fields. `render_resolution` (D1_RENDER_RESOLUTION)
+patches both: at 2560x1440 video out registers 2560x1440 buffers and the title, UI and
+loading screens render at full 2560x1440 with correct layout (the UI keeps its 1920x1080
+reference canvas at 0x166EE18 and scales). 3D scenes at higher resolutions still need
+checking on real hardware (the software test bench is too slow to reach them quickly).

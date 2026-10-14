@@ -3211,5 +3211,17 @@
   "size_bytes": 2750,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:block_detect_thread:92a3d0",
   "calls": []
+ },
+ {
+  "va": "0x7e40a0",
+  "name": "gpu_device_init",
+  "subsystem": "engine.graphics",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native render_resolution runs at 2560x1440 (title/UI full frame), 2026-10-14",
+  "file": "7e40a0_gpu_device_init.c",
+  "role": "ORBIS GPU device init: display size hardcoded as immediates (mov [r13+0x28F8], 1920 at 0x7E40D0; mov [r13+0x28FC], 1080 at 0x7E40DA), allocates the three display buffers at that size (0xF81F80), opens video out and registers them (sceVideoOutSetBufferAttribute / RegisterBuffers), sets up the flip queue and vertex stream layouts. The rest of the frame sizes from these fields: patching both immediates renders natively at another resolution (d1-native render_resolution; verified at 2560x1440 for the title, UI and loading screens). sceVideoOutGetResolutionStatus is not consulted.",
+  "size_bytes": 3886,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gpu_device_init:7e40a0",
+  "calls": []
  }
 ]

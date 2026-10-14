@@ -74,6 +74,7 @@ with commented defaults. Environment variables override it:
 | `window_width`, `window_height` | `D1_WINDOW_SIZE=1920x1080` | window size in pixels (default 1280x720); the picture is scaled to fit, letterboxed |
 | `fullscreen` | `D1_FULLSCREEN=1` | borderless fullscreen; F11 or Alt+Enter toggles while running |
 | `overlay` | `D1_OVERLAY=1` | stats overlay (FPS, frame time, render and window resolution, v-sync, GPU, game state); F3 toggles it while running |
+| `render_resolution` | `D1_RENDER_RESOLUTION=2560x1440` | the game's own internal resolution (1920x1080 on the console); every render target is created at this size, no upscaling |
 | `vsync` | `D1_VSYNC` | `off-tearing` (default: Immediate, lowest latency, may tear), `off` (Mailbox: newest frame at the next refresh, no tearing), `on` (Fifo) |
 | `fps` | `D1_FPS` | frame-rate limit: 0 / `unlimited` (default) runs one game tick per rendered frame with no limiter; a number caps it (30 = the console's rate) |
 | `discord`, `discord_app_id` | `D1_DISCORD=0`, `D1_DISCORD_APP_ID` | Discord Rich Presence over Discord's local IPC socket; needs the Discord desktop app and an application id |
