@@ -6,35 +6,41 @@
  // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
  // SPDX-License-Identifier: GPL-2.0-or-later
  
-@@ -18,6 +20,8 @@
+@@ -18,6 +20,16 @@
  #include "video_core/renderdoc.h"
  #include "video_core/renderer_vulkan/vk_rasterizer.h"
  
 +extern std::atomic<u64> d1_gpu_busy_ns;  // d1-native glue
++struct D1BusyScope {
++    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
++    ~D1BusyScope() {
++        d1_gpu_busy_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
++                                  std::chrono::steady_clock::now() - t0)
++                                  .count());
++    }
++};
 +
  namespace AmdGpu {
  
  static const char* dcb_task_name{"DCB_TASK"};
-@@ -107,6 +111,9 @@
-         }
- 
-         VideoCore::StartCapture();
-+        // d1-native: GPU-thread busy time (command processing + rasterizer work, including
-+        // waits on the device, which vk_scheduler counts separately)
-+        const auto d1_t0 = std::chrono::steady_clock::now();
- 
+@@ -111,6 +123,9 @@
          curr_qid = -1;
  
-@@ -147,6 +154,9 @@
-             }
-             submit_done = false;
-         }
-+        d1_gpu_busy_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
-+                                  std::chrono::steady_clock::now() - d1_t0)
-+                                  .count());
+         while (num_submits || num_commands) {
++            // d1-native: GPU-thread work time (command processing and the rasterizer, which
++            // includes waits on the device; vk_scheduler counts those separately)
++            const D1BusyScope d1_busy{};
+             ProcessCommands();
  
-         Platform::IrqC::Instance()->Signal(Platform::InterruptId::GpuIdle);
-     }
+             curr_qid = (curr_qid + 1) % num_mapped_queues;
+@@ -140,6 +155,7 @@
+         }
+ 
+         if (submit_done) {
++            const D1BusyScope d1_busy{};
+             VideoCore::EndCapture();
+             if (rasterizer) {
+                 rasterizer->OnSubmit();
 --- a/src/video_core/renderer_vulkan/vk_scheduler.cpp
 +++ b/src/video_core/renderer_vulkan/vk_scheduler.cpp
 @@ -1,3 +1,5 @@

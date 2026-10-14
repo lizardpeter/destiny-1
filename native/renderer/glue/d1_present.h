@@ -65,7 +65,7 @@ private:
         vk::DeviceMemory memory{};
         uint8_t* data = nullptr;
     };
-    static constexpr uint32_t kOverlayW = 640, kOverlayH = 16 * 8 + 8;
+    static constexpr uint32_t kOverlayW = 720, kOverlayH = 16 * 14 + 8;  // up to 14 lines
     std::vector<Staging> staging_;
     struct Raw {
         vk::Image image{};
