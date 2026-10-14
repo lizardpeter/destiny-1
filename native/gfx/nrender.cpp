@@ -231,6 +231,7 @@ struct Image {
     VkImageView attachment = VK_NULL_HANDLE;
     std::unordered_map<uint64_t, VkImageView> views;
     uint64_t last_used = 0;
+    uint32_t bind_slice = 0;  // layered target: the slice the current pass renders
 };
 
 struct Shader {
@@ -272,6 +273,7 @@ struct Renderer {
     std::vector<Buffer> staging;  // freed after the submission completes
     std::unordered_map<uint64_t, std::unique_ptr<Image>> targets;   // (base, format, size)
     std::unordered_map<uint64_t, Image*> target_by_base;            // newest target at an address
+    std::vector<std::unique_ptr<Image>> retired;                    // replaced targets (still referenced)
     std::unordered_map<uint64_t, std::unique_ptr<Image>> textures;  // T# hash
     std::unordered_map<uint64_t, VkSampler> samplers;
     std::unordered_map<uint64_t, std::unique_ptr<Shader>> shaders;
@@ -299,6 +301,7 @@ struct Renderer {
     uint64_t ring_copy(const void* src, uint64_t size);
     void barrier();
     Image* color_target(const uint32_t* c);
+    VkImageView attachment_view(Image* img);
     Image* depth_target(const uint32_t* d);
     VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
     Image* upload_texture(const uint32_t* t);
@@ -434,7 +437,8 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
     img->format = f, img->w = w, img->h = h, img->d = d, img->layers = layers, img->levels = levels;
     img->cube = cube, img->is3d = is3d, img->depth = depth, img->stencil = stencil;
     VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    ici.flags = (cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0) | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+    ici.flags = (cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0) | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT |
+                (is3d ? VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT : 0);
     ici.imageType = is3d ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
     ici.format = f;
     ici.extent = {w, h, is3d ? d : 1};
@@ -546,21 +550,45 @@ Image* Renderer::color_target(const uint32_t* c) {
     if (!w || !h) return nullptr;
     VkFormat f = fmt::vk_format(fmt::color_to_data_format(format), cb_number_to_nfmt(number));
     if (f == VK_FORMAT_UNDEFINED) return nullptr;
-    const uint64_t key = mix(mix(mix(base, f), w), h);
+    // CB_COLOR_VIEW: a layered target (rendered slice by slice, e.g. the 3D color-grading
+    // LUT): each pass names its slice in SLICE_START..SLICE_MAX. The depth is not in the
+    // descriptor; the image is made as deep as the slices seen (at least its width, as for a
+    // cube LUT) and rebuilt deeper if a later slice needs it.
+    const uint32_t slice = c[3] & 0x7FF, slice_max = (c[3] >> 13) & 0x7FF;
+    const bool layered = slice_max > 0;
+    const uint64_t key = mix(mix(mix(mix(base, f), w), h), layered);
     auto it = targets.find(key);
-    Image* img;
-    if (it != targets.end()) img = it->second.get();
-    else {
-        auto n = make_image(f, w, h, 1, 1, 1, false, false, false, false);
+    Image* img = it != targets.end() ? it->second.get() : nullptr;
+    if (!img || (layered && img->d <= slice_max)) {
+        const uint32_t depth = layered ? std::max(slice_max + 1, std::min(w, 64u)) : 1;
+        auto n = make_image(f, w, h, depth, 1, 1, false, layered, false, false);
         if (!n) return nullptr;
         n->base = base, n->swap = swap;
         img = n.get();
+        if (auto old = targets.find(key); old != targets.end()) retired.push_back(std::move(old->second));
         targets[key] = std::move(n);
         ++st.targets;
     }
     target_by_base[base] = img;
     img->last_used = submit_no;
+    img->bind_slice = std::min(slice, img->d - 1);
     return img;
+}
+
+VkImageView Renderer::attachment_view(Image* img) {
+    if (!img->is3d) return img->attachment;
+    const uint64_t key = 0xA77AC4ull << 32 | img->bind_slice;
+    auto it = img->views.find(key);
+    if (it != img->views.end()) return it->second;
+    VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    vci.image = img->image;
+    vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    vci.format = img->format;
+    vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, img->bind_slice, 1};
+    VkImageView v = VK_NULL_HANDLE;
+    vkCreateImageView(ctx.device, &vci, nullptr, &v);
+    img->views[key] = v;
+    return v;
 }
 
 // Gnm DepthRenderTarget: Z_INFO, STENCIL_INFO, Z_READ_BASE, STENCIL_READ_BASE, Z_WRITE_BASE,
@@ -669,7 +697,7 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
             };
             comp = {back(comp.r), back(comp.g), back(comp.b), back(comp.a)};
         }
-        return view(img, VK_IMAGE_VIEW_TYPE_2D, comp, 0, false);
+        return view(img, img->is3d ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D, comp, 0, false);
     }
     auto it = textures.find(hash_bytes(t, 32));
     Image* img = it != textures.end() ? it->second.get() : nullptr;
@@ -779,7 +807,9 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
         for (int i = 0; i < 16; ++i) {
             dims[s][i] = slot_dim(dr.T(s, i));
             // a T# on a render target samples our 2D target image
-            if (dr.T(s, i) && target_by_base.count(fmt::decode_tsharp(dr.T(s, i)).base)) dims[s][i] = gcn::TexDim::Tex2D;
+            if (dr.T(s, i))
+                if (auto rt = target_by_base.find(fmt::decode_tsharp(dr.T(s, i)).base); rt != target_by_base.end())
+                    dims[s][i] = rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
         }
     Shader* vs = shader(dr, true, dims[0]);
     Shader* ps = dr.ps ? shader(dr, false, dims[1]) : nullptr;  // no pixel shader: depth-only
@@ -965,7 +995,7 @@ void Renderer::end_pass() {
 
 void Renderer::begin_pass(Image* const* colors, Image* depth) {
     uint64_t key = uint64_t(depth);
-    for (int i = 0; i < 8; ++i) key = mix(key, uint64_t(colors[i]));
+    for (int i = 0; i < 8; ++i) key = mix(mix(key, uint64_t(colors[i])), colors[i] ? colors[i]->bind_slice : 0);
     if (in_pass && key == pass_key) return;
     end_pass();
     VkRenderingAttachmentInfo ca[8]{};
@@ -974,7 +1004,7 @@ void Renderer::begin_pass(Image* const* colors, Image* depth) {
         ca[i] = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
         if (colors[i]) {
             n = i + 1;
-            ca[i].imageView = colors[i]->attachment;
+            ca[i].imageView = attachment_view(colors[i]);
             ca[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
             ca[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
             ca[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1001,7 +1031,7 @@ void Renderer::begin_pass(Image* const* colors, Image* depth) {
     vkCmdBeginRendering(cmd, &ri);
     if (st.frames == passlog_frame) {
         PassLog pl{};
-        for (int i = 0; i < 5; ++i) pl.c[i] = colors[i] ? colors[i]->base : 0;
+        for (int i = 0; i < 5; ++i) pl.c[i] = colors[i] ? colors[i]->base + colors[i]->bind_slice : 0;
         pl.d = depth ? depth->base : 0;
         passlog.push_back(pl);
     }
@@ -1136,8 +1166,10 @@ void Renderer::draw(const Draw& dr) {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
                 images[s][nw[s]] = {VK_NULL_HANDLE, texture_view(dr.T(s, slot), slot_dim(dr.T(s, slot))),
                                     VK_IMAGE_LAYOUT_GENERAL};
-                if (dr.T(s, slot) && target_by_base.count(fmt::decode_tsharp(dr.T(s, slot)).base))
-                    images[s][nw[s]].imageView = texture_view(dr.T(s, slot), gcn::TexDim::Tex2D);
+                if (dr.T(s, slot))
+                    if (auto rt = target_by_base.find(fmt::decode_tsharp(dr.T(s, slot)).base); rt != target_by_base.end())
+                        images[s][nw[s]].imageView =
+                            texture_view(dr.T(s, slot), rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D);
                 w.pImageInfo = &images[s][nw[s]];
             } else if (b.kind == gcn::Binding::Sampler) {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
