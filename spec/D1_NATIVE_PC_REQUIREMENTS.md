@@ -21,6 +21,18 @@ toward) while that happens.
 
   Roadmap 2026 features such as `VK_EXT_descriptor_heap`, which is still provisional, are
   optional extras only, never requirements.
+- **No shadPS4 in the end product.** shadPS4 is used only as a reference to learn from,
+  plus the temporary fallback while the native path is built. Everything the native renderer
+  needs is written in this repo:
+  - our own GCN instruction decoder and GCN → SPIR-V shader translator, with our own SPIR-V
+    emitter (the game's ~13,700 shaders use only 129 distinct opcodes; see
+    `evidence/generated/d1_gcn_isa_census.json`);
+  - our own texture detiling and format conversion;
+  - our own Vulkan layer.
+
+  No shadPS4 source is copied: it is GPL-2.0 and we want our own implementation.
+  Third-party tools such as `spirv-val` are fine for testing but are not runtime
+  dependencies.
 - **Keep the render resolution option** (`render_resolution` / `D1_RENDER_RESOLUTION`) and
   the window, fullscreen and v-sync options.
 

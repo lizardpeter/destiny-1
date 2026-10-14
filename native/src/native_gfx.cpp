@@ -109,14 +109,51 @@ AllocConstantsFn o_alloc_constants;
 SetIndexBufferFn o_set_index_buffer;
 ApplyTargetsFn o_apply_targets;
 
+// D1_NATIVE_GFX_DUMP=<dir>: write each distinct shader object (first 512 bytes) once, for
+// working out the shader object layout offline. Research aid; not shipped data.
+void dump_shader_object(const char* kind, uint64_t obj) {
+    static const char* dir = getenv("D1_NATIVE_GFX_DUMP");
+    if (!dir || obj < 0x10000) return;
+    char path[512];
+    std::snprintf(path, sizeof path, "%s/%s_%llx.obj", dir, kind, (unsigned long long)obj);
+    if (FILE* f = std::fopen(path, "wb")) {
+        std::fwrite(reinterpret_cast<const void*>(obj), 1, 512, f);
+        std::fclose(f);
+    }
+    // the Gnm shader starts at +0x14 of a vertex shader object (after the fetch shader size
+    // and address) and at +0 of a pixel shader object: common data (code size in bits 0..22),
+    // then SPI_SHADER_PGM_LO/HI (code address >> 8)
+    const uint64_t gnm = obj + (kind[0] == 'v' ? 0x14 : 0);
+    const uint32_t size = field<uint32_t>(gnm, 0) & 0x7FFFFF;
+    const uint64_t code = (uint64_t(field<uint32_t>(gnm, 8)) << 8) | (uint64_t(field<uint32_t>(gnm, 12)) << 40);
+    if (size && size < 0x40000 && code) {
+        std::snprintf(path, sizeof path, "%s/%s_%llx.code", dir, kind, (unsigned long long)obj);
+        if (FILE* f = std::fopen(path, "wb")) {
+            std::fwrite(reinterpret_cast<const void*>(code), 1, size + 256, f);
+            std::fclose(f);
+        }
+    }
+    if (kind[0] == 'v') {  // fetch shader
+        const uint32_t fsize = field<uint32_t>(obj, 0);
+        const uint64_t fcode = field<uint64_t>(obj, 8);
+        if (fsize && fsize < 0x10000 && fcode) {
+            std::snprintf(path, sizeof path, "%s/%s_%llx.fetch", dir, kind, (unsigned long long)obj);
+            if (FILE* f = std::fopen(path, "wb")) {
+                std::fwrite(reinterpret_cast<const void*>(fcode), 1, fsize, f);
+                std::fclose(f);
+            }
+        }
+    }
+}
+
 void note_draw(uint64_t dev, uint64_t prim) {
     std::lock_guard lk(g_obs->m);
     note_device(dev);
     ++g_obs->draws;
     const uint64_t vs = field<uint64_t>(dev, kVsShader), ps = field<uint64_t>(dev, kPsShader);
     const uint64_t decl = field<uint64_t>(dev, kVertexDecl);
-    g_obs->vs.insert(vs);
-    g_obs->ps.insert(ps);
+    if (g_obs->vs.insert(vs).second) dump_shader_object("vs", vs);
+    if (g_obs->ps.insert(ps).second) dump_shader_object("ps", ps);
     g_obs->decls.insert(decl);
     g_obs->programs.insert(mix(vs, ps));
     uint64_t key = mix(mix(mix(vs, ps), decl), prim & 0xFF);

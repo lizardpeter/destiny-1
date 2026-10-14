@@ -40,6 +40,7 @@ add_executable(d1-native
   src/hle_npwebapi.cpp
   src/hooks.cpp
   src/native_gfx.cpp
+  gfx/gcn_decode.cpp
   src/settings.cpp
   src/discord.cpp
   ${IMPORT_NAMES})
@@ -66,4 +67,9 @@ if(D1_RENDERER_SHADPS4)
   target_compile_definitions(d1-native PRIVATE D1_RENDERER_SHADPS4=1)
 else()
   target_sources(d1-native PRIVATE src/render_null.cpp)
+endif()
+
+# Development tool for the native shader translator (decode / disassemble GCN programs).
+if(NOT WIN32)
+  add_executable(d1-shadertool gfx/tools/d1_shadertool.cpp gfx/gcn_decode.cpp)
 endif()
