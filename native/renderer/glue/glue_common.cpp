@@ -1,6 +1,7 @@
 // d1-native replacements for shadPS4 emulator-core pieces the renderer links against:
 // logging backend, assert handlers and the (disabled) pipeline-cache storage.
 #include <condition_variable>
+#include <atomic>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
@@ -21,6 +22,12 @@
 #include "video_core/cache_storage.h"
 
 #include "../../src/render_bridge.h"
+
+namespace d1 {
+void log(const char* fmt, ...);
+}
+std::atomic<u64> d1_gpu_busy_ns{0};  // patch 0006: GPU-thread busy time
+std::atomic<u64> d1_gpu_wait_ns{0};  // patch 0006: time blocked on device execution
 
 namespace Common::Log {
 
@@ -66,13 +73,14 @@ void VLog(Class log_class, Level level, const char* file, int line, const char* 
             n = ++seen[format.data()];
         }
         if (n > 20 && n % 10000 != 0) return;
-        if (n == 20) std::fprintf(stderr, "[gpu] (the next message repeats; further copies are suppressed)\n");
+        if (n == 20) d1::log("[gpu] (the next message repeats; further copies are suppressed)");
     }
-    static std::mutex mu;
     static const char* names[] = {"T", "D", "I", "W", "E", "C", "-"};
     std::string msg = fmt::vformat(format, args);
-    std::lock_guard lk(mu);
-    std::fprintf(stderr, "[gpu %s] %s:%d %s: %s\n", names[int(level)], file ? std::strrchr(file, '/') ? std::strrchr(file, '/') + 1 : file : "?", line, func ? func : "", msg.c_str());
+    const char* base = file ? (std::strrchr(file, '/') ? std::strrchr(file, '/') + 1 : file) : "?";
+    if (const char* b2 = std::strrchr(base, '\\')) base = b2 + 1;
+    // into d1-native.log (stderr is not kept on Windows)
+    d1::log("[gpu %s] %s:%d %s: %s", names[int(level)], base, line, func ? func : "", msg.c_str());
 }
 void Setup(std::string_view) {}
 void Switch(std::string_view, bool) {}

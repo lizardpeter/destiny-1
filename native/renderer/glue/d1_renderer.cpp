@@ -44,6 +44,7 @@
 #include "d1_window.h"
 
 void d1_set_pipeline_cache_dir(const char* dir);  // glue_common.cpp
+extern std::atomic<u64> d1_gpu_busy_ns, d1_gpu_wait_ns;  // glue_common.cpp, patch 0006
 
 namespace d1 {
 void log(const char* fmt, ...);
@@ -72,9 +73,10 @@ struct State {
     u64 stats_flips0 = 0;
     double fps = 0, frame_ms = 0;
     // frame-time breakdown (render_bridge.h Perf), per stats window
-    struct PerfSnap { u64 faults, fault_ns, guest_frames, guest_ns, guest_wait_ns, gpu_frames, gpu_lag_ns, compiles, msgs; };
+    struct PerfSnap { u64 faults, fault_ns, guest_frames, guest_ns, guest_wait_ns, gpu_frames, gpu_lag_ns, compiles, msgs, busy_ns, dev_ns, flips; };
     PerfSnap perf0{};
     double game_ms = 0, wait_ms = 0, lag_ms = 0, faults_per_frame = 0, fault_ms = 0, compiles_per_s = 0;
+    double gpu_thread_ms = 0, device_wait_ms = 0;
     u64 compiles_total = 0, msgs_per_s = 0;
     // presentation diagnostics (logged every 5 s): image identity per video-out buffer
     std::chrono::steady_clock::time_point diag_t0 = std::chrono::steady_clock::now();
@@ -169,7 +171,8 @@ void update_stats() {
     g->stats_flips0 = n;
     auto& p = d1::render::perf();
     const State::PerfSnap c{p.faults, p.fault_ns, p.guest_frames, p.guest_ns, p.guest_wait_ns,
-                            p.gpu_frames, p.gpu_lag_ns, p.compiles, p.gpu_messages};
+                            p.gpu_frames, p.gpu_lag_ns, p.compiles, p.gpu_messages,
+                            d1_gpu_busy_ns.load(), d1_gpu_wait_ns.load(), n};
     const auto& o = g->perf0;
     const double gf = double(std::max<u64>(1, c.guest_frames - o.guest_frames));
     const double pf = double(std::max<u64>(1, c.gpu_frames - o.gpu_frames));
@@ -181,14 +184,19 @@ void update_stats() {
     g->compiles_per_s = (c.compiles - o.compiles) / dt;
     g->compiles_total = c.compiles;
     g->msgs_per_s = u64((c.msgs - o.msgs) / dt);
+    const double ff = double(std::max<u64>(1, c.flips - o.flips));
+    g->device_wait_ms = (c.dev_ns - o.dev_ns) / ff / 1e6;
+    g->gpu_thread_ms = (c.busy_ns - o.busy_ns) / ff / 1e6 - g->device_wait_ms;
     g->perf0 = c;
     static auto log_t = now;
     if (now - log_t >= std::chrono::seconds(10)) {
         log_t = now;
         d1::log("perf: %.1f fps | game frame %.1f ms (blocked on GPU %.1f ms, write faults %.0f = %.1f ms) | "
-                "submit->screen %.1f ms | %.1f compiles/s (%llu total) | %llu renderer msgs/s",
-                g->fps, g->game_ms, g->wait_ms, g->faults_per_frame, g->fault_ms, g->lag_ms, g->compiles_per_s,
-                (unsigned long long)g->compiles_total, (unsigned long long)g->msgs_per_s);
+                "submit->screen %.1f ms | GPU thread %.1f ms + waiting on the device %.1f ms per frame | "
+                "%.1f compiles/s (%llu total) | %llu renderer msgs/s",
+                g->fps, g->game_ms, g->wait_ms, g->faults_per_frame, g->fault_ms, g->lag_ms, g->gpu_thread_ms,
+                g->device_wait_ms, g->compiles_per_s, (unsigned long long)g->compiles_total,
+                (unsigned long long)g->msgs_per_s);
     }
 }
 
@@ -203,6 +211,9 @@ std::vector<std::string> overlay_lines(s32 iw, s32 ih) {
     l.push_back(b);
     std::snprintf(b, sizeof b, "submit->screen %5.1f ms  compiles %4.1f/s (%llu)", g->lag_ms, g->compiles_per_s,
                   (unsigned long long)g->compiles_total);
+    l.push_back(b);
+    std::snprintf(b, sizeof b, "GPU thread %5.1f ms  device wait %5.1f ms  msgs %llu/s", g->gpu_thread_ms,
+                  g->device_wait_ms, (unsigned long long)g->msgs_per_s);
     l.push_back(b);
     const auto e = g->presenter->Extent();
     std::snprintf(b, sizeof b, "render %dx%d  ->  window %ux%u", iw, ih, e.width, e.height);
