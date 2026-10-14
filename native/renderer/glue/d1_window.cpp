@@ -1,9 +1,13 @@
 // SDL2 window, event loop and input for d1-native's temporary renderer.
 //
-// Keyboard (until a controller is connected, both work together):
-//   WASD left stick · IJKL right stick · arrows D-pad
-//   Enter/Space Cross · Esc/Backspace Circle · R Square · F Triangle
-//   Q L1 · E R1 · Z L2 · X R2 · Left Shift L3 · C R3 · Tab Options · T touch pad
+// Keyboard and mouse (a connected controller works alongside them):
+//   WASD move · mouse look (raw counts, fed straight into the game's aim; see hooks.cpp)
+//   Space/Enter Cross (jump) · Left Ctrl/C Circle (crouch, back) · Esc/Backspace Circle
+//   R/E Square (reload, interact) · 1/2/3/mouse wheel Triangle (switch weapon)
+//   Q L1 (grenade) · F R1 (melee) · X L1+R1 (super) · Left Shift L3 (sprint) · Z R3
+//   left mouse R2 (fire) · right mouse L2 (aim) · middle mouse R3 · mouse 4/5 L1/R1
+//   Tab Options · G touch pad (ghost) · arrows D-pad · IJKL right stick (menus)
+// Clicking in the window captures the mouse; F2 or losing focus releases it.
 // Controllers use SDL's game-controller mapping (PlayStation layout names).
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
@@ -35,6 +39,19 @@ Frontend::WindowSDL g_info;
 SDL_GameController* g_pad = nullptr;
 std::mutex g_pad_mutex;
 PadState g_state{0, 0x80, 0x80, 0x80, 0x80, 0, 0};
+// Mouse: motion is accumulated by the event loop (1 ms cadence) and drained by the game's
+// aim hook, so a count reaches the game at most ~1 ms after SDL sees it.
+std::atomic<bool> g_captured{false};
+std::atomic<int32_t> g_mouse_dx{0}, g_mouse_dy{0};
+std::atomic<u32> g_wheel_until{0};  // SDL tick until which a wheel notch holds Triangle
+
+void set_capture(bool on) {
+    if (on == g_captured.load()) return;
+    SDL_SetRelativeMouseMode(on ? SDL_TRUE : SDL_FALSE);
+    g_mouse_dx = 0, g_mouse_dy = 0;
+    g_captured = on;
+    d1::log("input: mouse %s", on ? "captured (F2 releases)" : "released");
+}
 
 u8 axis(int v) {  // SDL -32768..32767 -> 0..255
     return u8((v + 32768) >> 8);
@@ -53,12 +70,14 @@ void poll_input() {
     PadState s{0, 0x80, 0x80, 0x80, 0x80, 0, 0};
     const u8* k = SDL_GetKeyboardState(nullptr);
     struct { SDL_Scancode sc; u32 bit; } keys[] = {
-        {SDL_SCANCODE_RETURN, kCross},  {SDL_SCANCODE_SPACE, kCross},      {SDL_SCANCODE_ESCAPE, kCircle},
-        {SDL_SCANCODE_BACKSPACE, kCircle}, {SDL_SCANCODE_R, kSquare},      {SDL_SCANCODE_F, kTriangle},
-        {SDL_SCANCODE_Q, kL1},          {SDL_SCANCODE_E, kR1},             {SDL_SCANCODE_Z, kL2},
-        {SDL_SCANCODE_X, kR2},          {SDL_SCANCODE_LSHIFT, kL3},        {SDL_SCANCODE_C, kR3},
-        {SDL_SCANCODE_TAB, kOptions},   {SDL_SCANCODE_T, kTouchPad},       {SDL_SCANCODE_UP, kUp},
-        {SDL_SCANCODE_DOWN, kDown},     {SDL_SCANCODE_LEFT, kLeft},        {SDL_SCANCODE_RIGHT, kRight},
+        {SDL_SCANCODE_SPACE, kCross},     {SDL_SCANCODE_RETURN, kCross},    {SDL_SCANCODE_LCTRL, kCircle},
+        {SDL_SCANCODE_C, kCircle},        {SDL_SCANCODE_ESCAPE, kCircle},   {SDL_SCANCODE_BACKSPACE, kCircle},
+        {SDL_SCANCODE_R, kSquare},        {SDL_SCANCODE_E, kSquare},        {SDL_SCANCODE_1, kTriangle},
+        {SDL_SCANCODE_2, kTriangle},      {SDL_SCANCODE_3, kTriangle},      {SDL_SCANCODE_Q, kL1},
+        {SDL_SCANCODE_F, kR1},            {SDL_SCANCODE_X, kL1 | kR1},      {SDL_SCANCODE_LSHIFT, kL3},
+        {SDL_SCANCODE_Z, kR3},            {SDL_SCANCODE_TAB, kOptions},     {SDL_SCANCODE_G, kTouchPad},
+        {SDL_SCANCODE_UP, kUp},           {SDL_SCANCODE_DOWN, kDown},       {SDL_SCANCODE_LEFT, kLeft},
+        {SDL_SCANCODE_RIGHT, kRight},
     };
     const bool alt = k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT];  // Alt+Enter is the fullscreen toggle
     for (auto& [sc, bit] : keys)
@@ -70,6 +89,15 @@ void poll_input() {
     s.ly = stick(SDL_SCANCODE_W, SDL_SCANCODE_S);
     s.rx = stick(SDL_SCANCODE_J, SDL_SCANCODE_L);
     s.ry = stick(SDL_SCANCODE_I, SDL_SCANCODE_K);
+    if (g_captured) {
+        const u32 m = SDL_GetMouseState(nullptr, nullptr);
+        if (m & SDL_BUTTON_LMASK) s.buttons |= kR2;
+        if (m & SDL_BUTTON_RMASK) s.buttons |= kL2;
+        if (m & SDL_BUTTON_MMASK) s.buttons |= kR3;
+        if (m & SDL_BUTTON_X1MASK) s.buttons |= kL1;
+        if (m & SDL_BUTTON_X2MASK) s.buttons |= kR1;
+        if (int32_t(g_wheel_until.load() - SDL_GetTicks()) > 0) s.buttons |= kTriangle;
+    }
     if (s.buttons & kL2) s.l2 = 0xFF;
     if (s.buttons & kR2) s.r2 = 0xFF;
 
@@ -119,6 +147,11 @@ Frontend::WindowSDL* open(int width, int height, bool fullscreen) {
     if (!std::getenv("DISPLAY") && !std::getenv("WAYLAND_DISPLAY")) return nullptr;
 #endif
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    // Relative mode from raw input (WM_INPUT on Windows) without warping the cursor and
+    // without the OS pointer-acceleration curve: the aim hook gets device counts.
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SYSTEM_SCALE, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE, "1.0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         d1::log("window: SDL_Init failed: %s", SDL_GetError());
         return nullptr;
@@ -181,6 +214,13 @@ bool window_active() {
     return g_window != nullptr;
 }
 
+bool take_mouse_motion(int32_t& dx, int32_t& dy) {
+    if (!g_window || !g_captured.load(std::memory_order_relaxed)) return false;
+    dx = g_mouse_dx.exchange(0, std::memory_order_relaxed);
+    dy = g_mouse_dy.exchange(0, std::memory_order_relaxed);
+    return true;
+}
+
 bool read_pad(PadState& out) {
     if (!g_window) return false;
     std::lock_guard lk(g_pad_mutex);
@@ -198,8 +238,22 @@ void run_window_loop() {
                 return;
             case SDL_WINDOWEVENT:
                 if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) update_drawable_size();
+                if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) set_capture(false);
+                break;
+            case SDL_MOUSEMOTION:
+                if (g_captured) {
+                    g_mouse_dx.fetch_add(e.motion.xrel, std::memory_order_relaxed);
+                    g_mouse_dy.fetch_add(e.motion.yrel, std::memory_order_relaxed);
+                }
+                break;
+            case SDL_MOUSEBUTTONDOWN:
+                if (!g_captured && e.button.button == SDL_BUTTON_LEFT) set_capture(true);
+                break;
+            case SDL_MOUSEWHEEL:
+                if (g_captured && e.wheel.y != 0) g_wheel_until = SDL_GetTicks() + 80;
                 break;
             case SDL_KEYDOWN:
+                if (!e.key.repeat && e.key.keysym.sym == SDLK_F2) set_capture(!g_captured);
                 if (!e.key.repeat && e.key.keysym.sym == SDLK_F3) set_overlay(!overlay_enabled());
                 if (!e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||
                                       (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)))) {

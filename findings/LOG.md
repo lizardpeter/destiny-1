@@ -873,3 +873,42 @@ response; nothing has connected to it yet).
   Cosmodrome ambient activity's tag 0x80CD0C34 (value -1), not the prologue's.
   D1_BYPASS=spawn completes the task once the player has a unit. With it the client goes
   through physics_join into **activity:in_world**.
+
+## 2026-10-13 (night): native keyboard and mouse
+
+The game has no keyboard or mouse code (imports are only scePad* and sceImeDialog*;
+"keyboard" in the binary is the on-screen keyboard and a crash-screen debug input). It
+does have a clean input layering, reversed statically from the scePadReadState call site:
+
+- **Pad**: `gamepad_poll_all` 0xAE1E0 -> `gamepad_poll` 0xAE0C0 (scePadReadState) ->
+  `gamepad_state_update` 0xADC00. Engine gamepad state is 0xC0 bytes per pad (pad 0 at
+  the global 0x1AD40F0): triggers +0/+1, per-button held counters, sticks as s16 at +0x44
+  lx, +0x46 ly (up positive), +0x48 rx, +0x4A ry, touch points, motion.
+- **Input abstraction** (`c_input_abstraction_game_system`, globals 0x273ED40, per player
+  0x300 at 0x273EFE0 via 0x928560): `input_abstraction_update` 0x926910 copies the sticks,
+  applies the per-player dead-zone mode and maps buttons to abstract actions. Default
+  turn speeds per player: 2.0944 rad/s yaw (120 deg/s), 1.0472 rad/s pitch (60 deg/s).
+- **Player control** (`c_player_control_game_system`, globals *0x273EB28, 0x1A0 per slot
+  at +0x20): `player_control_update` 0x91EE90 builds each local player's unit action.
+  `player_control_update_player` 0x91B500 does look and move: sticks -> floats (0x926320),
+  southpaw/legacy swaps, response curves, look rate (0x928670: yaw = state[+0x2CC] x
+  turn_speed[0], pitch = state[+0x2D4] x turn_speed[1]), aim assist, curve limits and
+  zoom scaling (0xBD3740 magnification, 0xBD3A50 per-weapon look scale), ending with
+  **action[5] = yaw_rate x dt, action[6] = pitch_rate x dt** (radians; +yaw turns left,
+  +pitch looks up). Look is locked while player_control_globals +0xC bit 0 is set or game
+  time is paused (0x591B30).
+- An externally driven mode exists: with input state +0x2A0 set, +0x2C8/+0x2D0 are
+  per-frame deltas (divided by dt in 0x928670) and the stick pipeline is skipped. It is
+  what simulated input uses.
+
+**d1-native mouse look** hooks 0x91B500 and, after the game's own math, adds raw mouse
+counts x `mouse_sensitivity` (Source scale, 0.022 deg/count) to action[5]/action[6], scaled
+by the same zoom slowdown the game applies to the stick (`mouse_zoom_scale`). The mouse
+therefore skips stick quantization, response curves, turn acceleration, dead zones and aim
+assist; a controller keeps working alongside. Counts come from SDL relative mode on raw
+input without OS acceleration, accumulated by the 1 ms window loop and drained by the hook,
+and counts older than 250 ms of not-running player control are dropped. Keyboard keys and
+mouse buttons map to the PS4 buttons (README). Headless check (`D1_MOUSE_TEST=40,-10
+D1_MOUSE_TRACE=1`, saved account, `D1_BYPASS=...,profile,spawn`): from activity:in_world
+on, every player update adds -0.0307 rad yaw / +0.0077 rad pitch (sensitivity 2) with look
+unlocked and no zoom.

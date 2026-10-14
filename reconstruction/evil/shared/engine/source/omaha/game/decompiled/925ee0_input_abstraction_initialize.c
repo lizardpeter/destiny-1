@@ -1,0 +1,93 @@
+
+void FUN_00925ee0(void)
+
+{
+  undefined1 uVar1;
+  undefined4 *puVar2;
+  undefined4 *puVar3;
+  uint uVar4;
+  ulong uVar5;
+  
+  FUN_000ad120();
+  thunk_FUN_012aa986(&DAT_0273ed40,0,0xeb0);
+  puVar3 = &DAT_0273eff0;
+  puVar2 = &DAT_0273ede4;
+  uVar5 = 0;
+  do {
+    puVar2[-0x29] = 0x40060a92;
+    puVar2[-0x28] = 0x3f860a92;
+    thunk_FUN_012aa986(puVar2 + -0x27,0xff,0x8c);
+    puVar2[-0x27] = 10;
+    puVar2[-0x26] = 0xb;
+    puVar2[-0x25] = 0xd;
+    puVar2[-0x24] = 0xc;
+    puVar2[-0x23] = 0xf;
+    puVar2[-0x22] = 0xe;
+    puVar2[-0x21] = 0;
+    puVar2[-0x20] = 1;
+    puVar2[-0x1f] = 8;
+    puVar2[-0x1e] = 9;
+    puVar2[-0x1d] = 0;
+    puVar2[-0x1c] = 0xb;
+    puVar2[-0x1b] = 0xb;
+    puVar2[-0x1a] = 2;
+    puVar2[-0x19] = 6;
+    puVar2[-0x18] = 7;
+    puVar2[-0x17] = 4;
+    puVar2[-0x16] = 5;
+    puVar2[-0x15] = 4;
+    puVar2[-0x14] = 10;
+    puVar2[-0x13] = 0xb;
+    puVar2[-0x12] = 3;
+    puVar2[-0x11] = 2;
+    puVar2[-0x10] = 4;
+    puVar2[-0xf] = 5;
+    puVar2[-0xe] = 0xf;
+    puVar2[-0xd] = 0xe;
+    puVar2[-0xc] = 2;
+    puVar2[-0xb] = 0xd;
+    puVar2[-10] = 2;
+    puVar2[-9] = 3;
+    puVar2[-8] = 7;
+    puVar2[-7] = 4;
+    puVar2[-6] = 0xc;
+    puVar2[-5] = 8;
+    puVar2[-4] = 9;
+    *(undefined8 *)(puVar2 + -3) = 0;
+    puVar2[-1] = 0x3f800000;
+    *puVar2 = 0x3f800000;
+    uVar4 = (uint)uVar5;
+    uVar1 = FUN_000ad470(uVar5 & 0xffffffff);
+    (&DAT_0273fbe4)[uVar5] = uVar1;
+    *puVar3 = 0x25;
+    puVar3[5] = 0x25;
+    puVar3[10] = 0x25;
+    puVar3[0xf] = 0x25;
+    puVar3[0x14] = 0x25;
+    puVar3[0x19] = 0x25;
+    puVar3[0x1e] = 0x25;
+    puVar3[0x23] = 0x25;
+    puVar3[0x28] = 0x25;
+    puVar3[0x2d] = 0x25;
+    puVar3[0x32] = 0x25;
+    puVar3[0x37] = 0x25;
+    puVar3[0x3c] = 0x25;
+    puVar3[0x41] = 0x25;
+    puVar3[0x46] = 0x25;
+    puVar3[0x4b] = 0x25;
+    puVar3[0x50] = 0x25;
+    puVar3[0x55] = 0x25;
+    puVar3[0x5a] = 0x25;
+    puVar3[0x5f] = 0x25;
+    puVar3[100] = 0x25;
+    if ((int)(uVar5 + 1) == -1) break;
+    puVar2 = puVar2 + 0x2a;
+    puVar3 = puVar3 + 0xc0;
+    uVar5 = uVar5 + 1;
+  } while (uVar4 < 3);
+  DAT_0273fbe0 = FUN_000697a0();
+  DAT_0273fbe8 = 1;
+  FUN_000ad140();
+  return;
+}
+

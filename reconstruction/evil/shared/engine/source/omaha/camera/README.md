@@ -11,7 +11,9 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x900ad0` | player_camera_impulse_offset |  | Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13 | [`900ad0_player_camera_impulse_offset.c`](decompiled/900ad0_player_camera_impulse_offset.c) | Sums up to 8 timed camera impulses (shake / kick curves at 0x273DA50) into a yaw/pitch offset; the player update adds recoil and the stick look on top. |
 
 ## Classes (33)
 

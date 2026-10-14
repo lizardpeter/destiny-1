@@ -53,6 +53,14 @@ discord_app_id = 1559335126528426075   # [D1_DISCORD_APP_ID]
 # Copy the game's own log messages into d1-native.log (useful when reporting problems).
 game_log = true                # [D1_GAME_LOG]
 
+# Mouse look (raw counts go straight into the game's aim, no stick emulation, no
+# acceleration, no aim assist). Sensitivity uses the Source-engine scale: 1.0 = 0.022
+# degrees per count (Destiny 2 PC sensitivity x 0.3 gives the same speed).
+# Zoom scale: 1 = the game's own aim-down-sights slowdown, 0 = the same speed when zoomed.
+mouse_sensitivity = 2.0        # [D1_MOUSE_SENSITIVITY]
+mouse_invert = false           # [D1_MOUSE_INVERT=1]
+mouse_zoom_scale = 1.0         # [D1_MOUSE_ZOOM_SCALE]
+
 # Research hooks for checks the backend cannot answer yet: prereq/transport (sign-in),
 # localres (load global resources locally), spawn (finish loading into a mission once the
 # player has spawned).
@@ -76,6 +84,9 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "discord_app_id") s.discord_app_id = v;
     else if (key == "name") s.name = v;
     else if (key == "game_log") s.game_log = truthy(v);
+    else if (key == "mouse_sensitivity") s.mouse_sensitivity = std::atof(v.c_str());
+    else if (key == "mouse_invert") s.mouse_invert = truthy(v);
+    else if (key == "mouse_zoom_scale") s.mouse_zoom_scale = std::atof(v.c_str());
     else log("settings: unknown key '%s'", key.c_str());
 }
 
@@ -111,6 +122,9 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_DISCORD")) s.discord = truthy(v);
     if (const char* v = getenv("D1_DISCORD_APP_ID")) s.discord_app_id = v;
     if (const char* v = getenv("D1_NAME")) s.name = v;
+    if (const char* v = getenv("D1_MOUSE_SENSITIVITY")) s.mouse_sensitivity = std::atof(v);
+    if (const char* v = getenv("D1_MOUSE_INVERT")) s.mouse_invert = truthy(v);
+    if (const char* v = getenv("D1_MOUSE_ZOOM_SCALE")) s.mouse_zoom_scale = std::atof(v);
     {
         bool ok = s.name.size() >= 3 && s.name.size() <= 16;
         for (char c : s.name) ok &= std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';

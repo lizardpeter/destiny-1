@@ -2709,5 +2709,310 @@
   "size_bytes": 114,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:voice_port_lookup:b49210",
   "calls": []
+ },
+ {
+  "va": "0x8a040",
+  "name": "boot_button_check",
+  "subsystem": "omaha.platform",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "8a040_boot_button_check.c",
+  "role": "Startup: opens pad 0, reads one ScePadData and checks Cross+Triangle (0x4010) held at boot; then mounts /download0.",
+  "size_bytes": 338,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:boot_button_check:8a040",
+  "calls": []
+ },
+ {
+  "va": "0xae1e0",
+  "name": "gamepad_poll_all",
+  "subsystem": "omaha.platform",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "ae1e0_gamepad_poll_all.c",
+  "role": "Polls every pad slot: gamepad_poll(i) into state[i] (stride 0xC0), stores the connected flag per slot. Pad 0 state is the global 0x1AD40F0.",
+  "size_bytes": 95,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gamepad_poll_all:ae1e0",
+  "calls": [
+   "0xae0c0"
+  ]
+ },
+ {
+  "va": "0xae0c0",
+  "name": "gamepad_poll",
+  "subsystem": "omaha.platform",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "ae0c0_gamepad_poll.c",
+  "role": "One pad: scePadReadState; on a new connection refreshes scePadGetControllerInformation (touch pad size, dead zone); then gamepad_state_update.",
+  "size_bytes": 285,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gamepad_poll:ae0c0",
+  "calls": [
+   "0xadc00"
+  ]
+ },
+ {
+  "va": "0xadc00",
+  "name": "gamepad_state_update",
+  "subsystem": "omaha.platform",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "adc00_gamepad_state_update.c",
+  "role": "ScePadData -> engine gamepad state (0xC0): triggers +0/+1 with press counters, 15 buttons held-frames/ms counters (bit table 0x15B5AB0), sticks s16 at +0x44 lx, +0x46 ly (up +), +0x48 rx, +0x4A ry (up +), motion +0xB0.., two touch points +0x50/+0x80.",
+  "size_bytes": 1201,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gamepad_state_update:adc00",
+  "calls": []
+ },
+ {
+  "va": "0x925ee0",
+  "name": "input_abstraction_initialize",
+  "subsystem": "omaha.game",
+  "class": "c_input_abstraction_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "925ee0_input_abstraction_initialize.c",
+  "role": "c_input_abstraction_game_system initialize: clears 0x273ED40; per player default turn speeds 2.0944 (yaw, 120 deg/s) and 1.0472 (pitch, 60 deg/s) rad/s and the default button->action table.",
+  "size_bytes": 715,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_initialize:925ee0",
+  "calls": []
+ },
+ {
+  "va": "0x9261f0",
+  "name": "input_abstraction_initialize_for_new_map",
+  "subsystem": "omaha.game",
+  "class": "c_input_abstraction_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "9261f0_input_abstraction_initialize_for_new_map.c",
+  "role": "Marks every action binding unmapped (0x25) and enables input abstraction (0x273FBE9 = 1).",
+  "size_bytes": 242,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_initialize_for_new_map:9261f0",
+  "calls": []
+ },
+ {
+  "va": "0x9262f0",
+  "name": "input_abstraction_dispose_from_old_map",
+  "subsystem": "omaha.game",
+  "class": "c_input_abstraction_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "9262f0_input_abstraction_dispose_from_old_map.c",
+  "role": "Disables input abstraction (0x273FBE9 = 0).",
+  "size_bytes": 15,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_dispose_from_old_map:9262f0",
+  "calls": []
+ },
+ {
+  "va": "0x9261d0",
+  "name": "input_abstraction_dispose",
+  "subsystem": "omaha.game",
+  "class": "c_input_abstraction_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "9261d0_input_abstraction_dispose.c",
+  "role": "Clears the input abstraction globals.",
+  "size_bytes": 25,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_dispose:9261d0",
+  "calls": []
+ },
+ {
+  "va": "0x926910",
+  "name": "input_abstraction_update",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "926910_input_abstraction_update.c",
+  "role": "Per player: copies both sticks (s16) from the gamepad state to player state +0x2A2/+0x2A6, applies the per-player dead-zone mode (axial / scaled radial, inner/outer from the controller preferences 0x5287F0), caches stick angles (+0x2AC/+0x2B0), copies touch/motion, then maps buttons to abstract actions (+0x0..).",
+  "size_bytes": 7180,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_update:926910",
+  "calls": [
+   "0x926600",
+   "0x928560"
+  ]
+ },
+ {
+  "va": "0x926600",
+  "name": "input_abstraction_reset_player",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "926600_input_abstraction_reset_player.c",
+  "role": "Resets one player's abstracted input when input abstraction is off.",
+  "size_bytes": 742,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_reset_player:926600",
+  "calls": []
+ },
+ {
+  "va": "0x926320",
+  "name": "input_abstraction_sticks_to_float",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "926320_input_abstraction_sticks_to_float.c",
+  "role": "Player state sticks (s16) -> 4 floats in [-1, 1] (left x/y, right x/y), with the optional radial response curve from the controller preferences.",
+  "size_bytes": 736,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_sticks_to_float:926320",
+  "calls": []
+ },
+ {
+  "va": "0x928560",
+  "name": "input_abstraction_player_state",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "928560_input_abstraction_player_state.c",
+  "role": "Returns the per-player input state: 0x273EFE0 + player * 0x300.",
+  "size_bytes": 27,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_player_state:928560",
+  "calls": []
+ },
+ {
+  "va": "0x928670",
+  "name": "input_abstraction_look_rate",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "928670_input_abstraction_look_rate.c",
+  "role": "Look rate: yaw = state[+0x2CC] * turn_speed[0], pitch = state[+0x2D4] * turn_speed[1] (rad/s). With state +0x2A0 set (externally driven input) the values at +0x2C8/+0x2D0 are per-frame deltas and are divided by dt.",
+  "size_bytes": 99,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_look_rate:928670",
+  "calls": []
+ },
+ {
+  "va": "0x928710",
+  "name": "input_abstraction_static_init",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "928710_input_abstraction_static_init.c",
+  "role": "Static constants (2pi, pi, pi/2, ...), default stick/action layout table 0x273FBF0 and unmapped (0x25) bindings.",
+  "size_bytes": 904,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:input_abstraction_static_init:928710",
+  "calls": []
+ },
+ {
+  "va": "0x91adb0",
+  "name": "player_control_initialize",
+  "subsystem": "omaha.game",
+  "class": "c_player_control_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "91adb0_player_control_initialize.c",
+  "role": "c_player_control_game_system initialize: allocates player_control_globals (0x290) and player_control_globals_deterministic (0x50).",
+  "size_bytes": 327,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_control_initialize:91adb0",
+  "calls": []
+ },
+ {
+  "va": "0x91af20",
+  "name": "player_control_initialize_for_new_map",
+  "subsystem": "omaha.game",
+  "class": "c_player_control_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "91af20_player_control_initialize_for_new_map.c",
+  "role": "Clears player control state for a new map, keeping three option bytes (+0x288..+0x28A).",
+  "size_bytes": 892,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_control_initialize_for_new_map:91af20",
+  "calls": []
+ },
+ {
+  "va": "0x91af00",
+  "name": "player_control_dispose",
+  "subsystem": "omaha.game",
+  "class": "c_player_control_game_system",
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "91af00_player_control_dispose.c",
+  "role": "Frees the player control globals.",
+  "size_bytes": 29,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_control_dispose:91af00",
+  "calls": []
+ },
+ {
+  "va": "0x91ee90",
+  "name": "player_control_update",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "91ee90_player_control_update.c",
+  "role": "Per local player: builds the unit action (0x80 bytes) with player_control_build_action, suppresses it while UI / cinematics / death cam own input, applies the control fade (+0x14/+0x18), and raises action flags.",
+  "size_bytes": 4933,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_control_update:91ee90",
+  "calls": [
+   "0x928560"
+  ]
+ },
+ {
+  "va": "0x91b500",
+  "name": "player_control_update_player",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "91b500_player_control_update_player.c",
+  "role": "Per player look and move: sticks -> floats (0x926320), southpaw/legacy swaps, response curves (tag at +0x130), move vector (+0x2C0) and look (+0x2C8..+0x2DC, invert flags); look rate (0x928670) -> aim assist, curve limits, zoom scaling (weapon_zoom_magnification / weapon_zoom_look_scale) -> action[5] = yaw_rate*dt, action[6] = pitch_rate*dt (radians, +yaw left, +pitch up). d1-native's mouse look hooks here.",
+  "size_bytes": 9520,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_control_update_player:91b500",
+  "calls": [
+   "0x926320",
+   "0x900ad0",
+   "0x91da30",
+   "0x928670",
+   "0x928560",
+   "0xbd3740",
+   "0xbd3a50"
+  ]
+ },
+ {
+  "va": "0x91da30",
+  "name": "player_control_apply_movement",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "91da30_player_control_apply_movement.c",
+  "role": "Movement part of the action: left stick (state +0x2C0/+0x2C4) rotated into the unit's frame.",
+  "size_bytes": 1484,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_control_apply_movement:91da30",
+  "calls": []
+ },
+ {
+  "va": "0x900ad0",
+  "name": "player_camera_impulse_offset",
+  "subsystem": "omaha.camera",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "900ad0_player_camera_impulse_offset.c",
+  "role": "Sums up to 8 timed camera impulses (shake / kick curves at 0x273DA50) into a yaw/pitch offset; the player update adds recoil and the stick look on top.",
+  "size_bytes": 687,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_camera_impulse_offset:900ad0",
+  "calls": []
+ },
+ {
+  "va": "0x591b30",
+  "name": "game_time_paused",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "591b30_game_time_paused.c",
+  "role": "True while game time is paused (byte flags at *0x26BC888 bit 1, when the time globals exist).",
+  "size_bytes": 35,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:game_time_paused:591b30",
+  "calls": []
+ },
+ {
+  "va": "0xbd3740",
+  "name": "weapon_zoom_magnification",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "bd3740_weapon_zoom_magnification.c",
+  "role": "Magnification of a unit's weapon at a zoom level (1 when not zoomed / no weapon).",
+  "size_bytes": 216,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_zoom_magnification:bd3740",
+  "calls": []
+ },
+ {
+  "va": "0xbd3a50",
+  "name": "weapon_zoom_look_scale",
+  "subsystem": "omaha.game",
+  "class": null,
+  "evidence": "Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13",
+  "file": "bd3a50_weapon_zoom_look_scale.c",
+  "role": "Per-axis look-speed scale while zoomed (1 - weapon tag +0x1B4 for yaw, 1 - +0x184 for pitch).",
+  "size_bytes": 244,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_zoom_look_scale:bd3a50",
+  "calls": []
  }
 ]

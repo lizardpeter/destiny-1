@@ -134,16 +134,44 @@ libpng and SDL2. With a display (X11 or Wayland) the game opens in a resizable
 window; without one (or with `D1_WINDOW=0`) it renders offscreen, and
 `D1_FRAMES` saves frames either way.
 
-| input | PS4 button |
+Keyboard and mouse play natively: clicking in the window captures the mouse (F2 or
+switching away releases it), and mouse motion goes straight into the game's aim as raw
+counts, without stick emulation (see "Mouse look" below).
+
+| input | action (PS4 button) |
 |---|---|
-| Enter / Space | Cross |
-| Esc / Backspace | Circle |
-| R / F | Square / Triangle |
-| Q / E, Z / X | L1 / R1, L2 / R2 |
-| Left Shift / C | L3 / R3 |
+| WASD | move (left stick) |
+| mouse | look (raw, see below) |
+| left / right mouse | fire (R2) / aim (L2) |
+| Space, Enter | jump, confirm (Cross) |
+| Left Ctrl, C | crouch (Circle) |
+| Esc, Backspace | back (Circle) |
+| R, E | reload, interact (Square) |
+| 1, 2, 3, mouse wheel | switch weapon (Triangle) |
+| Q / F / X | grenade (L1) / melee (R1) / super (L1+R1) |
+| mouse 4 / mouse 5 | grenade (L1) / melee (R1) |
+| Left Shift | sprint (L3) |
+| Z, middle mouse | R3 |
 | arrows | D-pad |
-| WASD / IJKL | left / right stick |
-| Tab / T | Options / touch pad |
+| IJKL | right stick (menus) |
+| Tab / G | character menu (Options) / ghost (touch pad) |
+
+### Mouse look
+
+The game has no mouse support; its look runs pad -> input abstraction (dead zones,
+0x926910) -> player control (response curves, turn-speed acceleration, aim assist, zoom
+scaling, 0x91B500), which ends with this frame's yaw and pitch deltas in radians.
+d1-native hooks the end of that function and adds the mouse counts there, so the mouse
+skips every stick stage (no quantization, curve, acceleration, dead zone or aim assist).
+Counts come from SDL's relative mode on raw input with no OS pointer acceleration, and
+reach the game at most about 1 ms after the window sees them. A controller keeps working
+alongside. Settings in `d1-native.cfg`:
+
+| setting | default | meaning |
+|---|---|---|
+| `mouse_sensitivity` | 2.0 | Source-engine scale: 1.0 = 0.022 degrees per count (Destiny 2 PC sensitivity x 0.3) |
+| `mouse_invert` | false | inverted vertical look |
+| `mouse_zoom_scale` | 1.0 | 1 = the game's own aim-down-sights slowdown, 0 = none |
 
 Game controllers work through SDL's controller mapping (hot-plug supported). Any Vulkan 1.3 device works, including lavapipe. shadPS4 is
 GPL-2.0-or-later, so a binary built this way is too.

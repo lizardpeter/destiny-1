@@ -29,5 +29,6 @@ int32_t set_ls_shader(uint32_t*, uint32_t, const uint32_t*, uint32_t) { return -
 void print_summary() {}
 bool window_active() { return false; }
 bool read_pad(PadState&) { return false; }
+bool take_mouse_motion(int32_t&, int32_t&) { return false; }
 void run_window_loop() {}
 }  // namespace d1::render

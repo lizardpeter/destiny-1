@@ -13,6 +13,10 @@ _None recovered (retail build stripped most asserts)._
 
 | VA | name | class | evidence | pseudo-C | role |
 |---|---|---|---|---|---|
+| `0x8a040` | boot_button_check |  | Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13 | [`8a040_boot_button_check.c`](decompiled/8a040_boot_button_check.c) | Startup: opens pad 0, reads one ScePadData and checks Cross+Triangle (0x4010) held at boot; then mounts /download0. |
+| `0xadc00` | gamepad_state_update |  | Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13 | [`adc00_gamepad_state_update.c`](decompiled/adc00_gamepad_state_update.c) | ScePadData -> engine gamepad state (0xC0): triggers +0/+1 with press counters, 15 buttons held-frames/ms counters (bit table 0x15B5AB0), sticks s16 at +0x44 lx, +0x46 ly (up +), +0x48 rx, +0x4A ry (up +), motion +0xB0.., two touch points +0x50/+0x80. |
+| `0xae0c0` | gamepad_poll |  | Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13 | [`ae0c0_gamepad_poll.c`](decompiled/ae0c0_gamepad_poll.c) | One pad: scePadReadState; on a new connection refreshes scePadGetControllerInformation (touch pad size, dead zone); then gamepad_state_update. |
+| `0xae1e0` | gamepad_poll_all |  | Static decompilation of the 01.33 eboot input path (pad -> input abstraction -> player control), 2026-10-13 | [`ae1e0_gamepad_poll_all.c`](decompiled/ae1e0_gamepad_poll_all.c) | Polls every pad slot: gamepad_poll(i) into state[i] (stride 0xC0), stores the connected flag per slot. Pad 0 state is the global 0x1AD40F0. |
 | `0xbbe60` | addcont_list_query |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`bbe60_addcont_list_query.c`](decompiled/bbe60_addcont_list_query.c) | Queries installed add-on content (sceAppContentGetAddcontInfoList count-then-fill). |
 
 ## Classes (59)

@@ -4,13 +4,18 @@
 // so calls go straight to a host function with the same System V signature (declared
 // D1_SYSV, which matters on Windows). Addresses are
 // eboot offsets documented in findings/LOG.md; they are only valid for the 01.33 build.
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "hle.h"
+#include "render_bridge.h"
 #include "runtime.h"
 #include "settings.h"
 
@@ -115,6 +120,69 @@ static D1_SYSV uint32_t task9_bypass(void* h) {
         }
     }
     return r;
+}
+
+// ---- native mouse look (eboot+0x91B500, the per-player control update)
+// void player_control_update(float dt, float, int slot, uint player, input_state* s,
+//                            control* c, float* action)
+// The game turns the right stick into this frame's look: stick -> deadzones (input
+// abstraction 0x926910) -> response curves and turn-speed acceleration (0x928670: yaw rate =
+// s[+0x2CC] * 120 deg/s, pitch rate = s[+0x2D4] * 60 deg/s) -> aim assist, zoom scaling ->
+// action[5] = yaw_rate * dt, action[6] = pitch_rate * dt (radians; +yaw turns left, +pitch
+// looks up). The hook runs after all of that and adds raw mouse counts straight into those
+// two deltas: no stick quantization, curve, acceleration, deadzone or aim assist, and the
+// counts are at most ~1 ms old (window event loop). A controller keeps working alongside.
+using PlayerControlFn = D1_SYSV void (*)(float, float, int32_t, uint32_t, void*, int32_t*, float*);
+using GuestBoolFn = D1_SYSV bool (*)();
+using ZoomMagFn = D1_SYSV float (*)(int32_t unit, int32_t zoom);
+using ZoomAxesFn = D1_SYSV void (*)(int32_t unit, float* yaw, float* pitch);
+static PlayerControlFn g_pc_orig = nullptr;
+static int32_t g_mouse_test_dx = 0, g_mouse_test_dy = 0;  // D1_MOUSE_TEST=dx,dy (headless)
+static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32_t player, void* state,
+                                        int32_t* control, float* action) {
+    g_pc_orig(dt, f2, slot, player, state, control, action);
+    if (player != 0 || !action) return;
+    int32_t dx = 0, dy = 0;
+    bool have = render::take_mouse_motion(dx, dy);
+    if (!have && (g_mouse_test_dx || g_mouse_test_dy)) dx = g_mouse_test_dx, dy = g_mouse_test_dy, have = true;
+    // counts gathered while the game was not running player control (loading, menus) are stale
+    static auto last = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    const bool stale = now - last > std::chrono::milliseconds(250);
+    last = now;
+    if (!have || stale || (dx == 0 && dy == 0)) return;
+    const Module& exe = rt().modules[0];
+    auto* globals = *reinterpret_cast<uint8_t**>(exe.base + 0x273EB28);  // player_control_globals
+    // the game zeroes the look deltas while look is locked (+0xC bit 0) or the game is paused
+    if (!globals || (globals[0xC] & 1) || reinterpret_cast<GuestBoolFn>(exe.base + 0x591B30)()) return;
+    const Settings& cfg = settings();
+    double yaw_scale = 1.0, pitch_scale = 1.0;
+    if (slot >= 0 && slot < 4 && cfg.mouse_zoom_scale > 0) {
+        const int32_t unit = *reinterpret_cast<int32_t*>(globals + 0x20 + slot * 0x1A0);
+        const int16_t zoom = *reinterpret_cast<int16_t*>(globals + 0x6E + slot * 0x1A0);
+        if (unit != -1 && zoom != -1) {  // the same slowdown the game applies to the stick when zoomed
+            const float mag = reinterpret_cast<ZoomMagFn>(exe.base + 0xBD3740)(unit, zoom);
+            float y = 1.0f, p = 1.0f;
+            reinterpret_cast<ZoomAxesFn>(exe.base + 0xBD3A50)(unit, &y, &p);
+            if (mag > 0.01f) {
+                yaw_scale = std::pow(std::clamp(double(y / mag), 0.02, 1.0), cfg.mouse_zoom_scale);
+                pitch_scale = std::pow(std::clamp(double(p / mag), 0.02, 1.0), cfg.mouse_zoom_scale);
+            }
+        }
+    }
+    const double rad_per_count = cfg.mouse_sensitivity * 0.022 * 3.14159265358979 / 180.0;
+    const float yaw = float(-dx * rad_per_count * yaw_scale);
+    const float pitch = float((cfg.mouse_invert ? dy : -dy) * rad_per_count * pitch_scale);
+    static int traced = 0;
+    if (getenv("D1_MOUSE_TRACE") && traced < 40) {
+        ++traced;
+        log("mouse: dt %.4f counts %d,%d game look %.5f,%.5f + mouse %.5f,%.5f (zoom %.3f,%.3f)", dt, dx, dy,
+            action[5], action[6], yaw, pitch, yaw_scale, pitch_scale);
+    }
+    action[5] += yaw;
+    action[6] += pitch;
+    static bool announced = false;
+    if (!announced) { announced = true; log("input: mouse look active (%.2f sensitivity)", cfg.mouse_sensitivity); }
 }
 
 // ---- DemonWare transport status (eboot+0x2EB340 "started", eboot+0x2EBD40 "failed")
@@ -332,6 +400,9 @@ void install_game_hooks() {
         replace_function(exe.base + 0x2EBD40, reinterpret_cast<const void*>(&transport_failed));
         log("hooks: DemonWare transport reported as started");
     }
+    g_pc_orig = reinterpret_cast<PlayerControlFn>(hook_function(exe.base + 0x91B500, reinterpret_cast<const void*>(&player_control_hook)));
+    if (!g_pc_orig) log("hooks: mouse look hook FAILED");
+    if (const char* t = getenv("D1_MOUSE_TEST")) std::sscanf(t, "%d,%d", &g_mouse_test_dx, &g_mouse_test_dy);
     g_state_step_orig = reinterpret_cast<StateStepFn>(hook_function(exe.base + 0x783AC0, reinterpret_cast<const void*>(&state_step_hook)));
     if (settings().fps > 0) {
         g_time_init_orig = reinterpret_cast<TimeInitFn>(hook_function(exe.base + 0x593F00, reinterpret_cast<const void*>(&time_init_hook)));

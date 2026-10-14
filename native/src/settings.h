@@ -32,6 +32,12 @@ struct Settings {
     std::string discord_app_id = "1559335126528426075";  // the "Destiny" Discord application
     // copy the game's own log messages into d1-native.log
     bool game_log = true;
+    // mouse look: Source-engine-style sensitivity (1.0 = 0.022 degrees per mouse count),
+    // inverted vertical look, and how much aiming down sights / zooming slows the mouse
+    // (1.0 = the game's own zoom scaling, 0 = none)
+    double mouse_sensitivity = 2.0;
+    bool mouse_invert = false;
+    double mouse_zoom_scale = 1.0;
 };
 
 void load_settings(const std::string& path);

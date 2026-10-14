@@ -72,6 +72,9 @@ void set_overlay(bool on);
 
 bool window_active();
 bool read_pad(PadState& out);  // false when there is no window: caller keeps its own input
+// Raw mouse motion (device counts, no OS acceleration) accumulated since the last call while
+// the window holds the cursor; the counts are consumed. False when the cursor is not captured.
+bool take_mouse_motion(int32_t& dx, int32_t& dy);
 void run_window_loop();        // main thread; returns when the window is closed
 
 }  // namespace d1::render

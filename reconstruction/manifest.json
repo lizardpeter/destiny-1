@@ -15126,7 +15126,26 @@
    "functions": [
     "0x923430",
     "0x923790",
-    "0x6e7e20"
+    "0x6e7e20",
+    "0x925ee0",
+    "0x9261f0",
+    "0x9262f0",
+    "0x9261d0",
+    "0x926910",
+    "0x926600",
+    "0x926320",
+    "0x928560",
+    "0x928670",
+    "0x928710",
+    "0x91adb0",
+    "0x91af20",
+    "0x91af00",
+    "0x91ee90",
+    "0x91b500",
+    "0x91da30",
+    "0x591b30",
+    "0xbd3740",
+    "0xbd3a50"
    ],
    "classes": [
     {
@@ -25802,7 +25821,9 @@
    "path_evidence": "HYPOTHESIS",
    "role": "cameras, director, cinematics, observer",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x900ad0"
+   ],
    "classes": [
     {
      "name": "c_animated_trick_camera",
@@ -26262,7 +26283,11 @@
    "role": "orbis/NP platform services, DLC, SKU, trophies",
    "source_files": [],
    "functions": [
-    "0xbbe60"
+    "0xbbe60",
+    "0x8a040",
+    "0xae1e0",
+    "0xae0c0",
+    "0xadc00"
    ],
    "classes": [
     {
