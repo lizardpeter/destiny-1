@@ -317,7 +317,7 @@ struct Renderer {
     void dump(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame);
     bool save_image(Image* img, const char* path);
     uint64_t frame_first_submit = 0;
-    struct PassLog { uint64_t c[5], d; uint32_t draws, clears; uint64_t first_vs, first_ps, caller; };
+    struct PassLog { uint64_t c[5], d; uint32_t draws, clears; uint64_t first_vs, first_ps, caller; std::string tex; };
     std::vector<PassLog> passlog;
     uint64_t passlog_frame = UINT64_MAX;  // D1_NG_PASSLOG=<executed frame>: list that frame's passes
     bool debug = false;
@@ -330,7 +330,8 @@ Renderer* g = nullptr;
 bool Renderer::init(const Options& o) {
     opt = o;
     if (const char* v = std::getenv("D1_NG_DEBUG")) debug = true, debug_from = std::strtoull(v, nullptr, 10);
-    if (const char* v = std::getenv("D1_NG_PASSLOG")) passlog_frame = std::strtoull(v, nullptr, 10);
+    if (const char* v = std::getenv("D1_NG_PASSLOG"))
+        passlog_frame = std::strcmp(v, "world") == 0 ? UINT64_MAX - 1 : std::strtoull(v, nullptr, 10);
     char err[512];
     int gpu = -1;
     if (const char* v = std::getenv("D1_GPU")) gpu = std::atoi(v);
@@ -776,9 +777,9 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
     gcn::TexDim dims[2][16];
     for (int s = 0; s < 2; ++s)
         for (int i = 0; i < 16; ++i) {
-            dims[s][i] = slot_dim(dr.tex[s][i]);
+            dims[s][i] = slot_dim(dr.T(s, i));
             // a T# on a render target samples our 2D target image
-            if (dr.tex[s][i] && target_by_base.count(fmt::decode_tsharp(dr.tex[s][i]).base)) dims[s][i] = gcn::TexDim::Tex2D;
+            if (dr.T(s, i) && target_by_base.count(fmt::decode_tsharp(dr.T(s, i)).base)) dims[s][i] = gcn::TexDim::Tex2D;
         }
     Shader* vs = shader(dr, true, dims[0]);
     Shader* ps = dr.ps ? shader(dr, false, dims[1]) : nullptr;  // no pixel shader: depth-only
@@ -1133,14 +1134,14 @@ void Renderer::draw(const Draw& dr) {
             const uint32_t slot = b.api_slot & 15;
             if (b.kind == gcn::Binding::Texture) {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                images[s][nw[s]] = {VK_NULL_HANDLE, texture_view(dr.tex[s][slot], slot_dim(dr.tex[s][slot])),
+                images[s][nw[s]] = {VK_NULL_HANDLE, texture_view(dr.T(s, slot), slot_dim(dr.T(s, slot))),
                                     VK_IMAGE_LAYOUT_GENERAL};
-                if (dr.tex[s][slot] && target_by_base.count(fmt::decode_tsharp(dr.tex[s][slot]).base))
-                    images[s][nw[s]].imageView = texture_view(dr.tex[s][slot], gcn::TexDim::Tex2D);
+                if (dr.T(s, slot) && target_by_base.count(fmt::decode_tsharp(dr.T(s, slot)).base))
+                    images[s][nw[s]].imageView = texture_view(dr.T(s, slot), gcn::TexDim::Tex2D);
                 w.pImageInfo = &images[s][nw[s]];
             } else if (b.kind == gcn::Binding::Sampler) {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                images[s][nw[s]] = {sampler(dr.smp[s][slot]), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
+                images[s][nw[s]] = {sampler(dr.S(s, slot)), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
                 w.pImageInfo = &images[s][nw[s]];
             } else {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -1198,7 +1199,26 @@ void Renderer::draw(const Draw& dr) {
     }
     if (st.frames == passlog_frame && !passlog.empty()) {
         auto& pl = passlog.back();
-        if (!pl.draws++) pl.first_vs = uint64_t(dr.vs), pl.first_ps = uint64_t(dr.ps), pl.caller = dr.caller;
+        if (!pl.draws++) {
+            pl.first_vs = uint64_t(dr.vs), pl.first_ps = uint64_t(dr.ps), pl.caller = dr.caller;
+            if (p->ps)
+                for (const auto& b : p->ps->res.bindings) {
+                    if (b.kind != gcn::Binding::Texture) continue;
+                    const uint32_t* t = dr.T(1, b.api_slot);
+                    char buf[96];
+                    if (!t) std::snprintf(buf, sizeof buf, " t%u:none", b.api_slot);
+                    else {
+                        const auto ts = fmt::decode_tsharp(t);
+                        const bool rt = target_by_base.count(ts.base) != 0;
+                        auto it = textures.find(hash_bytes(t, 32));
+                        std::snprintf(buf, sizeof buf, " t%u:%s%llx/%ux%u/f%u.%u", b.api_slot,
+                                      rt ? "RT" : (it != textures.end() && it->second) ? "tex" : "MISSING",
+                                      (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt);
+                    }
+                    pl.tex += buf;
+                }
+            if (p->ps && !p->ps->res.problems.empty()) pl.tex += " [" + p->ps->res.problems[0] + "]";
+        }
     }
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
     for (int s = 0; s < 2; ++s)
@@ -1233,6 +1253,8 @@ void Renderer::draw(const Draw& dr) {
 }
 
 void Renderer::execute(const std::vector<Draw*>& draws) {
+    // D1_NG_PASSLOG=world: log the frame after the first big (in-world) submission, plus 3
+    if (passlog_frame == UINT64_MAX - 1 && draws.size() > 2000) passlog_frame = st.frames + 3;
     ++submit_no;
     ++st.submits;
     ring_pos = 0;
@@ -1248,7 +1270,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     for (Draw* d : draws)
         for (int s = 0; s < 2; ++s)
             for (int i = 0; i < 16; ++i)
-                if (const uint32_t* t = d->tex[s][i]; t && !target_by_base.count(fmt::decode_tsharp(t).base))
+                if (const uint32_t* t = d->T(s, i); t && !target_by_base.count(fmt::decode_tsharp(t).base))
                     upload_texture(t);
     barrier();
     for (Draw* d : draws) {
@@ -1433,10 +1455,11 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame) {
     if (g->st.frames == g->passlog_frame) {
         int i = 0;
         for (auto& pl : g->passlog)
-            log("ng pass %3d: c %llx %llx %llx %llx d %llx | %u draws %u clears | vs %llx ps %llx from %#llx", i++,
+            log("ng pass %3d: c %llx %llx %llx %llx d %llx | %u draws %u clears | vs %llx ps %llx from %#llx |%s", i++,
                 (unsigned long long)pl.c[0], (unsigned long long)pl.c[1], (unsigned long long)pl.c[2],
                 (unsigned long long)pl.c[3], (unsigned long long)pl.d, pl.draws, pl.clears,
-                (unsigned long long)pl.first_vs, (unsigned long long)pl.first_ps, (unsigned long long)pl.caller);
+                (unsigned long long)pl.first_vs, (unsigned long long)pl.first_ps, (unsigned long long)pl.caller,
+                pl.tex.c_str());
     }
     ++g->st.frames;
     if (addr) g->dump(addr, w, h, frame);

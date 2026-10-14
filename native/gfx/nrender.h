@@ -28,8 +28,13 @@ struct Draw {
     const uint8_t* ps = nullptr;  // Gnm PsShader
     uint32_t num_vb = 0;
     uint32_t vb[16][4] = {};    // V# per vertex buffer API slot (vertex declaration element)
-    const uint32_t* tex[kStages][16] = {};   // T# per stage and slot
-    const uint32_t* smp[kStages][16] = {};   // S#
+    // T# / S# per stage and slot, copied when the draw is recorded (the engine builds some of
+    // them in temporary memory)
+    uint32_t tex[kStages][16][8] = {};
+    uint32_t smp[kStages][16][4] = {};
+    uint16_t tex_mask[kStages] = {}, smp_mask[kStages] = {};
+    const uint32_t* T(int s, uint32_t i) const { return (tex_mask[s] >> (i & 15) & 1) ? tex[s][i & 15] : nullptr; }
+    const uint32_t* S(int s, uint32_t i) const { return (smp_mask[s] >> (i & 15) & 1) ? smp[s][i & 15] : nullptr; }
     struct Cb { uint64_t addr; uint32_t size; } cb[kStages][16] = {};
     // registers
     uint32_t blend = 0, target_mask = 0xF, su_sc_mode = 0, clip = 0, depth_ctl = 0, stencil_ctl = 0, stencil_ref = 0;

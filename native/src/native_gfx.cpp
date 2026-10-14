@@ -376,8 +376,14 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
     for (int s = 0; s < 2; ++s) {
         const uint32_t gnm = s ? 1 : 2;
         for (int i = 0; i < 16; ++i) {
-            d->tex[s][i] = reinterpret_cast<const uint32_t*>(field<uint64_t>(dev, 0x1E78 + gnm * 0x80 + i * 8));
-            d->smp[s][i] = reinterpret_cast<const uint32_t*>(field<uint64_t>(dev, (s ? 0x2278 : 0x22F8) + i * 8));
+            if (const uint64_t t = field<uint64_t>(dev, 0x1E78 + gnm * 0x80 + i * 8); t >= 0x10000) {
+                std::memcpy(d->tex[s][i], reinterpret_cast<const void*>(t), 32);
+                d->tex_mask[s] |= uint16_t(1u << i);
+            }
+            if (const uint64_t p = field<uint64_t>(dev, (s ? 0x2278 : 0x22F8) + i * 8); p >= 0x10000) {
+                std::memcpy(d->smp[s][i], reinterpret_cast<const void*>(p), 16);
+                d->smp_mask[s] |= uint16_t(1u << i);
+            }
             d->cb[s][i] = ds->cb[s][i];
         }
     }
