@@ -41,6 +41,8 @@ add_library(d1_gfx STATIC
   gfx/gcn_decode.cpp
   gfx/spirv.cpp
   gfx/translate.cpp
+  gfx/tiling.cpp
+  gfx/formats.cpp
   gfx/vk/vk_context.cpp)
 target_include_directories(d1_gfx PUBLIC gfx ${vulkan_headers_SOURCE_DIR}/include)
 if(NOT WIN32)

@@ -12,12 +12,15 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <cstring>
 #include <mutex>
 #include <unordered_set>
 
+#include "formats.h"
 #include "hle.h"
 #include "runtime.h"
+#include "tiling.h"
 
 #ifndef _WIN32
 #include <sys/syscall.h>
@@ -27,6 +30,7 @@
 namespace d1 {
 
 void* hook_eboot_function(uint64_t off, const void* host);  // hooks.cpp
+uint64_t guest_region_extent(uint64_t addr);                // hle_kernel.cpp
 uint64_t gpu_flip_count();                                  // hle_gpu.cpp
 
 namespace {
@@ -174,11 +178,49 @@ D1_SYSV void h_draw(uint64_t dev, uint64_t prim, uint32_t count) {
     if (field<uint8_t>(dev, 0x26)) note_draw(dev, prim);
     o_draw(dev, prim, count);
 }
+// D1_NATIVE_GFX_DUMP: also each distinct texture once (T# + its memory) for detiling tests.
+void dump_texture(uint64_t tsharp) {
+    static const char* dir = getenv("D1_NATIVE_GFX_DUMP");
+    static int count = 0;
+    if (!dir || tsharp < 0x10000 || count >= 400) return;
+    const uint32_t* t = reinterpret_cast<const uint32_t*>(tsharp);
+    const uint64_t base = (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8;
+    const uint32_t w = (t[2] & 0x3FFF) + 1, h = ((t[2] >> 14) & 0x3FFF) + 1;
+    const uint32_t levels = ((t[3] >> 16) & 0xF) + 1;
+    if (!base || w * h > 4096u * 4096u) return;
+    // exact guest footprint from the T# (all mips and slices)
+    const auto ts = fmt::decode_tsharp(t);
+    const auto fi = fmt::data_format(ts.dfmt);
+    if (!fi.bpp || fi.bpp == 96) return;
+    tiling::Surface sf;
+    sf.tile_mode = ts.tiling, sf.bpp = fi.bpp, sf.block = fi.block, sf.pow2 = ts.pow2;
+    sf.width = ts.width, sf.height = ts.height, sf.pitch = ts.pitch;
+    sf.depth = ts.type == 10 ? ts.depth : 1;
+    sf.layers = (ts.type == 13 || ts.type == 11) ? ts.last_array + 1 : 1;
+    sf.levels = ts.last_level + 1;
+    tiling::layout(sf);
+    const uint64_t bytes = std::min<uint64_t>(sf.total_size, 16ull << 20);
+    const uint64_t extent = guest_region_extent(base);
+    char path[512];
+    std::snprintf(path, sizeof path, "%s/tex_%llx.tsharp", dir, (unsigned long long)tsharp);
+    if (FILE* f = std::fopen(path, "wb")) {
+        std::fwrite(t, 4, 8, f);
+        std::fclose(f);
+    }
+    std::snprintf(path, sizeof path, "%s/tex_%llx.mem", dir, (unsigned long long)tsharp);
+    if (FILE* f = std::fopen(path, "wb")) {
+        std::fwrite(reinterpret_cast<const void*>(base), 1, extent ? std::min(bytes, extent) : bytes, f);
+        std::fclose(f);
+    }
+    (void)levels;
+    ++count;
+}
+
 D1_SYSV void h_set_texture(uint64_t dev, uint32_t stage, uint64_t slot, void* tsharp) {
     {
         std::lock_guard lk(g_obs->m);
         ++g_obs->binds_tex;
-        g_obs->textures.insert(reinterpret_cast<uint64_t>(tsharp));
+        if (g_obs->textures.insert(reinterpret_cast<uint64_t>(tsharp)).second) dump_texture(reinterpret_cast<uint64_t>(tsharp));
     }
     o_set_texture(dev, stage, slot, tsharp);
 }
@@ -209,7 +251,24 @@ D1_SYSV void h_apply_targets(uint64_t dev) {
     {
         std::lock_guard lk(g_obs->m);
         ++g_obs->rt_sets;
-        g_obs->targets.insert(field<uint64_t>(dev, kColorTarget0));
+        const bool fresh = g_obs->targets.insert(field<uint64_t>(dev, kColorTarget0)).second;
+        // D1_NATIVE_GFX_RT=1: log the raw target descriptors of each new combination (research)
+        static const bool log_rt = getenv("D1_NATIVE_GFX_RT") != nullptr;
+        static int logged = 0;
+        if (log_rt && fresh && logged < 60) {
+            ++logged;
+            auto hexrow = [&](uint64_t off, int dwords) {
+                std::string s;
+                char b[12];
+                for (int i = 0; i < dwords; ++i) {
+                    std::snprintf(b, sizeof b, " %08x", field<uint32_t>(dev, off + 4 * i));
+                    s += b;
+                }
+                return s;
+            };
+            log("native gfx rt: depth%s", hexrow(0x26B0, 13).c_str());
+            for (int i = 0; i < 5; ++i) log("native gfx rt: color%d%s", i, hexrow(kColorTarget0 + 0x2C * i, 11).c_str());
+        }
     }
     o_apply_targets(dev);
 }
