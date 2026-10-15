@@ -37,6 +37,7 @@ enum class TexDim : uint8_t { Tex2D, Tex2DArray, Tex3D, Cube };
 
 struct ShaderDesc {
     Stage stage = Stage::Pixel;
+    uint64_t id = 0;  // the engine's shader object (diagnostics: D1_NG_PROBE)
     const uint8_t* code = nullptr;
     uint32_t code_size = 0;
     std::vector<UsageSlot> slots;

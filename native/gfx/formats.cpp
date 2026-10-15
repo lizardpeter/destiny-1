@@ -86,6 +86,7 @@ TSharp decode_tsharp(const uint32_t t[8]) {
     s.base = (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8;
     s.dfmt = (t[1] >> 20) & 0x3F;
     s.nfmt = (t[1] >> 26) & 0xF;
+    s.min_lod = (t[1] >> 8) & 0xFFF;
     s.width = (t[2] & 0x3FFF) + 1;
     s.height = ((t[2] >> 14) & 0x3FFF) + 1;
     s.dst_sel = t[3] & 0xFFF;

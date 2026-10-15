@@ -451,8 +451,22 @@ void Translator::emit_scalar(const Inst& in) {
         st(scc(), v);
         return;
     }
-    case Op::S_WQM_B64: {  // whole-quad mode: this lane's own bit (helpers already run)
-        const Id v = bit0(s0());
+    case Op::S_WQM_B64: {
+        // whole-quad mode: a lane is on when any lane of its quad is. Shaders switch it on
+        // around coordinate math inside branches so that the quad's other lanes compute the
+        // coordinates too and the sampler's derivatives see real values (the snow layer of the
+        // terrain: without it every partly covered quad sampled with garbage gradients).
+        Id v = bit0(s0());
+        if (d_.stage == Stage::Pixel) {
+            m_.capability(CapGroupNonUniform);
+            m_.capability(CapGroupNonUniformQuad);
+            const Id u = m_.op_r(OpSelect, tu_, {v, m_.c_u32(1), m_.c_u32(0)});
+            Id any = m_.c_u32(0);
+            for (uint32_t q = 0; q < 4; ++q)
+                any = m_.op_r(OpBitwiseOr, tu_,
+                              {any, m_.op_r(OpGroupNonUniformQuadBroadcast, tu_, {m_.c_u32(3 /*Subgroup*/), u, m_.c_u32(q)})});
+            v = m_.op_r(OpINotEqual, tbool_, {any, m_.c_u32(0)});
+        }
         write_mask(dst, v);
         st(scc(), v);
         return;
@@ -819,6 +833,26 @@ void Translator::emit_exp(const Inst& in) {
         r_.discards = true;
         m_.capability(CapDemoteToHelperInvocation);
     }
+    // D1_NG_PROBE=<pixel shader object hex>:<v>,<v>,<v>,<v>: (testing) MRT0 gets those VGPRs
+    // as they are at the final export instead of the colour, to look at a shader's values
+    static const struct Probe { uint64_t id = 0; uint32_t v[4] = {}; } probe = [] {
+        Probe p;
+        if (const char* e = std::getenv("D1_NG_PROBE"))
+            std::sscanf(e, "%llx:%u,%u,%u,%u", reinterpret_cast<unsigned long long*>(&p.id), &p.v[0], &p.v[1], &p.v[2], &p.v[3]);
+        return p;
+    }();
+    if (t == 0 && probe.id && probe.id == d_.id) {
+        Id& var = outputs_[0];
+        if (!var) {
+            var = global(m_.t_ptr(SCOutput, tv4f_), SCOutput);
+            m_.decorate(var, DecLocation, {0u});
+            r_.color_outputs |= 1u;
+        }
+        Id c[4];
+        for (int k = 0; k < 4; ++k) c[k] = u2f(ld(vreg(probe.v[k]), tu_));
+        st(var, m_.op_r(OpCompositeConstruct, tv4f_, {c[0], c[1], c[2], c[3]}));
+        return;
+    }
     if (t < 8) {
         Id& var = outputs_[t];
         if (!var) {
@@ -1149,11 +1183,14 @@ void Translator::run() {
                         // masks are "any lane"); per-invocation branching would split quads and
                         // break implicit derivatives. Taken when any invocation's bit says so
                         // (the *Z / SCC0 forms: when none does).
+                        static const bool lane_branch = std::getenv("D1_NG_LANE_BRANCH") != nullptr;  // (testing)
                         const bool negated = in.op == Op::S_CBRANCH_SCC0 || in.op == Op::S_CBRANCH_VCCZ;
-                        Id lane = negated ? m_.op_r(OpLogicalNot, tbool_, {cond}) : cond;
-                        m_.capability(Capability(62));  // GroupNonUniformVote
-                        Id any = m_.op_r(Opcode(335), tbool_, {m_.c_u32(3), lane});  // OpGroupNonUniformAny, Subgroup
-                        cond = negated ? m_.op_r(OpLogicalNot, tbool_, {any}) : any;
+                        if (!lane_branch) {
+                            Id lane = negated ? m_.op_r(OpLogicalNot, tbool_, {cond}) : cond;
+                            m_.capability(Capability(62));  // GroupNonUniformVote
+                            Id any = m_.op_r(Opcode(335), tbool_, {m_.c_u32(3), lane});  // OpGroupNonUniformAny, Subgroup
+                            cond = negated ? m_.op_r(OpLogicalNot, tbool_, {any}) : any;
+                        }
                         next = m_.op_r(OpSelect, tu_, {cond, m_.c_u32(tb), next});
                     }
                 } else if (in.op == Op::S_ENDPGM) {

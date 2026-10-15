@@ -31,6 +31,7 @@ struct TSharp {
     uint32_t tiling;     // tile mode index
     uint32_t type;       // 8 1D, 9 2D, 10 3D, 11 cube, 12 1D array, 13 2D array, 14/15 MSAA
     uint32_t dst_sel;    // 12 bits: x y z w swizzles (0 zero, 1 one, 4 r, 5 g, 6 b, 7 a)
+    uint32_t min_lod;    // u4.8: sampling never uses finer mips (texture streaming: not loaded yet)
     bool pow2;
 };
 TSharp decode_tsharp(const uint32_t t[8]);

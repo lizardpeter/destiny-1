@@ -283,6 +283,9 @@ struct Image {
     // render targets: guest layout (for readback) and whether any draw samples it
     uint32_t tile_mode = 0, pitch = 0, bpp = 0;
     bool sampled = false;
+    // small render targets: the memory's version when the GPU last rendered it (write
+    // tracking); a CPU write since then makes the memory, not the image, the current contents
+    uint64_t tv_version = ~0ull, tv_size = 0, tv_frame = 0;
 };
 
 struct Shader {
@@ -311,7 +314,7 @@ struct Stats {
     uint64_t frames = 0, submits = 0, draws = 0, clears = 0, skipped = 0, pipelines = 0, textures = 0, targets = 0,
              shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     uint64_t bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, bytes_tex = 0;  // copied into the ring
-    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0;                 // geometry cache uploads
+    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
     uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
@@ -460,6 +463,9 @@ struct Renderer {
     std::unordered_set<uint64_t> target_bases;  // every address ever rendered to
     std::unordered_set<uint64_t> sampled_bases;  // render target addresses some draw sampled
     std::unordered_set<uint64_t> tsharp_bases;   // every address a draw's T# named
+    bool reload_all = false;
+    struct TraceRec { uint64_t ps, vs, caller, off; uint32_t bytes, w, blend, count; };
+    std::vector<TraceRec> traces;  // D1_NG_TRACE
     std::unordered_map<uint64_t, uint32_t> base_targets;  // render target images made per address
     VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
     Image* upload_texture(const uint32_t* t);
@@ -471,6 +477,7 @@ struct Renderer {
     void begin_pass(Image* const* colors, Image* depth);
     void end_pass();
     void queue_readbacks();
+    bool target_current(uint64_t base);
     void skip(const char* why) {
         ++st.skipped;
         ++st.skip[why];
@@ -998,6 +1005,17 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
     img->bind_slice = std::min(slice, img->d - 1);
     img->tile_mode = c[5] & 0x1F, img->pitch = ((c[1] & 0x7FF) + 1) * 8;
     img->bpp = fmt::data_format(fmt::color_to_data_format(format)).bpp;
+    // rendered to (once a frame): remember the memory's version (see target_current)
+    if (bind && opt.watch && !layered && img->tv_frame != st.frames + 1 && uint64_t(w) * h <= 512 * 512 && img->bpp) {
+        img->tv_frame = st.frames + 1;
+        if (!img->tv_size) {
+            tiling::Surface sf;
+            sf.tile_mode = img->tile_mode, sf.bpp = img->bpp, sf.width = w, sf.height = h, sf.pitch = img->pitch;
+            tiling::layout(sf);
+            img->tv_size = sf.total_size;
+        }
+        img->tv_version = guest_region_extent(base) >= img->tv_size ? opt.watch(base, img->tv_size) : ~0ull;
+    }
     return img;
 }
 
@@ -1352,7 +1370,10 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
     Image* img = it != textures.end() ? it->second.get() : nullptr;
     if (!img) return view(dummy[int(dim)].get(), vt, {}, 0, false);
     img->last_used = submit_no;
-    return view(img, vt, comp, ts.base_level, false);
+    // MIN_LOD: the streaming system has not loaded the finer mips yet (their memory is still
+    // zero): start the view at the first mip it allows
+    const uint32_t first = std::min(std::max(ts.base_level, (ts.min_lod + 255) >> 8), std::max(ts.last_level, ts.base_level));
+    return view(img, vt, comp, first, false);
 }
 
 VkSampler Renderer::sampler(const uint32_t* s) {
@@ -1404,6 +1425,7 @@ Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const
     const GnmShader g = parse_shader(obj, vs);
     gcn::ShaderDesc d;
     d.stage = vs ? gcn::Stage::Vertex : gcn::Stage::Pixel;
+    d.id = uint64_t(obj);
     d.code = g.code, d.code_size = g.code_size, d.slots = g.slots, d.user_sgprs = g.user_sgprs;
     d.ps_input_addr = g.ps_input_addr, d.fetch = g.fetch, d.fetch_size = g.fetch_size;
     for (int i = 0; i < 16; ++i) d.tex_dims[i] = dims[i], d.tex_kind[i] = kinds[i];
@@ -1755,6 +1777,17 @@ void Renderer::clear(const Draw& dr) {
             dr.clear_color[0], dr.clear_color[1], dr.clear_color[2], dr.clear_color[3], dr.clear_depth,
             dr.clear_stencil, (unsigned long long)dr.color[0][0] << 8, (unsigned long long)dr.depth[4] << 8);
     }
+    static const std::vector<uint64_t> skip_ps = [] {  // D1_NG_SKIP_PS=<hex>,..: (testing) leave these out
+        std::vector<uint64_t> v;
+        if (const char* e = std::getenv("D1_NG_SKIP_PS"))
+            for (const char* p = e; *p;) {
+                char* end;
+                v.push_back(std::strtoull(p, &end, 16));
+                p = *end ? end + 1 : end;
+            }
+        return v;
+    }();
+    if (!skip_ps.empty() && std::find(skip_ps.begin(), skip_ps.end(), uint64_t(dr.ps)) != skip_ps.end()) return;
     Image* colors[8] = {};
     for (int i = 0; i < 5; ++i) colors[i] = color_target(dr.color[i]);
     Image* depth = depth_target(dr.depth);
@@ -1999,20 +2032,70 @@ void Renderer::draw(const Draw& dr) {
         if (p->ps) {
             std::string ts;
             for (const auto& b : p->ps->res.bindings) {
-                char t[160];
+                char t[256];
                 if (b.kind == gcn::Binding::Texture) {
                     const uint32_t* T = dr.T(1, b.api_slot);
                     if (!T) continue;
                     const auto d = fmt::decode_tsharp(T);
-                    std::snprintf(t, sizeof t, " t%u:%llx/%ux%u/f%u.%u/mips%u-%u/sel%03o", b.api_slot,
+                    // D1_NG_DUMP_TEX=<dir>: (testing) the T# and its guest memory, for offline decoding
+                    if (const char* dir = std::getenv("D1_NG_DUMP_TEX")) {
+                        static std::unordered_set<uint64_t> dumped;
+                        tiling::Surface sf0;
+                        const auto fi0 = fmt::data_format(d.dfmt);
+                        sf0.tile_mode = d.tiling, sf0.bpp = fi0.bpp, sf0.block = fi0.block, sf0.pow2 = d.pow2;
+                        sf0.width = d.width, sf0.height = d.height, sf0.pitch = d.pitch;
+                        sf0.levels = std::min(d.last_level + 1, tiling::kMaxMips);
+                        tiling::layout(sf0);
+                        if (fi0.bpp && dumped.size() < 200 && dumped.insert(d.base).second &&
+                            guest_region_extent(d.base) >= sf0.total_size) {
+                            char path[512];
+                            std::snprintf(path, sizeof path, "%s/tex_%llx.bin", dir, (unsigned long long)d.base);
+                            if (FILE* f = std::fopen(path, "wb")) {
+                                std::fwrite(dr.T(1, b.api_slot), 4, 8, f);
+                                std::fwrite(reinterpret_cast<const void*>(d.base), 1, sf0.total_size, f);
+                                std::fclose(f);
+                            }
+                        }
+                    }
+                    // zero blocks per mip (streaming not done / never loaded)
+                    std::string zs;
+                    const auto fi = fmt::data_format(d.dfmt);
+                    if (fi.block && fi.bpp) {
+                        tiling::Surface sf;
+                        sf.tile_mode = d.tiling, sf.bpp = fi.bpp, sf.block = true, sf.pow2 = d.pow2;
+                        sf.width = d.width, sf.height = d.height, sf.pitch = d.pitch;
+                        sf.levels = std::min(d.last_level + 1, tiling::kMaxMips);
+                        tiling::layout(sf);
+                        if (guest_region_extent(d.base) >= sf.total_size)
+                            for (uint32_t lv = 0; lv < sf.levels && lv < 4; ++lv) {
+                                const uint8_t* m = reinterpret_cast<const uint8_t*>(d.base) + sf.mips[lv].offset;
+                                const uint32_t bs = fi.bpp / 8;
+                                uint64_t zero = 0, n = sf.mips[lv].size / bs;
+                                for (uint64_t q = 0; q < n; ++q) {
+                                    uint64_t acc = 0;
+                                    for (uint32_t z = 0; z < bs; z += 8) acc |= *reinterpret_cast<const uint64_t*>(m + q * bs + z);
+                                    zero += acc == 0;
+                                }
+                                char zb[24];
+                                std::snprintf(zb, sizeof zb, "%s%llu%%", lv ? "," : "/z", (unsigned long long)(n ? zero * 100 / n : 0));
+                                zs += zb;
+                            }
+                    }
+                    std::snprintf(t, sizeof t, " t%u:%llx/%ux%u/f%u.%u/mips%u-%u/minlod%.2f/sel%03o%s", b.api_slot,
                                   (unsigned long long)d.base, d.width, d.height, d.dfmt, d.nfmt, d.base_level,
-                                  d.last_level, d.dst_sel);
+                                  d.last_level, d.min_lod / 256.0, d.dst_sel, zs.c_str());
                 } else if (b.kind == gcn::Binding::Sampler) {
                     const uint32_t* S = dr.S(1, b.api_slot);
                     if (!S) continue;
                     std::snprintf(t, sizeof t, " s%u:%08x.%08x.%08x.%08x", b.api_slot, S[0], S[1], S[2], S[3]);
                 } else {
-                    continue;
+                    const auto& c = dr.cb[1][b.api_slot & 15];
+                    const float* fv = c.addr >= 0x10000 ? reinterpret_cast<const float*>(c.addr) : nullptr;
+                    if (fv && c.size >= 32)
+                        std::snprintf(t, sizeof t, " cb%u:%llx/%u[%g %g %g %g %g %g %g %g]", b.api_slot, (unsigned long long)c.addr,
+                                      c.size, fv[0], fv[1], fv[2], fv[3], fv[4], fv[5], fv[6], fv[7]);
+                    else
+                        std::snprintf(t, sizeof t, " cb%u:%llx/%u", b.api_slot, (unsigned long long)c.addr, c.size);
                 }
                 ts += t;
             }
@@ -2078,6 +2161,32 @@ void Renderer::draw(const Draw& dr) {
         vkCmdDraw(cmd, count, std::max(1u, dr.instances), 0, 0);
     }
     ++st.draws;
+    // D1_NG_TRACE=<target base hex>,<x>,<y>,<w>: (testing) in the logged frame, a row of that
+    // target's pixels after every draw into it, to find which draw writes what
+    static const struct Trace { uint64_t base = 0; uint32_t x = 0, y = 0, w = 0, h = 1; } trace = [] {
+        Trace t;
+        if (const char* e = std::getenv("D1_NG_TRACE"))
+            std::sscanf(e, "%llx,%u,%u,%u,%u", reinterpret_cast<unsigned long long*>(&t.base), &t.x, &t.y, &t.w, &t.h);
+        return t;
+    }();
+    if (trace.base && st.frames == passlog_frame)
+        for (int i = 0; i < 8; ++i)
+            if (colors[i] && colors[i]->base == trace.base && trace.x + trace.w <= colors[i]->w && trace.y + trace.h <= colors[i]->h &&
+                colors[i]->bpp && traces.size() < 4000) {
+                end_pass();
+                const uint32_t bytes = colors[i]->bpp / 8;
+                const uint64_t off = ring_alloc(uint64_t(trace.w) * trace.h * bytes, 16);
+                if (off == UINT64_MAX) break;
+                VkBufferImageCopy r{};
+                r.bufferOffset = off;
+                r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                r.imageOffset = {int32_t(trace.x), int32_t(trace.y), 0};
+                r.imageExtent = {trace.w, trace.h, 1};
+                vkCmdCopyImageToBuffer(cmd, colors[i]->image, VK_IMAGE_LAYOUT_GENERAL, ring.buf, 1, &r);
+                barrier();
+                traces.push_back({uint64_t(dr.ps), uint64_t(dr.vs), dr.caller, off, bytes, trace.w * trace.h, dr.blend, dr.count});
+                break;
+            }
     lap(st.t_cmd);
 }
 
@@ -2089,6 +2198,13 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     retire_completed();
     begin_record();
     const uint64_t tp = now_ns();
+    if (reload_all) {
+        reload_all = false;
+        for (auto& [k, img] : textures)
+            if (img) subs[cur].dead.push_back(std::move(img));
+        textures.clear();
+        log("native renderer: dropped every texture (D1_NG_SNAP_RELOAD)");
+    }
     // resources first (copies cannot run inside a render pass): targets, then textures
     for (Draw* d : draws) {
         for (int i = 0; i < 5; ++i) color_target(d->color[i], false);
@@ -2100,7 +2216,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
                 if (const uint32_t* t = d->T(s, i)) {
                     const uint64_t b = fmt::decode_tsharp(t).base;
                     tsharp_bases.insert(b);
-                    if (!target_bases.count(b)) upload_texture(t);
+                    if (!target_bases.count(b) || !target_current(b)) upload_texture(t);
                 }
     barrier();
     st.t_pre += now_ns() - tp;
@@ -2111,6 +2227,23 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     end_pass();
     queue_readbacks();
     submit();
+}
+
+// False when the CPU has written a small render target's memory since the GPU rendered it:
+// the game reuses the memory for data it writes itself (the 32x32 light tables at
+// 0x579214000.. are rendered to some frames and written by the CPU in others), so the T# must
+// read the memory again. The address stops counting as a render target until it is rendered.
+bool Renderer::target_current(uint64_t base) {
+    auto it = target_by_base.find(base);
+    if (it == target_by_base.end()) return true;
+    Image* img = it->second;
+    if (img->depth || img->tv_version == ~0ull || !opt.version || opt.version(base, img->tv_size) == img->tv_version)
+        return true;
+    target_by_base.erase(it);
+    target_bases.erase(base);
+    img->tv_version = ~0ull, img->tv_frame = 0;
+    ++st.target_writes;
+    return false;
 }
 
 // Small render targets that no draw samples are results the CPU reads back (the depth
@@ -2590,6 +2723,22 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
                 (unsigned long long)pl.first_vs, (unsigned long long)pl.first_ps, (unsigned long long)pl.caller,
                 pl.tex.c_str());
     }
+    if (g->st.frames == g->passlog_frame && !g->traces.empty()) {
+        vkDeviceWaitIdle(g->ctx.device);
+        // <frames dir>/trace.bin: per draw a header (ps, vs, caller, blend, count, bytes) and the pixels
+        char path[512];
+        std::snprintf(path, sizeof path, "%s/trace.bin", g->opt.frames_dir ? g->opt.frames_dir : ".");
+        if (FILE* f = std::fopen(path, "wb")) {
+            for (const auto& t : g->traces) {
+                const uint64_t hdr[6] = {t.ps, t.vs, t.caller, t.blend, t.count, uint64_t(t.w) * t.bytes};
+                std::fwrite(hdr, 8, 6, f);
+                std::fwrite(g->ring.map + t.off, 1, uint64_t(t.w) * t.bytes, f);
+            }
+            std::fclose(f);
+        }
+        log("ng trace: %zu draws written to %s", g->traces.size(), path);
+        g->traces.clear();
+    }
     if (g->st.frames == g->passlog_frame && --g->passlog_count) {
         g->passlog.clear();
         ++g->passlog_frame;
@@ -2607,6 +2756,7 @@ void request_passlog(uint32_t frames) {
     g->passlog_frame = g->st.frames + 1;
     g->passlog_count = frames;
     if (std::getenv("D1_NG_SNAP_DEBUG")) g->debug = true, g->debug_from = g->passlog_frame, g->debug_lines = 0;
+    if (std::getenv("D1_NG_SNAP_RELOAD")) g->reload_all = true;  // (testing) copy every texture again
 }
 uint64_t presented_frames() { return g ? g->sc.presented : 0; }
 const char* gpu_name() { return g ? g->ctx.name : ""; }
@@ -2625,10 +2775,11 @@ void print_stats() {
     const double fr = double(std::max<uint64_t>(1, s.frames));
     log("native renderer: copied per frame (average): vertices %.1f MiB, indices %.1f MiB, constants %.1f MiB, "
         "textures %.1f MiB | geometry cache: %.1f MiB uploaded per frame, %.0f hits per frame, %.0f MiB held | "
-        "%llu texture reloads (%llu torn), %llu torn geometry copies, %llu target readbacks", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
+        "%llu texture reloads (%llu torn), %llu torn geometry copies, %llu target readbacks, %llu targets rewritten by the CPU", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
         double(s.bytes_cb) / fr / 1048576.0, double(s.bytes_tex) / fr / 1048576.0, double(s.bytes_geo) / fr / 1048576.0,
         double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads,
-        (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn, (unsigned long long)s.readbacks);
+        (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn, (unsigned long long)s.readbacks,
+        (unsigned long long)s.target_writes);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
             "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,
