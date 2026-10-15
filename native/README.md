@@ -127,6 +127,28 @@ engine-side patch (not done yet).
 | `D1_INLINE_FETCH=1` | (renderer build) translate vertex fetch shaders inline as buffer loads (shadPS4's slower debugging path) |
 | `D1_GPU_ID=<n>` | (renderer build) use the n-th Vulkan device instead of the automatic pick |
 
+Native renderer (`native/gfx`, the default without shadPS4):
+
+| env | effect |
+|---|---|
+| `D1_GPU=<n>` | use the n-th Vulkan device |
+| `D1_NG_EVERY=<n>` / `D1_NG_EVERY_WORLD=<s>` | draw every n-th frame only (software rendering); from `<s>` seconds in the world, every frame |
+| `D1_NG_NOCACHE=1` | no geometry cache and no texture change tracking |
+| `D1_NG_FRAMES_IN_FLIGHT=<n>` | frames the CPU may record ahead of the GPU (default 2) |
+| `D1_NG_READBACK=<pixels>` | largest never-sampled render target written back to guest memory for the CPU (default 4096, 0 off); `D1_NG_LOG_READBACK=1` lists the decisions |
+| `D1_NG_STATS=1` | renderer statistics every 5 s instead of 15 s |
+| `D1_NG_LOG_FAULTS=1` | the 64 KiB regions the game keeps rewriting (write-protection faults) |
+| `D1_NG_FRAMES=<dir>` + `D1_NG_DUMP_EVERY=<n>` / `D1_NG_TARGETS=1` / `D1_NG_TARGETS_MAXPIX=<n>` | write presented frames (and the render targets a frame used) as PPM |
+| `D1_NG_SNAP=<state prefix>:<s>` | `<s>` seconds after the game enters that state: draw every frame, log the next frame's passes and dump it; `D1_NG_SNAP_FRAMES=<n>` dumps n more frames, `D1_NG_SNAP_DEBUG=1` logs every draw (vertex buffers, constant buffers, textures with zero-block counts), `D1_NG_SNAP_RELOAD=1` copies every texture again first |
+| `D1_NG_PASSLOG=<frame>\|world` / `D1_NG_PASSLOG_N=<n>` / `D1_NG_DEBUG=<frame>` | pass list / draw log of an executed frame |
+| `D1_NG_TRACE=<base>,<x>,<y>,<w>,<h>` | in the snapshot frame, that rectangle of the render target at `<base>` after every draw into it, to `<frames dir>/trace.bin` |
+| `D1_NG_ID_MAP=1` | G-buffer shaders that output black write their shader object's address bytes instead (who draws the black pixels) |
+| `D1_NG_PROBE=<ps>:<v>,<v>,<v>,<v>` | that pixel shader's MRT0 gets those VGPRs as they are at the final export |
+| `D1_NG_SKIP_PS=<ps>,..` / `D1_NG_GETLOD0=1` / `D1_NG_LANE_BRANCH=1` | experiments: leave pixel shaders out, IMAGE_GET_LOD returns 0, per-lane SCC/VCC branches |
+| `D1_NG_DUMP_GCN=<dir>` / `D1_NG_DUMP_SPV=<dir>` / `D1_NG_DUMP_TEX=<dir>` | shader code for `d1-shadertool dis`, translated SPIR-V, texture memory (with its T#) |
+| `D1_NG_LOG_DISPATCH=1` / `D1_NG_LOG_RELOADS=1` / `D1_NG_LOG_WAITS=1` | compute dispatches with their user data, small texture reloads, memory waits unsatisfied after a submit |
+| `D1_VK_VALIDATION=1` | Khronos validation layer |
+
 ## How it works
 
 | piece | file | notes |

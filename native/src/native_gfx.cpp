@@ -1012,6 +1012,8 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
         // log the next frame's passes and dump it (with D1_NG_FRAMES / D1_NG_TARGETS)
         static const char* snap = getenv("D1_NG_SNAP");
         static int snap_phase = 0;  // 0 waiting, 1 armed (passlog requested), 2 done
+        static int snap_more = 0;
+        if (snap_phase == 2 && snap_more > 0) dump = true, --snap_more;
         if (snap && snap_phase < 2) {
             static std::chrono::steady_clock::time_point t_in{};
             const char* colon = std::strrchr(snap, ':');
@@ -1020,6 +1022,8 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
             if (snap_phase == 1) {
                 dump = true, snap_phase = 2;
                 log("native gfx: snapshot at state '%s'", gs ? gs : "?");
+                // D1_NG_SNAP_FRAMES=<n>: and the n frames after it (flicker hunting)
+                if (const char* v = getenv("D1_NG_SNAP_FRAMES")) snap_more = std::atoi(v);
             } else if (gs && std::strncmp(gs, snap, n) == 0) {
                 if (t_in == std::chrono::steady_clock::time_point{}) t_in = std::chrono::steady_clock::now();
                 else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_in).count() > (colon ? std::atof(colon + 1) : 0)) {
