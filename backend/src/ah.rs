@@ -158,6 +158,20 @@ pub fn membership(players: &[Player]) -> Vec<u8> {
 /// char[64] @0x14, i32 @0x54, u32 @0x58, u32 @0x5C, details @0x60. The activity manager
 /// waits for "instantiation" (0x2998F0) until valid is set and @1 is clear.
 pub const HOST_INSTANCE: u32 = 1;
+
+/// Host -> client message: world globals state (type 2, handler 0x1018D00, payload 0x80800DC1
+/// = 0x80800D68 {bool valid, f32 value}), passed to the world interface (0x2409E0).
+/// D1B_WORLD_GLOBAL=<f32> (research) sends it; the value is thought to be the time of day
+/// (c_time_of_day_game_system starts at 0.2 with a 3600 s cycle).
+pub const HOST_WORLD_GLOBALS: u32 = 2;
+
+fn world_globals() -> Option<(u32, Vec<u8>)> {
+    let v: f32 = std::env::var("D1B_WORLD_GLOBAL").ok()?.parse().ok()?;
+    let mut w = BitWriter::default();
+    invest::encode(&mut w, "0x80800dc1", &Value::Struct(vec![Some(Value::Struct(vec![Some(Value::Bool(true)), Some(Value::Float(v))]))]));
+    info!("activity host: world globals state {{true, {v}}} (D1B_WORLD_GLOBAL)");
+    Some((HOST_WORLD_GLOBALS, w.finish()))
+}
 /// Scenario to load for an activity index: the named tag (e.g. "act_cosmo_m0_highway") and
 /// its checksum, the u32 at +0xC of that tag's data, which the client compares with the
 /// instance's +0x5C after loading (0x299B00, "activity checksum mismatch"). Only the
@@ -283,6 +297,9 @@ impl Host {
                     (HOST_MEMBERSHIP, membership(player.as_slice())),
                     (HOST_INSTANCE, self.instance()),
                 ]
+                .into_iter()
+                .chain(world_globals())
+                .collect()
             }
             t => {
                 // Periodic messages (e.g. 15) are logged once.

@@ -1119,3 +1119,32 @@ sequence, insertion point, resurrection, activity complete, ...) reports gamepla
 
 Status: no script code found in the activity package so far (name-hash search hits were
 Wwise audio; classes 0x80800734 / 0x80801AD7 / 0x80801A6A not decoded yet).
+
+## 2026-10-15 (evening): every engine type, every field kind, more host messages
+
+- **Schema**: the 4,088 layouts scanned from eboot.bin agree exactly with all 515 types the
+  backend schema already had (dumped from a running game); the other 3,573 are merged into
+  `backend/data/investment_schema.json` (4,137 types).
+- **Field kinds** (per-kind decoders, table 0x1913060): 0/17 nothing; 2 bit; 3-10 ints;
+  11 f32, or `p2` quantized bits when 0 < p2 < 32 (0x72C20); 12 64 raw bits; 13 point3d
+  (0x2CA900: 3 x 32 bits; a quantized form exists behind flag 0x267FB28, 0 at run time);
+  14 vector3d (bit zero, else 19-bit direction + 16-bit length); 18/20/21/22/23 bit +
+  u32; 19 bit + u32 + 6 bits; 24/25 variant (6-bit kind, then that kind); 26 128 raw bits;
+  27/28 bit, then bit ? (u32, u32, 12 bits) : 192 raw bits; 29 optional (u32, 6 bits) +
+  128 raw bits; 34/41 typed value (type handle 0x80800046, then that type); 35 8 bytes.
+  15 and 16 (rare) not done. Both decoders (backend Rust, tools/d1_engine_type_decode.py)
+  now handle these.
+- **Host message payloads** (type ids registered at start-up, read with D1_PEEK):
+  0 `entity_slots_allocated` 0x80800D64, 1 `global_activity_state` 0x80800E76,
+  2 `world_globals_state` 0x80800DC1 = {bool, f32} (handed to the world interface,
+  0x2409E0), 38 `script_state` 0x808052E5, 39 `script_event` 0x80800C0A.
+- `world_globals_state` {true, 0.35} (backend `D1B_WORLD_GLOBAL`) did not change the
+  prologue's lighting (still night).
+- Client -> host payload candidates by exact-fit decoding: 6 `sensor_sense_update`
+  0x808024D0 or 0x8080306A; 18 `incident` 0x80801802 / 0x8080181B / 0x8080184E (two u64
+  + 0x8080097D) or 0x8080198E; 47 `high_water` and 37 heartbeat 4-5 candidates each.
+- The "activity mode" client reference (type 0x10) the spawn waits on is
+  0x80CD0C34, an entity resource (class 0x80800861) in the Cosmodrome **ambient**
+  package (`ps4_cosmo_ambient_activityonl_0268`). The prologue's own script objects
+  (phases, objectives, ...) never get instantiated: they are host-side entities, and our
+  host creates none, so the client runs on the destination's ambient (patrol) content.

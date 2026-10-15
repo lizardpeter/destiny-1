@@ -68,6 +68,9 @@ pub struct Member {
     pub bias: i32,
     #[serde(default)]
     pub bits: u32,
+    /// Third parameter word: for floats (kind 11) the quantized bit count (0 or 32 = raw).
+    #[serde(default)]
+    pub p2: i32,
 }
 
 pub fn schema() -> &'static Schema {
@@ -194,6 +197,7 @@ fn encode_scalar(w: &mut BitWriter, m: &Member, v: Option<&Value>) {
 fn decode_scalar(r: &mut BitReader, m: &Member) -> Value {
     match m.kind {
         2 => Value::Bool(r.bit()),
+        11 if m.p2 > 0 && m.p2 < 32 => Value::Int(r.bits(m.p2 as u32) as i64), // quantized (0x72C20)
         11 => Value::Float(f32::from_bits(r.bits(32) as u32)),
         3..=10 => {
             let raw = r.bits(m.bits) as i64;
@@ -209,6 +213,63 @@ fn decode_scalar(r: &mut BitReader, m: &Member) -> Value {
                 *x = r.bits(8) as u8;
             }
             Value::Int(u64::from_le_bytes(b) as i64)
+        }
+        // Kinds below: per-kind decoders in the client's table at 0x1913060 (decoded 2026-10-15).
+        0 | 17 => Value::Int(0), // nothing on the wire
+        12 => Value::Int(r.bits(64) as i64),
+        // point3d (0x2CA900): 3 x 32 bits unless world-position quantization is on
+        // (0x267FB28, off in practice)
+        13 => Value::Struct((0..3).map(|_| Some(Value::Float(f32::from_bits(r.bits(32) as u32)))).collect()),
+        // vector3d (0x72D90): bit "zero"; else 19-bit direction + 16-bit length
+        14 => {
+            if r.bit() {
+                Value::Int(0)
+            } else {
+                let dir = r.bits(19);
+                let len = r.bits(16);
+                Value::Struct(vec![Some(Value::Int(dir as i64)), Some(Value::Int(len as i64))])
+            }
+        }
+        18 | 20 | 21 | 22 => Value::Int(if r.bit() { r.bits(32) as u32 as i64 } else { -1 }),
+        19 => {
+            if r.bit() {
+                let h = r.bits(32);
+                let k = r.bits(6);
+                Value::Struct(vec![Some(Value::Int(h as i64)), Some(Value::Int(k as i64))])
+            } else {
+                Value::Int(-1)
+            }
+        }
+        // variant: 6-bit kind, then a value of that kind
+        24 | 25 => {
+            let k = r.bits(6) as u8;
+            let mut inner = m.clone();
+            inner.kind = k;
+            decode_scalar(r, &inner)
+        }
+        26 => Value::Struct(vec![Some(Value::Int(r.bits(64) as i64)), Some(Value::Int(r.bits(64) as i64))]),
+        27 | 28 => {
+            if !r.bit() {
+                Value::Int(-1)
+            } else if !r.bit() {
+                Value::Struct((0..3).map(|_| Some(Value::Int(r.bits(64) as i64))).collect())
+            } else {
+                Value::Struct(vec![Some(Value::Int(r.bits(32) as i64)), Some(Value::Int(r.bits(32) as i64)), Some(Value::Int(r.bits(12) as i64))])
+            }
+        }
+        29 => {
+            let h = if r.bit() { Some(Value::Int(((r.bits(32) << 6) | r.bits(6)) as i64)) } else { None };
+            Value::Struct(vec![h, Some(Value::Int(r.bits(64) as i64)), Some(Value::Int(r.bits(64) as i64))])
+        }
+        // typed value: type handle (0x80800046), then that type
+        34 | 41 => {
+            let t = if r.bit() { r.bits(32) as u32 } else { u32::MAX };
+            if t == u32::MAX {
+                Value::Int(-1)
+            } else {
+                let id = format!("{t:#010x}");
+                if schema().types.contains_key(&id) { decode(r, &id) } else { Value::Int(t as i64) }
+            }
         }
         k => panic!("investment kind {k} not supported for decoding"),
     }

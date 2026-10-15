@@ -27,7 +27,7 @@ while o < L:
         if m + 0x28 > len(eb): ok = False; break
         off = i32(m); kind = eb[m + 0x10]; mt = u(m + 0x14)
         if not (0 <= off <= size and kind < 32 and (mt == 0xffffffff or 0x80800000 <= mt < 0x80810000)): ok = False; break
-        ms.append(dict(off=off, kind=kind, type=f'{mt:08X}', params=eb[m+0x18:m+0x28].hex()))
+        ms.append(dict(off=off, kind=kind, pres=eb[m + 0x11], type=f'{mt:08X}', params=eb[m+0x18:m+0x28].hex()))
     if not ok: continue
     found.setdefault(f'{tid:08X}', dict(at=hex(f), size=size, count=cnt, array=acount, members=ms))
 json.dump(found, open(sys.argv[2], 'w'), indent=0)
