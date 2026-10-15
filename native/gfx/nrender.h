@@ -78,6 +78,7 @@ struct Options {
     // watch() stays valid while version() returns the same value.
     uint64_t (*watch)(uint64_t addr, uint64_t size) = nullptr;
     uint64_t (*version)(uint64_t addr, uint64_t size) = nullptr;
+    void (*describe)(uint64_t addr, char* out, size_t n) = nullptr;  // (diagnostics) tracking state of a page
 };
 
 bool init(const Options& opt);

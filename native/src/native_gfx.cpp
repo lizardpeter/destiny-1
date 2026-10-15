@@ -903,6 +903,34 @@ uint64_t version(uint64_t addr, uint64_t size) {
     return v;
 }
 
+// (diagnostics) a page's tracking state, generation and the host's protection of it
+void describe(uint64_t addr, char* out, size_t n) {
+    const uint64_t pg = addr / kPage;
+    Chunk* ch = chunk(pg, false);
+    std::string prot = "?";
+#if !defined(_WIN32)
+    if (FILE* f = std::fopen("/proc/self/maps", "r")) {
+        char line[512];
+        while (std::fgets(line, sizeof line, f)) {
+            unsigned long long lo, hi;
+            char perms[8];
+            if (std::sscanf(line, "%llx-%llx %7s", &lo, &hi, perms) == 3 && addr >= lo && addr < hi) {
+                prot = std::string(perms) + " " + std::to_string((hi - lo) >> 10) + "K";
+                break;
+            }
+        }
+        std::fclose(f);
+    }
+#endif
+    if (!ch) {
+        std::snprintf(out, n, "no chunk, host %s", prot.c_str());
+        return;
+    }
+    const uint64_t i = pg & (kPagesPerChunk - 1);
+    std::snprintf(out, n, "state %u gen %llu watched %u, host %s", unsigned(ch->state[i].load()),
+                  (unsigned long long)ch->gen[i].load(), unsigned(ch->watched[i].load()), prot.c_str());
+}
+
 // Protect [addr, addr+size) (whole pages) and return its version.
 uint64_t watch(uint64_t addr, uint64_t size) {
     const uint64_t first = addr / kPage, end = (addr + size + kPage - 1) / kPage;
@@ -1030,6 +1058,7 @@ void native_gfx_install() {
         if (!getenv("D1_NG_NOCACHE")) {
             opt.watch = [](uint64_t a, uint64_t n) { return wt::watch(a, n); };
             opt.version = [](uint64_t a, uint64_t n) { return wt::version(a, n); };
+            opt.describe = [](uint64_t a, char* out, size_t n) { wt::describe(a, out, n); };
         }
         if (const char* v = getenv("D1_NG_FRAMES_IN_FLIGHT")) opt.frames_in_flight = uint32_t(std::max(1, std::atoi(v)));
 #ifdef D1_FRONTEND_SDL

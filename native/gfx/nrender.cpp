@@ -44,8 +44,11 @@ using namespace d1::vk;
 namespace {
 
 // 8 bytes at a time (descriptors and keys are hashed for every draw)
+// (h * K1 + v, not h ^ v: with h ^ v, two keys collide whenever their first two values XOR to
+// the same thing - (address, size) pairs of vertex ranges, (vs, ps) shader pairs - and a cache
+// then hands back another buffer's geometry or another draw's pipeline)
 inline uint64_t mix(uint64_t h, uint64_t v) {
-    h = (h ^ v) * 0x9E3779B97F4A7C15ull;
+    h = (h * 0xC2B2AE3D27D4EB4Full + v) * 0x9E3779B97F4A7C15ull;
     return h ^ (h >> 31);
 }
 uint64_t hash_bytes(const void* p, size_t n, uint64_t h = 0xcbf29ce484222325ull) {
@@ -347,7 +350,7 @@ struct Stats {
     uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0, tex_inplace = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
-    uint64_t predicated = 0, zpass_dumps = 0, t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
+    uint64_t geo_stale = 0, predicated = 0, zpass_dumps = 0, t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     std::unordered_map<std::string, uint64_t> skip;
 };
@@ -408,6 +411,7 @@ struct GeoEntry {
     uint32_t misses = 0;
     uint32_t vfirst = 0, vlast = 0;  // index buffers: the vertex range they reference
     bool valid = false;
+    uint64_t hash = 0;  // D1_NG_GEO_VERIFY: of the guest bytes when copied
 };
 struct GeoBlock {
     Buffer buf;
@@ -1487,16 +1491,53 @@ void Renderer::geo_free_later(int block, uint64_t off, uint64_t size) {
 // A GPU copy of guest memory [addr, addr+size), valid for this submission, or null (then the
 // caller copies into the ring). Buffers the game keeps rewriting are not cached for a while.
 GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count) {
-    if (!opt.watch || !opt.version || addr < 0x10000 || !size || size > (16ull << 20) || (debug_toggles() & 8)) return nullptr;
-    GeoEntry& e = geo[mix(addr, size)];
+    if (!opt.watch || !opt.version || addr < 0x10000 || !size || size >= (16ull << 20) || (debug_toggles() & 8)) return nullptr;
+    GeoEntry& e = geo[addr | size << 40];  // exact: addr < 2^40, size <= 16 MiB
     e.last_used = submit_no;
     if (e.volatile_until > submit_no) return nullptr;
+    // D1_NG_GEO_VERIFY: (diagnostics) compare every cache hit with guest memory, log differences
+    static const bool verify = std::getenv("D1_NG_GEO_VERIFY") != nullptr;
+    auto verified = [&](const char* how) {
+        if (verify && std::memcmp(geo_blocks[size_t(e.block)].buf.map + e.off, reinterpret_cast<const void*>(addr), size) != 0) {
+            ++st.geo_stale;
+            static int n = 0;
+            if (n++ < 200) {
+                const uint8_t* a = geo_blocks[size_t(e.block)].buf.map + e.off;
+                const uint8_t* b = reinterpret_cast<const uint8_t*>(addr);
+                uint64_t first = 0, diff = 0;
+                for (uint64_t i = 0; i < size; ++i)
+                    if (a[i] != b[i]) first = diff++ ? first : i;
+                const uint64_t hg = hash_bytes(b, size), hc = hash_bytes(a, size);
+                if (n < 6) {
+                    std::string ga, ca;
+                    for (uint64_t i = 0; i < std::min<uint64_t>(size, 32); ++i) {
+                        char t[4];
+                        std::snprintf(t, sizeof t, "%02x", b[i]);
+                        ga += t;
+                        std::snprintf(t, sizeof t, "%02x", a[i]);
+                        ca += t;
+                    }
+                    char ds[256] = "";
+                    if (opt.describe) opt.describe(addr, ds, sizeof ds);
+                    log("ng geo stale bytes: guest %s | copy %s | hashes guest %llx copy %llx stored %llx, block %d off %llx | page: %s",
+                        ga.c_str(), ca.c_str(), (unsigned long long)hg, (unsigned long long)hc, (unsigned long long)e.hash, e.block,
+                        (unsigned long long)e.off, ds);
+                }
+                log("ng geo stale (%s, %s): %llx +%llu, %llu bytes differ from +%llu; version now %llx, cached %llx, uploaded at submission %llu, now %llu",
+                    how, hg == e.hash ? "OUR COPY CHANGED" : hc == e.hash ? "guest changed" : "both changed", (unsigned long long)addr, (unsigned long long)size, (unsigned long long)diff, (unsigned long long)first,
+                    (unsigned long long)opt.version(addr, size), (unsigned long long)e.version, (unsigned long long)e.uploaded,
+                    (unsigned long long)submit_no);
+            }
+        }
+        return ++st.geo_hits, &e;
+    };
     if (e.valid) {
         // buffers that never changed are checked once per frame, the others every submission
-        if (e.checked == submit_no || (e.misses == 0 && e.checked_frame == st.frames + 1)) return ++st.geo_hits, &e;
+        if (e.checked == submit_no) return verified("checked this submission");
+        if (e.misses == 0 && e.checked_frame == st.frames + 1) return verified("checked this frame");
         if (opt.version(addr, size) == e.version) {
             e.checked = submit_no, e.checked_frame = st.frames + 1;
-            return ++st.geo_hits, &e;
+            return verified("same version");
         }
         // written since the copy: drop it; rewritten soon after every upload = dynamic data
         geo_free_later(e.block, e.off, e.size);
@@ -1536,6 +1577,7 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
         if (lo > hi) lo = hi = 0;
         e.vfirst = lo, e.vlast = hi;
     }
+    if (verify) e.hash = hash_bytes(dst, size);
     e.version = ver, e.checked = submit_no, e.checked_frame = st.frames + 1, e.uploaded = submit_no, e.valid = true;
     return &e;
 }
@@ -2675,13 +2717,13 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     if (q_on) store_query_predicates();
     q_on = false;
     queue_readbacks();
-    // The game reads those results as soon as it sees the work done, which for it is at once
-    // (the null GPU): visibility and the shadow-cascade depth range from an older frame make
-    // objects pop in and out as the camera turns. Wait for them here, so they are in guest memory
-    // before the game goes on. D1_NG_READBACK_SYNC=0: copy them when the work completes anyway.
+    // Results the game reads back (small targets, occlusion counts) reach guest memory when
+    // the work completes, a frame or two later - about what the console's GPU latency is.
+    // D1_NG_READBACK_SYNC=1 waits for them here instead (the CPU then waits for the GPU at that
+    // point every frame, which costs a lot of frame rate on slower GPUs).
     static const bool rb_sync = [] {
         const char* v = std::getenv("D1_NG_READBACK_SYNC");
-        return !v || std::atoi(v) != 0;
+        return v && std::atoi(v) != 0;
     }();
     // occlusion counts too: the game reads them back (object visibility), and the null GPU no
     // longer answers for executed submissions
@@ -2694,7 +2736,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
                 subs[cur].zrecs.size());
     }
     submit();
-    if (rb_sync && !(debug_toggles() & 2) && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
+    if ((rb_sync != bool(debug_toggles() & 2)) && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
 }
 
 // False when the CPU has written a small render target's memory since the GPU rendered it:
@@ -3402,7 +3444,7 @@ static std::atomic<uint32_t> g_toggles{0};
 uint32_t debug_toggles() { return g_toggles.load(std::memory_order_relaxed); }
 void flip_debug_toggle(int bit) {
     const uint32_t v = g_toggles.fetch_xor(1u << bit) ^ (1u << bit);
-    static const char* names[] = {"occlusion queries", "waiting for readbacks", "readbacks", "geometry cache"};
+    static const char* names[] = {"occlusion queries", "waiting for readbacks (inverted: F6 turns waiting ON)", "readbacks", "geometry cache"};
     log("native renderer: %s %s (F%d)", bit < 4 ? names[bit] : "?", (v >> bit & 1) ? "OFF" : "on", 5 + bit);
 }
 const char* debug_toggle_text() {
@@ -3410,7 +3452,7 @@ const char* debug_toggle_text() {
     const uint32_t v = debug_toggles();
     buf[0] = 0;
     if (v & 1) std::strcat(buf, " [F5 queries off]");
-    if (v & 2) std::strcat(buf, " [F6 no readback wait]");
+    if (v & 2) std::strcat(buf, " [F6 readback wait flipped]");
     if (v & 4) std::strcat(buf, " [F7 readbacks off]");
     if (v & 8) std::strcat(buf, " [F8 geometry cache off]");
     return buf;

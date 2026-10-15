@@ -134,6 +134,15 @@ static int32_t sceKernelMapDirectMemory(void** addr, uint64_t len, int prot, int
     void* p = do_map(reinterpret_cast<uint64_t>(*addr), len, prot, fixed, true, uint64_t(phys), align);
     if (!p) return sce_err(12);
     *addr = p;
+    // the same direct memory at two addresses: writes through one are not seen by write
+    // tracking on the other (diagnostics)
+    for (const auto& [va, reg] : g_regions)
+        if (reg.direct && uint64_t(phys) < reg.phys + reg.size && reg.phys < uint64_t(phys) + len) {
+            static int n = 0;
+            if (n++ < 50)
+                log("kernel: direct memory %#llx+%#llx mapped at %p is also mapped at %#llx (%s)", (unsigned long long)phys,
+                    (unsigned long long)len, p, (unsigned long long)va, reg.name);
+        }
     Region r{len, prot, true, uint64_t(phys), {}};
     g_regions[reinterpret_cast<uint64_t>(p)] = r;
     gpu_on_map(reinterpret_cast<uint64_t>(p), len);
