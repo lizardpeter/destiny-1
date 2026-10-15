@@ -496,6 +496,14 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
             uint32_t src_sel = (b[0] >> 29) & 3, dst_sel = (b[0] >> 20) & 3;
             uint64_t src = b[1] | (uint64_t(b[2]) << 32), dst = b[3] | (uint64_t(b[4]) << 32);
             uint32_t bytes = b[5] & 0x1FFFFF;
+            static const bool log_dma = getenv("D1_GPU_LOG_DMA") != nullptr;
+            if (log_dma) {
+                static std::atomic<int> n{0}, m{0};
+                const bool transient = (dst >= 0x560000000ull && dst < 0x580000000ull) || (src >= 0x560000000ull && src < 0x580000000ull);
+                if (n++ < 200 || (transient && m++ < 100))
+                    log("null GPU: DMA_DATA src_sel %u %#llx -> dst_sel %u %#llx, %u bytes", src_sel, (unsigned long long)src, dst_sel,
+                        (unsigned long long)dst, bytes);
+            }
             if (dst_sel == 0 || dst_sel == 3) {
                 if (src_sel == 2) {
                     auto* d = reinterpret_cast<uint32_t*>(dst);

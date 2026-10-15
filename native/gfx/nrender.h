@@ -23,6 +23,7 @@ struct Draw {
     uint64_t index_addr = 0;    // Indexed: first index
     uint64_t order = 0;         // DCB write position when recorded (orders draws in a submission)
     uint32_t seq = 0;
+    uint32_t frame = 0;         // video-out flip count when recorded (stale-draw diagnostics)
     uint64_t caller = 0;        // engine call site (diagnostics)
     const uint8_t* vs = nullptr;  // engine vertex shader object (fetch shader size/address, Gnm VsShader at +0x14)
     const uint8_t* ps = nullptr;  // Gnm PsShader

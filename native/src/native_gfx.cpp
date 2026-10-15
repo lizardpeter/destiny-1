@@ -8,6 +8,7 @@
 // shadPS4 / null GPU path draws as before) and the native side only records what a frame
 // uses: device instances, threads, draws, shaders, vertex declarations, state combinations
 // (future Vulkan pipelines), textures and buffers. The numbers size the native design.
+#include <map>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -321,6 +322,41 @@ uint64_t g_executed_frames = 0;
 bool g_frame_executed = false;
 uint64_t g_exec_ns = 0, g_flip_ns = 0;  // time in ng::execute / ng::flip (CPU side, incl. waits)
 
+// Constant buffers as the engine binds them on a context's constant update engine
+// (eboot+0xF8B500, setConstantBuffers(cue, stage, first slot, count, V#s)): alloc_constants
+// goes through it, and so do the passes that bind a buffer of their own (fullscreen-pass
+// viewport constants at 0x7E2C3D / 0x7E2E03, dispatch constants). Keyed by the CUE.
+// Constant buffer bindings as events in command-buffer order. The constant update engine
+// keeps its bindings in CE RAM, which every context's command buffer shares: a deferred
+// context that never binds a slot itself sees what the main context bound before calling it
+// (per-view constants are bound once on the main context). Replayed in submission order at
+// execute time, they give each draw the bindings the GPU would see.
+struct CbEvent {
+    uint64_t order;
+    uint32_t seq;
+    uint8_t stage, slot;
+    ng::Draw::Cb cb;
+};
+std::vector<CbEvent> g_cb_pending;
+ng::Draw::Cb g_ce[ng::kStages][16] = {};  // bindings as of the end of the last submission
+bool g_ce_order = true;                   // D1_NG_CE_ORDER=0: per-context bindings only (old behaviour)
+bool g_cbs_armed = false;  // D1_NG_LOG_CBS: the debugged pixel shader has been drawn
+struct CueState {
+    ng::Draw::Cb cb[ng::kStages][16] = {};
+};
+std::unordered_map<uint64_t, CueState*> g_cues;
+CueState* cue_state(uint64_t cue, bool create) {
+    thread_local uint64_t last_cue = 0;
+    thread_local CueState* last = nullptr;
+    if (cue == last_cue && last) return last;
+    std::lock_guard lk(g_m);
+    auto it = g_cues.find(cue);
+    CueState* c = it != g_cues.end() ? it->second : nullptr;
+    if (!c && create) g_cues[cue] = c = new CueState;
+    if (c) last_cue = cue, last = c;
+    return c;
+}
+
 DevState* dev_state(uint64_t dev) {
     thread_local uint64_t last_dev = 0;
     thread_local DevState* last = nullptr;
@@ -367,6 +403,7 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
     const uint64_t ctx = field<uint64_t>(dev, 0x50);
     d->order = ctx ? field<uint64_t>(ctx, 0x10) : 0;
     DevState* ds = dev_state(dev);
+    CueState* cs = ctx ? cue_state(ctx + 0xC0, false) : nullptr;
     // vertex buffers: one V# per declaration element, as set_vertex_buffer builds them
     if (const uint64_t decl = field<uint64_t>(dev, kVertexDecl)) {
         const uint32_t n = std::min(field<uint32_t>(decl, 0), 16u);
@@ -394,8 +431,13 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
                 d->smp_mask[s] |= uint16_t(1u << i);
             }
             d->cb[s][i] = ds->cb[s][i];
+            if (cs) d->cb[s][i] = cs->cb[s][i];
         }
     }
+    static const uint64_t log_ps = [] { const char* v = getenv("D1_NG_DEBUG_PS"); return v ? strtoull(v, nullptr, 16) : 0ull; }();
+    if (log_ps && uint64_t(d->ps) == log_ps && getenv("D1_NG_LOG_CBS") && (g_cbs_armed = true))
+        log("ng cbs: draw ps %#llx dev %#llx cue %#llx cb13 %#llx flip %llu", (unsigned long long)log_ps, (unsigned long long)dev,
+            (unsigned long long)(ctx + 0xC0), (unsigned long long)d->cb[1][13].addr, (unsigned long long)gpu_flip_count());
     d->clip = field<uint32_t>(dev, 0x25D0);
     d->su_sc_mode = field<uint32_t>(dev, 0x25D4);
     d->blend = field<uint32_t>(dev, 0x25D8);
@@ -416,14 +458,22 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
 void push(ng::Draw* d) {
     std::lock_guard lk(g_m);
     d->seq = g_seq++;
+    d->frame = uint32_t(gpu_flip_count());
     g_pending.push_back(d);
 }
 
 // Collect the DCB ranges of a submission, following INDIRECT_BUFFER packets.
 int g_wait_phase = 0;  // diagnostics: 1 = after the null GPU ran the command buffers
+// The ranges come out in execution order: a buffer is split at each INDIRECT_BUFFER packet,
+// with the called buffer's ranges between the two halves, so recording positions in different
+// buffers (a deferred context called from the main one) sort as the GPU runs them.
 void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::pair<uint64_t, uint64_t>>& out) {
-    out.push_back({uint64_t(p), uint64_t(p) + uint64_t(dwords) * 4});
-    if (depth >= 4) return;
+    const uint64_t end = uint64_t(p) + uint64_t(dwords) * 4;
+    if (depth >= 4) {
+        out.push_back({uint64_t(p), end});
+        return;
+    }
+    uint64_t cursor = uint64_t(p);
     for (uint32_t i = 0; i < dwords;) {
         const uint32_t h = p[i];
         const uint32_t type = h >> 30;
@@ -449,7 +499,12 @@ void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::
             }
             if ((op == 0x3F || op == 0x33) && i + 3 < dwords) {
                 const uint64_t a = uint64_t(p[i + 1]) | (uint64_t(p[i + 2] & 0xFFFF) << 32);
-                if (a) dcb_ranges(reinterpret_cast<const uint32_t*>(a), p[i + 3] & 0xFFFFF, depth + 1, out);
+                if (a) {
+                    const uint64_t after = uint64_t(p + std::min(i + count + 2, dwords));
+                    out.push_back({cursor, after});
+                    cursor = after;
+                    dcb_ranges(reinterpret_cast<const uint32_t*>(a), p[i + 3] & 0xFFFFF, depth + 1, out);
+                }
             }
             i += count + 2;
         } else if (type == 2) {
@@ -458,6 +513,7 @@ void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::
             i += ((h >> 16) & 0x3FFF) + 2;
         }
     }
+    if (cursor < end) out.push_back({cursor, end});
 }
 
 }  // namespace nr
@@ -571,6 +627,51 @@ D1_SYSV void r_set_vertex_buffer(uint64_t dev, uint32_t handle, uint32_t stream,
         nr::dev_state(dev)->vb_count[s] = n;
     }
     o_set_vertex_buffer(dev, handle, stream, offset, count);
+}
+
+using SetCbsFn = D1_SYSV void (*)(uint64_t, uint32_t, uint32_t, uint32_t, const uint32_t*);
+SetCbsFn o_set_cbs;
+D1_SYSV void r_set_cbs(uint64_t cue, uint32_t stage, uint32_t first, uint32_t count, const uint32_t* vs) {
+    o_set_cbs(cue, stage, first, count, vs);
+    const int s = nr::gnm_stage_index(stage);
+    if (s < 0) return;
+    nr::CueState* c = nr::cue_state(cue, true);
+    // D1_NG_LOG_CBS=<slot>: who binds this pixel-shader constant buffer slot
+    static const int log_slot = [] { const char* v = getenv("D1_NG_LOG_CBS"); return v ? atoi(v) : -1; }();
+    if (log_slot >= 0 && s == 1 && uint32_t(log_slot) >= first && uint32_t(log_slot) < first + count) {
+        static std::mutex lm;
+        static std::map<std::pair<uint64_t, uint64_t>, int> seen;
+        const uint64_t ra = uint64_t(__builtin_return_address(0)) - nr::g_base;
+        bool show;
+        {
+            std::lock_guard lk(lm);
+            static int total = 0;
+            show = nr::g_cbs_armed && total++ < 3000;
+            (void)seen;
+        }
+        if (show) {
+            const uint32_t* v = vs ? vs + 4 * (log_slot - first) : nullptr;
+            log("ng cbs: cue %#llx ps slot %d = %#llx from %#llx flip %llu", (unsigned long long)cue, log_slot,
+                v ? (unsigned long long)(uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32) : 0ull,
+                (unsigned long long)(uint64_t(__builtin_return_address(0)) - nr::g_base), (unsigned long long)gpu_flip_count());
+        }
+    }
+    const uint64_t order = field<uint64_t>(cue - 0xC0, 0x10);
+    std::lock_guard lk(nr::g_m);
+    for (uint32_t k = 0; k < count && first + k < 16; ++k) {
+        ng::Draw::Cb& cb = c->cb[s][first + k];
+        if (!vs) {
+            cb = {};
+        } else {
+            const uint32_t* v = vs + 4 * k;
+            const uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
+            const uint32_t stride = v[1] >> 16 & 0x3FFF, records = v[2];
+            const uint64_t bytes = stride ? uint64_t(stride) * records : records;
+            cb = {base, uint32_t(std::min<uint64_t>(bytes, 1u << 20))};
+        }
+        if (nr::g_ce_order && order)
+            nr::g_cb_pending.push_back({order, nr::g_seq++, uint8_t(s), uint8_t(first + k), cb});
+    }
 }
 
 // engine dispatch(dev, cs object, x, y, z, flag): compute work on the graphics ring
@@ -866,6 +967,7 @@ void native_gfx_install() {
         nr::g_base = rt().modules[0].base;
         nr::build_vsharp = reinterpret_cast<nr::BuildVsharpFn>(nr::g_base + 0xF7CF90);
         if (const char* v = getenv("D1_NG_EVERY")) nr::g_every = std::max(1, std::atoi(v));
+        if (const char* v = getenv("D1_NG_CE_ORDER")) nr::g_ce_order = std::atoi(v) != 0;
         if (const char* v = getenv("D1_NG_DUMP_EVERY")) nr::g_dump_every = std::max(0, std::atoi(v));
         ng::Options opt;
         opt.frames_dir = getenv("D1_NG_FRAMES");
@@ -920,6 +1022,7 @@ void native_gfx_install() {
         ok &= hook(0x7DF630, &r_alloc_constants, o_alloc_constants, "alloc_constants");
         ok &= hook(0x7DEC20, &r_set_vertex_buffer, o_set_vertex_buffer, "set_vertex_buffer");
         ok &= hook(0x7E0780, &r_dispatch, o_dispatch, "dispatch");
+        ok &= hook(0xF8B500, &r_set_cbs, o_set_cbs, "set_constant_buffers");
         log("native gfx: rendering natively (every %d frame%s)%s", nr::g_every, nr::g_every == 1 ? "" : "s",
             ok ? "" : " (some hooks failed)");
         return;
@@ -962,8 +1065,56 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
             else delete d;  // never submitted
         }
         pend.resize(keep);
+        // constant buffer bindings recorded in this submission's command buffers, merged in order
+        if (nr::g_ce_order) {
+            std::vector<std::pair<std::pair<uint64_t, uint32_t>, const nr::CbEvent*>> evs;
+            auto& cp = nr::g_cb_pending;
+            std::vector<nr::CbEvent> mine_ev;
+            size_t kept = 0;
+            for (const auto& e : cp) {
+                int64_t rng = -1;
+                for (size_t r = 0; r < ranges.size(); ++r)
+                    if (e.order >= ranges[r].first && e.order < ranges[r].second) {
+                        rng = int64_t(r);
+                        break;
+                    }
+                if (rng >= 0) {
+                    mine_ev.push_back(e);
+                    mine_ev.back().order = uint64_t(rng) << 40 | ((e.order - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull);
+                } else if (nr::g_seq - e.seq < 2000000) cp[kept++] = e;
+            }
+            cp.resize(kept);
+            std::vector<std::pair<std::pair<uint64_t, uint32_t>, int64_t>> seq;  // (pos, seq) -> draw index or ~event
+            for (size_t i = 0; i < mine.size(); ++i) seq.push_back({{mine[i].first, mine[i].second->seq}, int64_t(i)});
+            for (size_t i = 0; i < mine_ev.size(); ++i) seq.push_back({{mine_ev[i].order, mine_ev[i].seq}, ~int64_t(i)});
+            std::sort(seq.begin(), seq.end(), [](auto& a, auto& b) { return a.first < b.first; });
+            for (auto& [key, idx] : seq) {
+                if (idx < 0) {
+                    const auto& e = mine_ev[size_t(~idx)];
+                    nr::g_ce[e.stage][e.slot] = e.cb;
+                } else {
+                    ng::Draw* d = mine[size_t(idx)].second;
+                    for (int st = 0; st < 2; ++st)
+                        for (int sl = 0; sl < 16; ++sl)
+                            if (nr::g_ce[st][sl].addr) d->cb[st][sl] = nr::g_ce[st][sl];
+                }
+            }
+        }
     }
     std::stable_sort(mine.begin(), mine.end(), [](auto& a, auto& b) { return a.first < b.first; });
+    // D1_NG_LOG_STALE=1: draws matched to this submission that were recorded frames ago
+    static const bool log_stale = getenv("D1_NG_LOG_STALE") != nullptr;
+    if (log_stale && !mine.empty()) {
+        uint32_t newest = 0;
+        for (auto& [k, d] : mine) newest = std::max(newest, d->frame);
+        uint32_t stale = 0, oldest = newest;
+        for (auto& [k, d] : mine)
+            if (d->frame + 1 < newest) ++stale, oldest = std::min(oldest, d->frame);
+        static int logged = 0;
+        if (stale && logged++ < 200)
+            log("ng stale: %u of %zu draws in this submission were recorded %u+ frames before the newest (flip %u)", stale,
+                mine.size(), newest - oldest, newest);
+    }
     // D1_NG_EVERY_WORLD=<secs>: (testing) draw every frame from <secs> after reaching the world
     static const double every_world = getenv("D1_NG_EVERY_WORLD") ? std::atof(getenv("D1_NG_EVERY_WORLD")) : -1;
     if (every_world >= 0 && nr::g_every > 1) {
@@ -1028,7 +1179,7 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                 if (t_in == std::chrono::steady_clock::time_point{}) t_in = std::chrono::steady_clock::now();
                 else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_in).count() > (colon ? std::atof(colon + 1) : 0)) {
                     nr::g_every = 1;
-                    ng::request_passlog(1);
+                    ng::request_passlog(getenv("D1_NG_PASSLOG_N") ? uint32_t(std::max(1, std::atoi(getenv("D1_NG_PASSLOG_N")))) : 1u);
                     snap_phase = 1;
                 }
             }

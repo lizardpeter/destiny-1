@@ -286,6 +286,7 @@ struct Image {
     // small render targets: the memory's version when the GPU last rendered it (write
     // tracking); a CPU write since then makes the memory, not the image, the current contents
     uint64_t tv_version = ~0ull, tv_size = 0, tv_frame = 0;
+    uint64_t bound_serial = 0;  // render targets: when last bound for drawing
 };
 
 struct Shader {
@@ -467,6 +468,9 @@ struct Renderer {
     struct TraceRec { uint64_t ps, vs, caller, off; uint32_t bytes, w, blend, count; };
     std::vector<TraceRec> traces;  // D1_NG_TRACE
     std::unordered_map<uint64_t, uint32_t> base_targets;  // render target images made per address
+    std::unordered_map<uint64_t, std::vector<Image*>> images_by_base;  // every render target image per address
+    uint64_t bind_serial = 0;
+    Image* target_for(const fmt::TSharp& ts);
     VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
     Image* upload_texture(const uint32_t* t);
     void evict_textures();
@@ -995,14 +999,25 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
             vkCmdClearColorImage(cmd, n->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &r);
         }
         n->base = base, n->swap = swap;
-        ++base_targets[base];
+        if (++base_targets[base] > 1) {  // the same memory as another target (aliasing): diagnostics
+            static int told = 0;
+            auto prev = target_by_base.find(base);
+            if (told++ < 60 && prev != target_by_base.end())
+                log("native renderer: target %llx now also %ux%u format %d (was %ux%u format %d)", (unsigned long long)base, w, h,
+                    int(f), prev->second->w, prev->second->h, int(prev->second->format));
+        }
         img = n.get();
-        if (auto old = targets.find(key); old != targets.end()) retired.push_back(std::move(old->second));
+        if (auto old = targets.find(key); old != targets.end()) {
+            auto& v = images_by_base[base];
+            v.erase(std::remove(v.begin(), v.end(), old->second.get()), v.end());
+            retired.push_back(std::move(old->second));
+        }
+        images_by_base[base].push_back(n.get());
         targets[key] = std::move(n);
         ++st.targets;
     }
     target_bases.insert(base);
-    if (bind || !target_by_base.count(base)) target_by_base[base] = img;
+    if (bind || !target_by_base.count(base)) target_by_base[base] = img, img->bound_serial = ++bind_serial;
     img->last_used = submit_no;
     img->bind_slice = std::min(slice, img->d - 1);
     img->tile_mode = c[5] & 0x1F, img->pitch = ((c[1] & 0x7FF) + 1) * 8;
@@ -1061,10 +1076,12 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
         }
         n->base = base;
         img = n.get();
+        images_by_base[base].push_back(img);
         targets[key] = std::move(n);
         ++st.targets;
     }
     const uint64_t read_base = uint64_t(d[2]) << 8;  // Z_READ_BASE
+    if (bind) img->bound_serial = ++bind_serial;
     target_bases.insert(base), target_bases.insert(read_base);
     if (bind || !target_by_base.count(base)) target_by_base[base] = img;
     if (bind || !target_by_base.count(read_base)) target_by_base[read_base] = img;
@@ -1080,10 +1097,11 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         Image* img = it->second.get();
         if (!img) return nullptr;
         img->last_used = submit_no;
-        // rewritten textures are noticed once per frame (several submissions share it)
-        if (img->checked == st.frames + 1 || !img->src_size || !opt.version ||
+        // rewritten textures are noticed at the next submission that uses them: the game may rewrite
+        // a texture between two submissions of one frame (the null GPU finishes work at once)
+        if (img->checked == submit_no || !img->src_size || !opt.version ||
             opt.version(img->src_addr, img->src_size) == img->version) {
-            img->checked = st.frames + 1;
+            img->checked = submit_no;
             return img;
         }
         // the game rewrote the texture's memory (streaming): copy it again (keeping the old
@@ -1130,7 +1148,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         }
         if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
             img->version = opt.watch(ts.base, sf.total_size);
-            if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = st.frames + 1;
+            if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = submit_no;
         }
         if (img) {
             uint64_t total = 0;
@@ -1187,7 +1205,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
             if (out && img->src_size && opt.version(img->src_addr, img->src_size) != img->version) {
                 ++st.tex_torn;
                 if (prev && prev->torn < 2) {  // show the previous contents one more frame
-                    prev->torn++, prev->checked = st.frames + 1, prev->last_used = submit_no;
+                    prev->torn++, prev->checked = submit_no, prev->last_used = submit_no;
                     subs[cur].dead.push_back(std::move(img));
                     Image* keep = prev.get();
                     textures[key] = std::move(prev);
@@ -1426,15 +1444,28 @@ void Renderer::evict_textures() {
     if (!drop.empty()) st.evicted += drop.size();
 }
 
+// The render target a T# reads: the image last drawn into at that address, unless another
+// image there has the T#'s size (the game reuses transient memory for targets of different
+// sizes within a frame; a T# made for one of them must not see another).
+Image* Renderer::target_for(const fmt::TSharp& ts) {
+    auto rt = target_by_base.find(ts.base);
+    if (rt == target_by_base.end()) return nullptr;
+    Image* img = rt->second;
+    if (img->w == ts.width && img->h == ts.height) return img;
+    Image* best = nullptr;
+    if (auto it = images_by_base.find(ts.base); it != images_by_base.end())
+        for (Image* c : it->second)
+            if (c->w == ts.width && c->h == ts.height && (!best || c->bound_serial > best->bound_serial)) best = c;
+    return best ? best : img;
+}
+
 VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
     const auto vt = view_type(dim);
     if (!t) return view(dummy[int(dim)].get(), vt, {}, 0, false);
     const auto ts = fmt::decode_tsharp(t);
     VkComponentMapping comp{swz(ts.dst_sel & 7), swz(ts.dst_sel >> 3 & 7), swz(ts.dst_sel >> 6 & 7),
                             swz(ts.dst_sel >> 9 & 7)};
-    auto rt = target_by_base.find(ts.base);
-    if (rt != target_by_base.end()) {
-        Image* img = rt->second;
+    if (Image* img = target_for(ts)) {
         img->sampled = true;
         sampled_bases.insert(ts.base);
         if (img->depth) return view(img, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true);
@@ -1612,10 +1643,10 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
                     }
                 }
             }
-            if (auto rt = target_by_base.find(ts.base); rt != target_by_base.end()) {
-                dims[s][i] = rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
-                const VkFormat f = rt->second->format;
-                kinds[s][i] = rt->second->depth || !is_int_format(f) ? 0 : is_sint_format(f) ? 2 : 1;
+            if (Image* ri = target_for(ts)) {
+                dims[s][i] = ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
+                const VkFormat f = ri->format;
+                kinds[s][i] = ri->depth || !is_int_format(f) ? 0 : is_sint_format(f) ? 2 : 1;
             } else {
                 kinds[s][i] = ts.nfmt == 4 ? 1 : ts.nfmt == 5 ? 2 : 0;
             }
@@ -2039,9 +2070,8 @@ void Renderer::draw(const Draw& dr) {
                 images[s][nw[s]] = {VK_NULL_HANDLE, texture_view(dr.T(s, slot), slot_dim(dr.T(s, slot))),
                                     VK_IMAGE_LAYOUT_GENERAL};
                 if (dr.T(s, slot))
-                    if (auto rt = target_by_base.find(fmt::decode_tsharp(dr.T(s, slot)).base); rt != target_by_base.end())
-                        images[s][nw[s]].imageView =
-                            texture_view(dr.T(s, slot), rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D);
+                    if (Image* ri = target_for(fmt::decode_tsharp(dr.T(s, slot))))
+                        images[s][nw[s]].imageView = texture_view(dr.T(s, slot), ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D);
                 w.pImageInfo = &images[s][nw[s]];
             } else if (b.kind == gcn::Binding::Sampler) {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
@@ -2098,7 +2128,12 @@ void Renderer::draw(const Draw& dr) {
     if (!count) return;
 
     begin_pass(colors, depth);
-    if (debug && st.frames >= debug_from && debug_lines < 600) {
+    // D1_NG_DEBUG_PS=<hex>: only log draws using this pixel shader, with its constant buffers in full
+    static const uint64_t debug_ps = [] {
+        const char* v = std::getenv("D1_NG_DEBUG_PS");
+        return v ? std::strtoull(v, nullptr, 16) : 0ull;
+    }();
+    if (debug && st.frames >= debug_from && debug_lines < 600 && (!debug_ps || uint64_t(dr.ps) == debug_ps)) {
         ++debug_lines;
         log("ng draw %s prim %u count %u inst %u | vs %p ps %p | c0 %llx d %llx | depth %#x stencil %#x/%#x blend %#x mask %#x "
             "su %#x | vp %d %d %d %d z %g..%g | vb %u range %u..%u | from %#llx",
@@ -2207,6 +2242,20 @@ void Renderer::draw(const Draw& dr) {
                 ts += t;
             }
             log("ng   ps textures:%s", ts.c_str());
+            if (debug_ps)
+                for (const auto& b : p->ps->res.bindings) {
+                    if (b.kind != gcn::Binding::ConstBuffer) continue;
+                    const auto& c = dr.cb[1][b.api_slot & 15];
+                    if (c.addr < 0x10000) continue;
+                    const float* fv = reinterpret_cast<const float*>(c.addr);
+                    std::string cs;
+                    for (uint32_t i = 0; i < std::min<uint32_t>(c.size / 4, 128); ++i) {
+                        char t[24];
+                        std::snprintf(t, sizeof t, " %g", fv[i]);
+                        cs += t;
+                    }
+                    log("ng   ps cb%u:%s", b.api_slot, cs.c_str());
+                }
         }
     }
     if (st.frames == passlog_frame && !passlog.empty()) {
@@ -2790,8 +2839,19 @@ void Renderer::dump(uint64_t addr, uint32_t, uint32_t, uint64_t frame) {
     if (opt.dump_targets) {
         int n = 0;
         static const uint64_t max_pix = std::getenv("D1_NG_TARGETS_MAXPIX") ? std::strtoull(std::getenv("D1_NG_TARGETS_MAXPIX"), nullptr, 10) : ~0ull;
+        static const std::vector<uint64_t> only = [] {  // D1_NG_TARGETS_BASES=<hex>,..: just these
+            std::vector<uint64_t> v;
+            if (const char* e = std::getenv("D1_NG_TARGETS_BASES"))
+                for (const char* p = e; *p;) {
+                    char* end;
+                    v.push_back(std::strtoull(p, &end, 16));
+                    p = *end ? end + 1 : end;
+                }
+            return v;
+        }();
         for (auto& [k, img] : targets)
-            if (img && img->last_used > frame_first_submit && uint64_t(img->w) * img->h <= max_pix && !img->is3d) {
+            if (img && img->last_used > frame_first_submit && uint64_t(img->w) * img->h <= max_pix && !img->is3d &&
+                (only.empty() || std::find(only.begin(), only.end(), img->base) != only.end())) {
                 std::snprintf(path, sizeof path, "%s/f%06llu_rt%02d_%llx_%ux%u_f%d.ppm", opt.frames_dir,
                               (unsigned long long)frame, n++, (unsigned long long)img->base, img->w, img->h,
                               int(img->format));
@@ -2835,7 +2895,7 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
         vkDeviceWaitIdle(g->ctx.device);
         // <frames dir>/trace.bin: per draw a header (ps, vs, caller, blend, count, bytes) and the pixels
         char path[512];
-        std::snprintf(path, sizeof path, "%s/trace.bin", g->opt.frames_dir ? g->opt.frames_dir : ".");
+        std::snprintf(path, sizeof path, "%s/trace_%06llu.bin", g->opt.frames_dir ? g->opt.frames_dir : ".", (unsigned long long)frame);
         if (FILE* f = std::fopen(path, "wb")) {
             for (const auto& t : g->traces) {
                 const uint64_t hdr[6] = {t.ps, t.vs, t.caller, t.blend, t.count, uint64_t(t.w) * t.bytes};
