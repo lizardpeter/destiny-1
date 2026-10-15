@@ -193,7 +193,8 @@ counts, without stick emulation (see "Mouse look" below).
 | left / right mouse | fire (R2) / aim (L2) |
 | Space, Enter | jump, confirm (Cross) |
 | Left Ctrl, C | crouch (Circle) |
-| Esc, Backspace | back (Circle) |
+| Backspace | back (Circle) |
+| Esc | menu (Options) |
 | R, E | reload, interact (Square) |
 | 1, 2, 3, mouse wheel | switch weapon (Triangle) |
 | Q / F / X | grenade (L1) / melee (R1) / super (L1+R1) |
@@ -202,7 +203,7 @@ counts, without stick emulation (see "Mouse look" below).
 | Z, middle mouse | R3 |
 | arrows | D-pad |
 | IJKL | right stick (menus) |
-| Tab / G | character menu (Options) / ghost (touch pad) |
+| Tab / G | map, ghost (touch pad) |
 
 ### Mouse look
 

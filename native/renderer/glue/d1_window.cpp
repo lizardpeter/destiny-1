@@ -2,11 +2,11 @@
 //
 // Keyboard and mouse (a connected controller works alongside them):
 //   WASD move · mouse look (raw counts, fed straight into the game's aim; see hooks.cpp)
-//   Space/Enter Cross (jump) · Left Ctrl/C Circle (crouch, back) · Esc/Backspace Circle
+//   Space/Enter Cross (jump) · Left Ctrl/C Circle (crouch, back) · Backspace Circle (back)
 //   R/E Square (reload, interact) · 1/2/3/mouse wheel Triangle (switch weapon)
 //   Q L1 (grenade) · F R1 (melee) · X L1+R1 (super) · Left Shift L3 (sprint) · Z R3
 //   left mouse R2 (fire) · right mouse L2 (aim) · middle mouse R3 · mouse 4/5 L1/R1
-//   Tab Options · G touch pad (ghost) · arrows D-pad · IJKL right stick (menus)
+//   Esc Options (menu) · Tab/G touch pad (map, ghost) · arrows D-pad · IJKL right stick (menus)
 // Clicking in the window captures the mouse; F2 or losing focus releases it.
 // Controllers use SDL's game-controller mapping (PlayStation layout names).
 #include <SDL2/SDL.h>
@@ -71,11 +71,11 @@ void poll_input() {
     const u8* k = SDL_GetKeyboardState(nullptr);
     struct { SDL_Scancode sc; u32 bit; } keys[] = {
         {SDL_SCANCODE_SPACE, kCross},     {SDL_SCANCODE_RETURN, kCross},    {SDL_SCANCODE_LCTRL, kCircle},
-        {SDL_SCANCODE_C, kCircle},        {SDL_SCANCODE_ESCAPE, kCircle},   {SDL_SCANCODE_BACKSPACE, kCircle},
+        {SDL_SCANCODE_C, kCircle},        {SDL_SCANCODE_ESCAPE, kOptions},   {SDL_SCANCODE_BACKSPACE, kCircle},
         {SDL_SCANCODE_R, kSquare},        {SDL_SCANCODE_E, kSquare},        {SDL_SCANCODE_1, kTriangle},
         {SDL_SCANCODE_2, kTriangle},      {SDL_SCANCODE_3, kTriangle},      {SDL_SCANCODE_Q, kL1},
         {SDL_SCANCODE_F, kR1},            {SDL_SCANCODE_X, kL1 | kR1},      {SDL_SCANCODE_LSHIFT, kL3},
-        {SDL_SCANCODE_Z, kR3},            {SDL_SCANCODE_TAB, kOptions},     {SDL_SCANCODE_G, kTouchPad},
+        {SDL_SCANCODE_Z, kR3},            {SDL_SCANCODE_TAB, kTouchPad},     {SDL_SCANCODE_G, kTouchPad},
         {SDL_SCANCODE_UP, kUp},           {SDL_SCANCODE_DOWN, kDown},       {SDL_SCANCODE_LEFT, kLeft},
         {SDL_SCANCODE_RIGHT, kRight},
     };

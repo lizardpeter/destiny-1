@@ -29,7 +29,7 @@ struct Settings {
     // stats overlay (FPS, resolutions, v-sync, GPU) shown at start; F3 toggles it in game
     bool overlay = false;
     // frame-rate cap for the game's own limiter; 0 = unlimited (one game tick per frame)
-    int fps = 0;
+    int fps = 30;
     // Discord Rich Presence
     bool discord = true;
     std::string discord_app_id = "1559335126528426075";  // the "Destiny" Discord application

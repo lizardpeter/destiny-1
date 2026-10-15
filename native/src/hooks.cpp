@@ -397,7 +397,7 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     }
     const double rad_per_count = cfg.mouse_sensitivity * 0.0066 * 3.14159265358979 / 180.0;  // Destiny 2 scale
     const float yaw = float(-dx * rad_per_count * yaw_scale);
-    const float pitch = float((cfg.mouse_invert ? dy : -dy) * rad_per_count * pitch_scale);
+    const float pitch = float((cfg.mouse_invert ? -dy : dy) * rad_per_count * pitch_scale);  // + pitch: down (screen y)
     static int traced = 0;
     if (getenv("D1_MOUSE_TRACE") && traced < 40) {
         ++traced;
@@ -417,7 +417,8 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
 using CineFn = D1_SYSV bool (*)();
 static CineFn g_cine_orig = nullptr;
 static D1_SYSV bool cine_suppressed_hook() {
-    const bool r = g_cine_orig();
+    static const bool allow = getenv("D1_ALLOW_LOADING_CINE") != nullptr;  // research
+    const bool r = allow ? false : g_cine_orig();
     static std::atomic<int> last{-1};
     if (last.exchange(r) != int(r)) {
         const uint8_t* sel = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BC068);
@@ -844,7 +845,7 @@ void install_game_hooks() {
     }
     if (getenv("D1_TRACE_CAMERA"))
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
-    if (getenv("D1_TRACE_CINE"))
+    if (getenv("D1_TRACE_CINE") || getenv("D1_ALLOW_LOADING_CINE"))
         g_cine_orig = reinterpret_cast<CineFn>(hook_function(exe.base + 0x766750, reinterpret_cast<const void*>(&cine_suppressed_hook)));
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "transport")) {
         replace_function(exe.base + 0x2EB340, reinterpret_cast<const void*>(&transport_started));

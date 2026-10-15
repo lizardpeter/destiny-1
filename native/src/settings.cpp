@@ -48,9 +48,9 @@ vsync = off-tearing            # [D1_VSYNC]
 # Stats overlay (FPS, render/window resolution, v-sync, GPU). F3 toggles it while running.
 overlay = false                # [D1_OVERLAY=1]
 
-# Frame-rate limit: 0 = unlimited (one game tick per rendered frame), or a cap such as
+# Frame-rate limit (30 for now, while debugging): 0 = unlimited (one game tick per rendered frame), or a cap such as
 # 60, 120 or 144 (30 is the console's own rate). Use vsync = on to lock to the display.
-fps = 0                        # [D1_FPS]
+fps = 30                       # [D1_FPS]
 
 # Discord Rich Presence (needs the Discord desktop app running).
 discord = true                 # [D1_DISCORD=0]
@@ -68,7 +68,7 @@ sensitivity = 1.5              # [D1_SENSITIVITY]
 mouse_invert = false           # [D1_MOUSE_INVERT=1]
 mouse_zoom_scale = 1.0         # [D1_MOUSE_ZOOM_SCALE]
 
-# Skip the intro cinematic that plays before the first mission.
+# Skip the opening cinematic (Mars, the Traveler) that plays before the first mission.
 skip_intro = true              # [D1_SKIP_INTRO=0]
 
 # Research hooks for checks the backend cannot answer yet: prereq/transport (sign-in),
