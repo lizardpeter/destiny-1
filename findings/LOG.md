@@ -1078,3 +1078,44 @@ Open question: whether the logic that connects these (trigger -> sequence -> obj
 -> next phase) is also data here (some other class referencing these objects), or only
 existed in the activity host. Next: find what references the 0x8080076E objects and
 decode that class.
+
+## 2026-10-15: activity host message catalogue, script channel, object kinds
+
+**Message names.** The pointer table at 0x1910760 names every activity message type in
+order (0 `entity_slots_allocated`, 1 `global_activity_state`, 2 `world_globals_state`,
+3 `join_request`, 4 `join_result`, 5 `sensor_auth_update`, 6 `sensor_sense_update`,
+7 `sensor_message`, 8 `request_activity_host`, 9 `start_activity_host`,
+10 `start_activity_host_response`, 11 `replicate_membership`, 12/13 peer reservations,
+14 `peer_leave_request`, 15/16 keepalive, 17 `activity_client_request_state_refresh`,
+18 `incident`, 19/20 entity indices, 21 `client_authoritative_data_update`,
+22 `client_identity_update`, 23-32 entity-slot authority, 33 `process_debug_command`,
+34 `debug_request_migration`, 35 `connectivity_failure`, 36 `membership_acknowledgement`,
+37 `send_client_heartbeat`, **38 `script_state`, 39 `script_event`,
+40 `request_script_updates`**, 41 `bug_claw`, 42 `advance_replication_epoch`,
+43 `reservations_failed`, 44 `report_lag_switch`, 45 `connection_quality_report`,
+46 `speculative_migration`, 47 `high_water`, 48 `refresh_inspirations`). The numbering
+matches the types the backend already uses (4, 11, 1, 27/28). The client handles host
+types {0,1,2,4,5,7,10,11,18,23,24,27,29,38,39,42,43} (table 0x1910480: {type, handler}).
+
+**Script channel.** `script_state` (38, handler 0x29DE50) payload type 0x808052E5:
+u32 count (10 bits) + up to 512 entries 0x80800D22 {u32, u32, u32, i32 value}.
+`script_event` (39, handler 0x1019600) payload 0x80800C0A -> 0x808009A6 {u32, u32, u32,
+u8 (2 bits), u8[256]}. Payload type ids are registered at start-up (0x2697F80,
+0x269AD80; read with D1_PEEK). So the mission script runs on the host and only its
+variables and events reach the client.
+
+**Engine type layouts.** 4,088 compiled type layouts sit in eboot.bin (field block:
+u64 count, u32 type id, u32 size, ...; tools/d1_engine_type_layout_scan.py). Content tag
+classes (0x8080076E etc.) are not among them (the client parses those with fixed code).
+
+**Object kinds** (class 0x8080076E object table, tools/d1_activity_object_table.py):
+0x3c phase, 0x3b script object (objectives, `utils`, `nightfall_controller`), 0x3a trigger
+volume, 0x1d player trigger, 0x2c nav/attach point, 0x20 player objective, 0x05 sequence
+(incl. `_dialog_sequence`), 0x04 object/door, 0x3d object/squad, 0x37 array.
+
+**Incidents / Xetrov.** The client's incident system (74 classes: kill, player trigger,
+sequence, insertion point, resurrection, activity complete, ...) reports gameplay events;
+`client_to_xetrov` messages carry them to a service named Xetrov ("vortex" reversed).
+
+Status: no script code found in the activity package so far (name-hash search hits were
+Wwise audio; classes 0x80800734 / 0x80801AD7 / 0x80801A6A not decoded yet).
