@@ -627,6 +627,8 @@ D1_SYSV void r_clear(uint64_t dev, uint32_t flags) {
         const float z = field<float>(dev, 0x20);
         d->clear_depth = field<uint8_t>(dev, 0x24) ? z : nr::eb<float>(0x165FEB4) - z;
         d->clear_stencil = field<uint8_t>(dev, 0x25);
+        // the engine clears stencil with a draw whose write mask is the byte at +0x25EC (0x7E2819)
+        d->stencil_ref = (d->stencil_ref & 0xFF00FFFFu) | uint32_t(field<uint8_t>(dev, 0x25EC)) << 16;
         nr::push(d);
     }
     o_clear(dev, flags);

@@ -238,15 +238,42 @@ VkBlendOp blend_op(uint32_t f) {
 VkStencilOp stencil_op(uint32_t o) {
     switch (o) {
     case 1: return VK_STENCIL_OP_ZERO;
+    // 2 ONES, 3 REPLACE_TEST, 4 REPLACE_OP: a replace with the value set per draw (stencil_dynamic)
     case 2: case 3: case 4: return VK_STENCIL_OP_REPLACE;
     case 5: return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
     case 6: return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
     case 7: return VK_STENCIL_OP_INVERT;
     case 8: return VK_STENCIL_OP_INCREMENT_AND_WRAP;
     case 9: return VK_STENCIL_OP_DECREMENT_AND_WRAP;
+    // AND / OR with STENCILOPVAL: replace with 0 / 0xFF through a write mask of the bits
+    // concerned; XOR: invert those bits (stencil_dynamic)
+    case 10: case 11: return VK_STENCIL_OP_REPLACE;
+    case 12: return VK_STENCIL_OP_INVERT;
     default: return VK_STENCIL_OP_KEEP;
     }
 }
+// Reference and write mask for a draw's stencil ops (DB_STENCILREFMASK: test value, test mask,
+// write mask, op value). Vulkan has one reference for the test and REPLACE, and no
+// AND/OR/XOR: the op that writes (z-pass, else z-fail, else fail) picks the value and mask.
+void stencil_dynamic(uint32_t stencil_ctl, uint32_t depth_ctl, uint32_t refmask, uint32_t& ref, uint32_t& write_mask) {
+    ref = refmask & 0xFF, write_mask = refmask >> 16 & 0xFF;
+    const uint32_t opval = refmask >> 24 & 0xFF;
+    uint32_t op = stencil_ctl >> 4 & 0xF;
+    if (!op) op = stencil_ctl >> 8 & 0xF;
+    if (!op) op = stencil_ctl & 0xF;
+    int value = -1;
+    switch (op) {
+    case 2: value = 0xFF; break;
+    case 4: value = int(opval); break;
+    case 10: value = 0, write_mask &= ~opval & 0xFF; break;
+    case 11: value = 0xFF, write_mask &= opval; break;
+    case 12: write_mask &= opval; break;
+    default: break;
+    }
+    const uint32_t func = depth_ctl >> 8 & 7;
+    if (value >= 0 && (func == 0 || func == 7 || !(depth_ctl & 1))) ref = uint32_t(value);
+}
+
 VkSamplerAddressMode address_mode(uint32_t c) {
     switch (c) {
     case 0: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -459,7 +486,7 @@ struct Renderer {
     std::unique_ptr<Image> make_image(VkFormat f, uint32_t w, uint32_t h, uint32_t d, uint32_t layers, uint32_t levels,
                                       bool cube, bool is3d, bool depth, bool stencil);
     void destroy_image(Image* img);
-    VkImageView view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level, bool depth_aspect);
+    VkImageView view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level, bool depth_aspect, bool stencil_aspect = false);
     uint64_t ring_alloc(uint64_t size, uint64_t align = 256);
     uint64_t ring_copy(const void* src, uint64_t size);
     // submissions
@@ -485,6 +512,12 @@ struct Renderer {
     std::unordered_set<uint64_t> sampled_bases;  // render target addresses some draw sampled
     std::unordered_set<uint64_t> tsharp_bases;   // every address a draw's T# named
     bool reload_all = false;
+    // stencil clears that keep some bits (the engine clears stencil with a draw that honours the
+    // write mask; vkCmdClearAttachments cannot)
+    VkShaderModule fullscreen_vs = VK_NULL_HANDLE;
+    VkPipelineLayout empty_layout = VK_NULL_HANDLE;
+    std::unordered_map<uint64_t, VkPipeline> stencil_clear_pipes;
+    void masked_stencil_clear(Image* depth, uint32_t value, uint32_t write_mask, const VkRect2D& rect);
     // occlusion queries and predication (GCN ZPASS_DONE / SET_PREDICATION)
     static constexpr uint32_t kQueries = 2048, kPredSlots = 4096;
     bool q_on = false;           // this submission dumps occlusion counters
@@ -504,6 +537,7 @@ struct Renderer {
     struct TraceRec { uint64_t ps, vs, caller, off; uint32_t bytes, w, blend, count; };
     std::vector<TraceRec> traces;  // D1_NG_TRACE
     std::unordered_map<uint64_t, uint32_t> base_targets;  // render target images made per address
+    std::unordered_map<uint64_t, Image*> stencil_by_base;  // separate stencil planes of depth targets (DB_STENCIL_*_BASE)
     std::unordered_map<uint64_t, std::vector<Image*>> images_by_base;  // every render target image per address
     uint64_t bind_serial = 0;
     Image* target_for(const fmt::TSharp& ts);
@@ -946,14 +980,14 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
 }
 
 VkImageView Renderer::view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level,
-                           bool depth_aspect) {
+                           bool depth_aspect, bool stencil_aspect) {
     if (img->is3d) type = VK_IMAGE_VIEW_TYPE_3D;
     if (type == VK_IMAGE_VIEW_TYPE_CUBE && (!img->cube || img->layers < 6)) type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     if (type == VK_IMAGE_VIEW_TYPE_3D && !img->is3d) type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     const uint64_t key = mix(mix(mix(type, uint64_t(comp.r) | uint64_t(comp.g) << 8 | uint64_t(comp.b) << 16 |
                                                uint64_t(comp.a) << 24),
                                  base_level),
-                             depth_aspect);
+                             uint64_t(depth_aspect) | uint64_t(stencil_aspect) << 1);
     auto it = img->views.find(key);
     if (it != img->views.end()) return it->second;
     VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -962,7 +996,9 @@ VkImageView Renderer::view(Image* img, VkImageViewType type, VkComponentMapping 
     vci.format = img->format;
     vci.components = img->depth ? VkComponentMapping{} : comp;
     const uint32_t lvl = std::min(base_level, img->levels - 1);
-    vci.subresourceRange = {img->depth ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT) : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT),
+    vci.subresourceRange = {stencil_aspect ? VkImageAspectFlags(VK_IMAGE_ASPECT_STENCIL_BIT)
+                            : img->depth   ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT)
+                                           : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT),
                             lvl, img->levels - lvl, 0,
                             type == VK_IMAGE_VIEW_TYPE_CUBE ? 6u
                             : type == VK_IMAGE_VIEW_TYPE_2D || type == VK_IMAGE_VIEW_TYPE_3D ? 1u
@@ -1141,6 +1177,16 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
     target_bases.insert(base), target_bases.insert(read_base);
     if (bind || !target_by_base.count(base)) target_by_base[base] = img;
     if (bind || !target_by_base.count(read_base)) target_by_base[read_base] = img;
+    if (sfmt)  // the stencil plane lives at its own address; shaders read it as an 8-bit texture
+        for (const uint64_t sb : {uint64_t(d[3]) << 8, uint64_t(d[5]) << 8})
+            if (sb && sb != base) {
+                target_bases.insert(sb);
+                if (bind || !stencil_by_base.count(sb)) stencil_by_base[sb] = img;
+                static std::unordered_set<uint64_t> told;
+                if (told.size() < 32 && told.insert(sb).second)
+                    log("native renderer: depth target %llx %ux%u has its stencil at %llx", (unsigned long long)base, w, h,
+                        (unsigned long long)sb);
+            }
     img->last_used = submit_no;
     return img;
 }
@@ -1546,6 +1592,15 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
     const auto ts = fmt::decode_tsharp(t);
     VkComponentMapping comp{swz(ts.dst_sel & 7), swz(ts.dst_sel >> 3 & 7), swz(ts.dst_sel >> 6 & 7),
                             swz(ts.dst_sel >> 9 & 7)};
+    if (auto sit = stencil_by_base.find(ts.base); sit != stencil_by_base.end() && sit->second->stencil) {
+        sit->second->sampled = true;
+        sampled_bases.insert(ts.base);
+        static std::unordered_set<uint64_t> told;
+        if (told.size() < 32 && told.insert(ts.base).second)
+            log("native renderer: texture %llx is the stencil of depth target %llx", (unsigned long long)ts.base,
+                (unsigned long long)sit->second->base);
+        return view(sit->second, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true, true);
+    }
     if (Image* img = target_for(ts)) {
         img->sampled = true;
         sampled_bases.insert(ts.base);
@@ -2023,13 +2078,15 @@ void Renderer::clear(const Draw& dr) {
         }
     VkImageAspectFlags da = 0;
     if ((dr.clear_flags & 0x40) && depth) da |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    if ((dr.clear_flags & 0x80) && depth && depth->stencil) da |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    const uint32_t stencil_wm = dr.stencil_ref >> 16 & 0xFF;
+    const bool masked_stencil = (dr.clear_flags & 0x80) && depth && depth->stencil && stencil_wm != 0xFF;
+    if ((dr.clear_flags & 0x80) && depth && depth->stencil && !masked_stencil) da |= VK_IMAGE_ASPECT_STENCIL_BIT;
     if (da) {
         att[n] = {da, 0, {}};
         att[n].clearValue.depthStencil = {dr.clear_depth, dr.clear_stencil};
         ++n;
     }
-    if (!n) return;
+    if (!n && !masked_stencil) return;
     int32_t x = std::max(0, dr.vp[0]), y = std::max(0, dr.vp[1]);
     uint32_t w = dr.vp[2] > 0 ? uint32_t(dr.vp[2]) : pass_w, h = dr.vp[3] > 0 ? uint32_t(dr.vp[3]) : pass_h;
     w = std::min(w, pass_w - std::min<uint32_t>(pass_w, uint32_t(x)));
@@ -2037,8 +2094,87 @@ void Renderer::clear(const Draw& dr) {
     if (!w || !h) return;
     if (st.frames == passlog_frame && !passlog.empty()) ++passlog.back().clears;
     VkClearRect r{{{x, y}, {w, h}}, 0, 1};
-    vkCmdClearAttachments(cmd, n, att, 1, &r);
+    if (n) vkCmdClearAttachments(cmd, n, att, 1, &r);
+    if (masked_stencil && stencil_wm) masked_stencil_clear(depth, dr.clear_stencil, stencil_wm, r.rect);
     ++st.clears;
+}
+
+// Inside the current pass: stencil = (stencil & ~write_mask) | (value & write_mask) over rect.
+void Renderer::masked_stencil_clear(Image* depth, uint32_t value, uint32_t write_mask, const VkRect2D& rect) {
+    static const uint32_t kVs[] = {
+#include "fullscreen_vs.inc"
+    };
+    if (!fullscreen_vs) {
+        VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        smi.codeSize = sizeof kVs;
+        smi.pCode = kVs;
+        vkCreateShaderModule(ctx.device, &smi, nullptr, &fullscreen_vs);
+        VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        vkCreatePipelineLayout(ctx.device, &pli, nullptr, &empty_layout);
+    }
+    VkFormat cfmt[8]{};
+    uint32_t ncolor = 0;
+    for (uint32_t i = 0; i < 8; ++i)
+        if (pass_color[i]) cfmt[i] = pass_color[i]->format, ncolor = i + 1;
+    uint64_t key = depth->format;
+    for (uint32_t i = 0; i < ncolor; ++i) key = mix(key, cfmt[i] + 1);
+    VkPipeline& pipe = stencil_clear_pipes[key];
+    if (!pipe) {
+        VkPipelineShaderStageCreateInfo stage{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stage.module = fullscreen_vs;
+        stage.pName = "main";
+        VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        vp.viewportCount = vp.scissorCount = 1;
+        VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.cullMode = VK_CULL_MODE_NONE;
+        rs.lineWidth = 1.0f;
+        VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        ds.stencilTestEnable = VK_TRUE;
+        ds.front = {VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_REPLACE, VK_COMPARE_OP_ALWAYS, 0xFF, 0xFF, 0};
+        ds.back = ds.front;
+        VkPipelineColorBlendAttachmentState cb[8]{};
+        VkPipelineColorBlendStateCreateInfo cbs{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        cbs.attachmentCount = ncolor;
+        cbs.pAttachments = cb;
+        const VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+                                      VK_DYNAMIC_STATE_STENCIL_WRITE_MASK};
+        VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        dy.dynamicStateCount = 4;
+        dy.pDynamicStates = dyn;
+        VkPipelineRenderingCreateInfo rci{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        rci.colorAttachmentCount = ncolor;
+        rci.pColorAttachmentFormats = cfmt;
+        rci.depthAttachmentFormat = depth->format;
+        rci.stencilAttachmentFormat = depth->format;
+        VkGraphicsPipelineCreateInfo gci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &rci};
+        gci.stageCount = 1;
+        gci.pStages = &stage;
+        gci.pVertexInputState = &vi;
+        gci.pInputAssemblyState = &ia;
+        gci.pViewportState = &vp;
+        gci.pRasterizationState = &rs;
+        gci.pMultisampleState = &ms;
+        gci.pDepthStencilState = &ds;
+        gci.pColorBlendState = &cbs;
+        gci.pDynamicState = &dy;
+        gci.layout = empty_layout;
+        if (vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &pipe) != VK_SUCCESS) pipe = VK_NULL_HANDLE;
+    }
+    if (!pipe) return;
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+    const VkViewport v{0, 0, float(pass_w), float(pass_h), 0, 1};
+    vkCmdSetViewport(cmd, 0, 1, &v);
+    vkCmdSetScissor(cmd, 0, 1, &rect);
+    vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, value & 0xFF);
+    vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, write_mask);
+    vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 
 void Renderer::draw(const Draw& dr) {
@@ -2389,9 +2525,13 @@ void Renderer::draw(const Draw& dr) {
                 {std::min<uint32_t>(pass_w - std::min<uint32_t>(pass_w, sx), uint32_t(std::max(1.0f, vp.width))),
                  std::min<uint32_t>(pass_h - std::min<uint32_t>(pass_h, sy), uint32_t(std::max(1.0f, -vp.height)))}};
     vkCmdSetScissor(cmd, 0, 1, &sc);
-    vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref & 0xFF);
-    vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref >> 8 & 0xFF);
-    vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref >> 16 & 0xFF);
+    {
+        uint32_t sref, swm;
+        stencil_dynamic(dr.stencil_ctl, dr.depth_ctl, dr.stencil_ref, sref, swm);
+        vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, sref);
+        vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref >> 8 & 0xFF);
+        vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, swm);
+    }
     vkCmdSetDepthBias(cmd, dr.poly_offset, 0.0f, dr.poly_scale);
     const bool predicated = pred_cur >= 0 && ctx.conditional_rendering && pred_buf.buf;
     if (predicated) {
