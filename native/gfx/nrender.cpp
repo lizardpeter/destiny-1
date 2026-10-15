@@ -1113,6 +1113,14 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                 st.bytes_tex += total;
                 ++st.textures;
             }
+            // D1_NG_LOG_RELOADS: small reloaded textures with their first values (diagnostics)
+            static const bool log_reloads = std::getenv("D1_NG_LOG_RELOADS") != nullptr;
+            if (log_reloads && out && prev && ts.width * ts.height <= 64 * 64) {
+                const float* fv = reinterpret_cast<const float*>(ts.base);
+                log("ng reload frame %llu sub %llu: %llx %ux%u fmt %u.%u | %g %g %g %g %g %g %g %g",
+                    (unsigned long long)st.frames, (unsigned long long)submit_no, (unsigned long long)ts.base, ts.width,
+                    ts.height, ts.dfmt, ts.nfmt, fv[0], fv[1], fv[2], fv[3], fv[4], fv[5], fv[6], fv[7]);
+            }
             // written while we copied (another thread is filling it): the copy may be torn
             if (out && img->src_size && opt.version(img->src_addr, img->src_size) != img->version) {
                 ++st.tex_torn;
@@ -2399,8 +2407,9 @@ void Renderer::dump(uint64_t addr, uint32_t, uint32_t, uint64_t frame) {
     // D1_NG_TARGETS: every render target this frame used, in creation order
     if (opt.dump_targets) {
         int n = 0;
+        static const uint64_t max_pix = std::getenv("D1_NG_TARGETS_MAXPIX") ? std::strtoull(std::getenv("D1_NG_TARGETS_MAXPIX"), nullptr, 10) : ~0ull;
         for (auto& [k, img] : targets)
-            if (img && img->last_used > frame_first_submit) {
+            if (img && img->last_used > frame_first_submit && uint64_t(img->w) * img->h <= max_pix && !img->is3d) {
                 std::snprintf(path, sizeof path, "%s/f%06llu_rt%02d_%llx_%ux%u_f%d.ppm", opt.frames_dir,
                               (unsigned long long)frame, n++, (unsigned long long)img->base, img->w, img->h,
                               int(img->format));

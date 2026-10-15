@@ -420,6 +420,7 @@ void push(ng::Draw* d) {
 }
 
 // Collect the DCB ranges of a submission, following INDIRECT_BUFFER packets.
+int g_wait_phase = 0;  // diagnostics: 1 = after the null GPU ran the command buffers
 void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::pair<uint64_t, uint64_t>>& out) {
     out.push_back({uint64_t(p), uint64_t(p) + uint64_t(dwords) * 4});
     if (depth >= 4) return;
@@ -428,6 +429,24 @@ void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::
         const uint32_t type = h >> 30;
         if (type == 3) {
             const uint32_t op = (h >> 8) & 0xFF, count = (h >> 16) & 0x3FFF;
+            // D1_NG_LOG_WAITS: WAIT_REG_MEM on memory that is not satisfied at submit time
+            static const bool log_waits = getenv("D1_NG_LOG_WAITS") != nullptr;
+            if (log_waits && g_wait_phase == 1 && op == 0x3C && i + 6 < dwords && (p[i + 1] >> 4 & 1)) {
+                const uint32_t fn = p[i + 1] & 7, ref = p[i + 4], mask = p[i + 5];
+                const uint64_t a = (uint64_t(p[i + 2]) | uint64_t(p[i + 3]) << 32) & ~3ull;
+                const uint32_t v = a >= 0x10000 ? *reinterpret_cast<const volatile uint32_t*>(a) & mask : 0;
+                const bool ok = fn == 0 || (fn == 1 && v < ref) || (fn == 2 && v <= ref) || (fn == 3 && v == ref) ||
+                                (fn == 4 && v != ref) || (fn == 5 && v >= ref) || (fn == 6 && v > ref);
+                static std::atomic<uint64_t> total{0}, bad{0};
+                ++total;
+                if (!ok) {
+                    static std::unordered_map<uint64_t, int> seen;
+                    if (++bad <= 200 || seen[a]++ < 3)
+                        log("ng wait: unsatisfied at submit: [%#llx] & %#x %s %#x (now %#x), %llu of %llu waits",
+                            (unsigned long long)a, mask, fn == 3 ? "==" : fn == 4 ? "!=" : fn == 5 ? ">=" : fn == 6 ? ">" : "<",
+                            ref, v, (unsigned long long)bad.load(), (unsigned long long)total.load());
+                }
+            }
             if ((op == 0x3F || op == 0x33) && i + 3 < dwords) {
                 const uint64_t a = uint64_t(p[i + 1]) | (uint64_t(p[i + 2] & 0xFFFF) << 32);
                 if (a) dcb_ranges(reinterpret_cast<const uint32_t*>(a), p[i + 3] & 0xFFFFF, depth + 1, out);
@@ -810,12 +829,26 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
     for (auto& [k, d] : mine) delete d;
 }
 
+// Diagnostics (D1_NG_LOG_WAITS): memory waits still unsatisfied after the null GPU ran the
+// command buffers (so the CPU, not the GPU, is meant to release them).
+void native_gfx_check_waits(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
+    static const bool on = getenv("D1_NG_LOG_WAITS") != nullptr;
+    if (!on) return;
+    std::vector<std::pair<uint64_t, uint64_t>> ranges;
+    nr::g_wait_phase = 1;
+    for (uint32_t k = 0; k < count; ++k)
+        if (dcbs[k] && sizes[k]) nr::dcb_ranges(dcbs[k], sizes[k] / 4, 0, ranges);
+    nr::g_wait_phase = 0;
+}
+
 // hle_gpu.cpp: the frame in video-out buffer `addr` is being flipped.
 void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
     if (!nr::g_base || !ng::active()) return;
     if (nr::g_frame_executed) {
         ++nr::g_executed_frames;
         const bool dump = nr::g_dump_every && nr::g_executed_frames % uint64_t(nr::g_dump_every) == 0;
+        static const bool log_reloads = getenv("D1_NG_LOG_RELOADS") != nullptr;
+        if (log_reloads) log("ng flip %llu", (unsigned long long)gpu_flip_count());
         const auto f0 = std::chrono::steady_clock::now();
         ng::flip(uint64_t(addr), width, height, gpu_flip_count(), dump);
         nr::g_flip_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - f0).count());

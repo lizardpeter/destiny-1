@@ -216,6 +216,7 @@ bool gpu_active() { return gpu_real() || native_gfx_active(); }
 
 void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);  // native_gfx.cpp
 void native_gfx_flip(void* addr, uint32_t width, uint32_t height);
+void native_gfx_check_waits(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);
 
 // ------------------------------------------------------------------ video out
 struct FlipStatus {
@@ -490,6 +491,7 @@ static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb
     native_gfx_submit(count, dcbs, dcb_sizes);
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && dcb_sizes[k]) run_dcb(dcbs[k], dcb_sizes[k] / 4, 0);
+    native_gfx_check_waits(count, dcbs, dcb_sizes);
     return SCE_OK;
 }
 

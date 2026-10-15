@@ -1145,6 +1145,15 @@ void Translator::run() {
                         else if (in.op == Op::S_CBRANCH_SCC1) cond = ld(scc(), tbool_);
                         else if (in.op == Op::S_CBRANCH_VCCZ) cond = m_.op_r(OpLogicalNot, tbool_, {bit0(ld(sreg(106), tu_))});
                         else cond = bit0(ld(sreg(106), tu_));
+                        // GCN decides these for the whole wave (SCC / VCC computed from lane
+                        // masks are "any lane"); per-invocation branching would split quads and
+                        // break implicit derivatives. Taken when any invocation's bit says so
+                        // (the *Z / SCC0 forms: when none does).
+                        const bool negated = in.op == Op::S_CBRANCH_SCC0 || in.op == Op::S_CBRANCH_VCCZ;
+                        Id lane = negated ? m_.op_r(OpLogicalNot, tbool_, {cond}) : cond;
+                        m_.capability(Capability(62));  // GroupNonUniformVote
+                        Id any = m_.op_r(Opcode(335), tbool_, {m_.c_u32(3), lane});  // OpGroupNonUniformAny, Subgroup
+                        cond = negated ? m_.op_r(OpLogicalNot, tbool_, {any}) : any;
                         next = m_.op_r(OpSelect, tu_, {cond, m_.c_u32(tb), next});
                     }
                 } else if (in.op == Op::S_ENDPGM) {
