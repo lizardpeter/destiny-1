@@ -1049,3 +1049,32 @@ blotchy, posterised, blurred image. What the instrumented software-renderer runs
   the mission script (activity host), not a loading cinematic.
 - Next: log every client -> activity host message during the prologue, and trace the spawn
   location choice in can_spawn (0x415700) to see what data picks the start point.
+
+## 2026-10-15: the prologue's mission structure is in the client packages
+
+Named-tag tables of all 1,395 packages: 748 unique named tags. Each activity has a plain
+tag (class 0x808008BA, e.g. `act_cosmo_m0_highway`, 72 bytes) whose two children are its
+`:scenario_client` (0x80800616: 22 bubbles, class 0x808008F0) and the loading-cinematic
+table (0x80800499: `spaceflight_filler`, `spaceflight_out`, `same_dest_filler`). No
+separate server tag hangs off the scenario.
+
+The activity package (`ps4_cosmo_activities_activity_025c`, patch 5, 8,192 entries, all
+decoded with Oodle 3) carries the mission graph by name:
+
+- **Class 0x8080076E** (55 tags, ~6.5 KB each): the mission's object table: phases
+  `cosmo_m0_phase00_highway_intro`, `phase00_highway`, `phase01_breach`, `phase01b_breach`,
+  `phase02_graveyard`, `phase03_hangar`, `phase04_outro`; per objective
+  `._player_objective`, `._incoming_sequence`, `._completion_sequence`, `._nav_point`,
+  `._trigger_volume`, `._player_trigger`; cinematics `pf_104_res._cinematic` /
+  `pf_104_res_fp` (phase00_highway_intro: the resurrection), `pf_104a_pwr`, `pf_105_cto`;
+  per-phase `globals`, gating `tg_m0_gating` / `sv_m0_gating`.
+- **Class 0x80800861** (entity resources): named trigger volumes and sequences,
+  e.g. `tv_player_rez`, `tv_ghost_scan`, `tv_first_obj`, `seq_d_o1_10` ... `seq_d_o5_30`
+  (dialogue per objective), `seq_fallen_*`, `seq_ambush_*`, `tv_music_*`.
+- The client binary has none of the objective suffix strings (`_player_objective`,
+  `_incoming_sequence`, ...).
+
+Open question: whether the logic that connects these (trigger -> sequence -> objective
+-> next phase) is also data here (some other class referencing these objects), or only
+existed in the activity host. Next: find what references the 0x8080076E objects and
+decode that class.
