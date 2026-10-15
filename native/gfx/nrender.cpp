@@ -279,6 +279,7 @@ struct Image {
     uint32_t bind_slice = 0;  // layered target: the slice the current pass renders
     // textures: the guest memory they were copied from, and its version then (write tracking)
     uint64_t src_addr = 0, src_size = 0, version = ~0ull, checked = 0;
+    uint32_t torn = 0;  // reloads in a row that were rewritten while being copied
 };
 
 struct Shader {
@@ -307,7 +308,7 @@ struct Stats {
     uint64_t frames = 0, submits = 0, draws = 0, clears = 0, skipped = 0, pipelines = 0, textures = 0, targets = 0,
              shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     uint64_t bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, bytes_tex = 0;  // copied into the ring
-    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0;                 // geometry cache uploads
+    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
     uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
@@ -1035,6 +1036,7 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
 
 Image* Renderer::upload_texture(const uint32_t* t) {
     const uint64_t key = hash_bytes(t, 32);
+    std::unique_ptr<Image> prev;
     auto it = textures.find(key);
     if (it != textures.end()) {
         Image* img = it->second.get();
@@ -1046,8 +1048,9 @@ Image* Renderer::upload_texture(const uint32_t* t) {
             img->checked = st.frames + 1;
             return img;
         }
-        // the game rewrote the texture's memory (streaming): copy it again
-        subs[cur].dead.push_back(std::move(it->second));
+        // the game rewrote the texture's memory (streaming): copy it again (keeping the old
+        // copy until the new one is known to be complete)
+        prev = std::move(it->second);
         textures.erase(it);
         ++st.tex_reloads;
     }
@@ -1110,10 +1113,23 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                 st.bytes_tex += total;
                 ++st.textures;
             }
+            // written while we copied (another thread is filling it): the copy may be torn
+            if (out && img->src_size && opt.version(img->src_addr, img->src_size) != img->version) {
+                ++st.tex_torn;
+                if (prev && prev->torn < 2) {  // show the previous contents one more frame
+                    prev->torn++, prev->checked = st.frames + 1, prev->last_used = submit_no;
+                    subs[cur].dead.push_back(std::move(img));
+                    Image* keep = prev.get();
+                    textures[key] = std::move(prev);
+                    return keep;
+                }
+                img->version = ~0ull;  // copy it again next frame
+            }
             textures[key] = std::move(img);
             if (!out) textures.erase(key);
         }
     }
+    if (prev) subs[cur].dead.push_back(std::move(prev));
     if (!out) textures[key] = nullptr;
     return out;
 }
@@ -1227,6 +1243,12 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
     uint8_t* dst = geo_blocks[size_t(e.block)].buf.map + e.off;
     std::memcpy(dst, reinterpret_cast<const void*>(addr), size);
     st.bytes_geo += size;
+    if (opt.version(addr, size) != ver) {  // written while copying: use the ring this time
+        ++st.geo_torn;
+        geo_free_later(e.block, e.off, size);
+        e.valid = false, ++e.misses, e.uploaded = submit_no;
+        return nullptr;
+    }
     if (index_size) {  // the vertex range the indices reference
         uint32_t lo = UINT32_MAX, hi = 0;
         if (index_size == 4) {
@@ -2452,9 +2474,10 @@ void print_stats() {
     const double fr = double(std::max<uint64_t>(1, s.frames));
     log("native renderer: copied per frame (average): vertices %.1f MiB, indices %.1f MiB, constants %.1f MiB, "
         "textures %.1f MiB | geometry cache: %.1f MiB uploaded per frame, %.0f hits per frame, %.0f MiB held | "
-        "%llu texture reloads", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
+        "%llu texture reloads (%llu torn), %llu torn geometry copies", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
         double(s.bytes_cb) / fr / 1048576.0, double(s.bytes_tex) / fr / 1048576.0, double(s.bytes_geo) / fr / 1048576.0,
-        double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads);
+        double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads,
+        (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
             "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,

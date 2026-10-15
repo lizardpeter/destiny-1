@@ -836,8 +836,14 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
             static int report = 0;
             if (++report % (getenv("D1_NG_STATS") ? 5 : 15) == 1) {
                 const double frames = double(std::max<uint64_t>(1, n - n0));
-                log("native gfx: %.1f fps | per frame: record %.1f ms, present+wait %.1f ms", fps,
-                    double(nr::g_exec_ns) / 1e6 / frames, double(nr::g_flip_ns) / 1e6 / frames);
+                static uint64_t faults0 = 0, fault_frames0 = 0;
+                const uint64_t faults = wt::g_faults.load();
+                const double fault_frames = double(std::max<uint64_t>(1, n - fault_frames0));
+                fault_frames0 = n;
+                log("native gfx: %.1f fps | per frame: record %.1f ms, present+wait %.1f ms, %.0f write faults", fps,
+                    double(nr::g_exec_ns) / 1e6 / frames, double(nr::g_flip_ns) / 1e6 / frames,
+                    double(faults - faults0) / fault_frames);
+                faults0 = faults;
                 ng::print_stats();
             }
             t0 = now, n0 = n;
