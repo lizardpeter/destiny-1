@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #ifdef _WIN32
@@ -174,6 +175,8 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     vkEnumerateDeviceExtensionProperties(pick, nullptr, &n, exts.data());
     std::vector<const char*> dev_exts;
     if (has_extension(exts, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) dev_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    // promoted to 1.4 core, but some layers (Wine's) only resolve the extension's entry points
+    if (has_extension(exts, "VK_KHR_push_descriptor")) dev_exts.push_back("VK_KHR_push_descriptor");
     if (has_extension(exts, VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME)) {
         dev_exts.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
         ctx.external_memory_host = true;
@@ -201,9 +204,27 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     dci.enabledExtensionCount = uint32_t(dev_exts.size());
     dci.ppEnabledExtensionNames = dev_exts.data();
     if (vkCreateDevice(pick, &dci, nullptr, &ctx.device) != VK_SUCCESS) return fail("vkCreateDevice failed on %s", ctx.name);
-#define D1_VK_LOAD(f) f = reinterpret_cast<PFN_##f>(vkGetDeviceProcAddr(ctx.device, #f));
+    // core names first, then the extension names they were promoted from (older loaders and
+    // layers, e.g. Wine's, only know vkCmdPushDescriptorSetKHR)
+    auto device_fn = [&](const char* name) {
+        PFN_vkVoidFunction f = vkGetDeviceProcAddr(ctx.device, name);
+        for (const char* suffix : {"KHR", "EXT"}) {
+            if (f) break;
+            char alt[128];
+            std::snprintf(alt, sizeof alt, "%s%s", name, suffix);
+            f = vkGetDeviceProcAddr(ctx.device, alt);
+        }
+        return f;
+    };
+    std::string missing_fns;
+#define D1_VK_LOAD(f)                                            \
+    f = reinterpret_cast<PFN_##f>(device_fn(#f));                \
+    if (!f && std::strstr(#f, "Swapchain") == nullptr && std::strcmp(#f, "vkAcquireNextImageKHR") != 0 && \
+        std::strcmp(#f, "vkQueuePresentKHR") != 0)               \
+        missing_fns += std::string(missing_fns.empty() ? "" : ", ") + #f;
     D1_VK_DEVICE_FUNCS(D1_VK_LOAD)
 #undef D1_VK_LOAD
+    if (!missing_fns.empty()) return fail("%s: the driver lacks %s", ctx.name, missing_fns.c_str());
     vkGetDeviceQueue(ctx.device, ctx.queue_family, 0, &ctx.queue);
     return true;
 }

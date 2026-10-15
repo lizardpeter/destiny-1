@@ -723,6 +723,11 @@ void native_gfx_install() {
 #endif
         if (!ng::init(opt)) {
             log("native gfx: renderer unavailable; not capturing");
+#ifndef D1_RENDERER_SHADPS4
+            if (opt.window_handles)  // a window that would stay black: say why
+                os::error_box("The renderer could not start, so nothing can be drawn.\n\nIt needs a GPU driver with "
+                              "Vulkan 1.4 (update the graphics driver). Details are in d1-native.log.");
+#endif
             return;
         }
         bool ok = true;
