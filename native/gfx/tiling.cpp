@@ -196,7 +196,105 @@ uint64_t addr_macro(const ModeInfo& mi, const Macro& m, uint32_t bpp, uint32_t s
     return (total & 0xFF) | uint64_t(pipe) << 8 | uint64_t(bank) << (8 + pipe_bits) | (total >> 8) << (8 + pipe_bits + bank_bits);
 }
 
+// Thin (1-slice) surfaces element by element is slow (the full address per element): within an
+// 8x8 micro tile only the element offset changes, so the tile's part of the address (pipe, bank,
+// macro/tile offsets) is worked out once and each element adds its offset. Same results as
+// addr_micro / addr_macro (tests/tiling_fast_test.cpp checks every mode).
+template <typename Fn>
+void for_each_thin(const ModeInfo& mi, const Macro& m, bool micro, uint32_t bpp, uint32_t samples, uint32_t w, uint32_t h,
+                   uint32_t slices, uint32_t pitch, uint32_t height, Fn&& fn) {
+    const uint32_t bytes = bpp / 8;
+    uint32_t pix[64];
+    for (uint32_t i = 0; i < 64; ++i) pix[i] = pixel_index(mi.micro, bpp, i & 7, i >> 3, 0, 1);
+    if (micro) {
+        const uint64_t micro_bytes = 64ull * bpp * samples / 8;
+        const uint64_t slice_bytes = (uint64_t(pitch) * height * bpp * samples + 7) / 8;
+        for (uint32_t z = 0; z < slices; ++z)
+            for (uint32_t ty = 0; ty * 8 < h; ++ty)
+                for (uint32_t tx = 0; tx * 8 < w; ++tx) {
+                    const uint64_t tbase = z * slice_bytes + (uint64_t(ty) * (pitch / 8) + tx) * micro_bytes;
+                    for (uint32_t i = 0; i < 64; ++i) {
+                        const uint32_t x = tx * 8 + (i & 7), y = ty * 8 + (i >> 3);
+                        if (x < w && y < h) fn(x, y, z, tbase + uint64_t(pix[i]) * bytes);
+                    }
+                }
+        return;
+    }
+    uint64_t micro_bytes = 64ull * bpp * samples / 8;
+    uint32_t slices_per_tile = 1;
+    const bool split = micro_bytes > m.tile_split;
+    if (split) slices_per_tile = uint32_t(micro_bytes / m.tile_split), micro_bytes = m.tile_split;
+    const uint64_t macro_bytes = micro_bytes * (m.width / 8) * (m.height / 8) / (m.pipes * m.banks);
+    const uint32_t per_row = pitch / m.width;
+    const uint64_t slice_bytes = uint64_t(per_row) * (height / m.height) * macro_bytes;
+    const bool is3d = mi.array == Tiled3DThin1 || mi.array == Tiled3DThick || mi.array == Tiled3DXThick;
+    const bool split_rot_on = mi.array == Tiled2DThin1 || mi.array == Tiled3DThin1 || mi.array == Prt2DThin1 || mi.array == Prt3DThin1;
+    const uint32_t pipe_bits = uint32_t(std::bit_width(m.pipes)) - 1, bank_bits = uint32_t(std::bit_width(m.banks)) - 1;
+    for (uint32_t z = 0; z < slices; ++z) {
+        uint32_t slice_rot = 0;
+        if (mi.array == Tiled2DThin1 || mi.array == Tiled2DThick || mi.array == Tiled2DXThick) slice_rot = (m.banks / 2 - 1) * z;
+        else if (is3d) slice_rot = std::max(1u, m.pipes / 2 - 1) * z / m.pipes;
+        for (uint32_t ty = 0; ty * 8 < h; ++ty)
+            for (uint32_t tx = 0; tx * 8 < w; ++tx) {
+                uint32_t x0 = tx * 8, y0 = ty * 8;
+                const uint64_t macro_off = (uint64_t(y0 / m.height) * per_row + x0 / m.width) * macro_bytes;
+                const uint32_t tile_row = (y0 / 8) % m.bank_h, tile_col = ((x0 / 8) / m.pipes) % m.bank_w;
+                const uint64_t tile_off = uint64_t(tile_row * m.bank_w + tile_col) * micro_bytes;
+                if (prt(mi.array)) x0 %= m.width, y0 %= m.height;
+                const uint32_t px = x0 / 8, py = y0 / 8;
+                uint32_t pipe;
+                if (mi.pipes == P2) pipe = bit(px, 0) ^ bit(py, 0);
+                else if (mi.pipes == P8_32x32_8x16)
+                    pipe = (bit(px, 1) ^ bit(py, 0) ^ bit(px, 2)) | (bit(px, 0) ^ bit(py, 1)) << 1 | (bit(px, 2) ^ bit(py, 2)) << 2;
+                else pipe = (bit(px, 0) ^ bit(py, 0) ^ bit(px, 1)) | (bit(px, 1) ^ bit(py, 1)) << 1 | (bit(px, 2) ^ bit(py, 2)) << 2;
+                if (is3d) pipe ^= (std::max(1u, m.pipes / 2 - 1) * z) & (m.pipes - 1);
+                const uint32_t bx = x0 / 8 / (m.bank_w * m.pipes), by = y0 / 8 / m.bank_h;
+                uint32_t bank = 0;
+                switch (m.banks) {
+                case 16:
+                    bank = (bit(bx, 0) ^ bit(by, 3)) | (bit(bx, 1) ^ bit(by, 2) ^ bit(by, 3)) << 1 | (bit(bx, 2) ^ bit(by, 1)) << 2 |
+                           (bit(bx, 3) ^ bit(by, 0)) << 3;
+                    break;
+                case 8: bank = (bit(bx, 0) ^ bit(by, 2)) | (bit(bx, 1) ^ bit(by, 1) ^ bit(by, 2)) << 1 | (bit(bx, 2) ^ bit(by, 0)) << 2; break;
+                case 4: bank = (bit(bx, 0) ^ bit(by, 1)) | (bit(bx, 1) ^ bit(by, 0)) << 1; break;
+                default: bank = bit(bx, 0) ^ bit(by, 0); break;
+                }
+                for (uint32_t i = 0; i < 64; ++i) {
+                    const uint32_t x = tx * 8 + (i & 7), y = ty * 8 + (i >> 3);
+                    if (x >= w || y >= h) continue;
+                    uint64_t elem = uint64_t(pix[i]) * bytes;
+                    uint32_t ss = 0;
+                    if (split) ss = uint32_t(elem / m.tile_split), elem %= m.tile_split;
+                    const uint64_t total = slice_bytes * (ss + uint64_t(slices_per_tile) * z) + macro_off + elem + tile_off;
+                    const uint32_t bk = ((bank ^ slice_rot) ^ (split_rot_on ? (m.banks / 2 + 1) * ss : 0)) & (m.banks - 1);
+                    fn(x, y, z, (total & 0xFF) | uint64_t(pipe) << 8 | uint64_t(bk) << (8 + pipe_bits) |
+                                    (total >> 8) << (8 + pipe_bits + bank_bits));
+                }
+            }
+    }
+}
+
 }  // namespace
+
+// The slow, element-by-element reference (tests compare the fast paths against it).
+void detile_reference(const Surface& s, uint32_t lv, const uint8_t* tiled, uint8_t* linear) {
+    const ModeInfo& mi = kModes[s.tile_mode & 31];
+    const MipLayout& ml = s.mips[lv];
+    const uint32_t bytes = s.bpp / 8;
+    uint32_t w = std::max(1u, s.width >> lv), h = std::max(1u, s.height >> lv);
+    if (s.block) w = (w + 3) / 4, h = (h + 3) / 4;
+    const uint32_t slices = std::max(1u, s.depth >> lv) * s.layers;
+    const uint8_t* base = tiled + ml.offset;
+    const bool micro = ml.micro || !macro_tiled(mi.array);
+    const Macro m = micro ? Macro{} : macro_params(s.tile_mode, s.bpp, s.samples);
+    for (uint32_t z = 0; z < slices; ++z)
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint64_t a = micro ? addr_micro(mi.micro, s.bpp, s.samples, x, y, z, ml.pitch, ml.height, ml.thickness)
+                                         : addr_macro(mi, m, s.bpp, s.samples, x, y, z, ml.pitch, ml.height);
+                std::memcpy(linear + ((uint64_t(z) * h + y) * w + x) * bytes, base + a, bytes);
+            }
+}
 
 const char* tile_mode_name(uint32_t tile_mode) { return kModes[tile_mode & 31].name; }
 
@@ -268,6 +366,13 @@ void detile(const Surface& s, uint32_t lv, const uint8_t* tiled, uint8_t* linear
     }
     const bool micro = ml.micro || !macro_tiled(mi.array);
     const Macro m = micro ? Macro{} : macro_params(s.tile_mode, s.bpp, s.samples);
+    if (ml.thickness == 1 && thickness(mi.array) == 1 && mi.micro != Rotated && mi.micro != Thick && (bytes == 1 || bytes == 2 || bytes == 4 || bytes == 8 || bytes == 16)) {
+        auto copy = [&](uint32_t x, uint32_t y, uint32_t z, uint64_t a) {
+            std::memcpy(linear + ((uint64_t(z) * h + y) * w + x) * bytes, base + a, bytes);
+        };
+        for_each_thin(mi, m, micro, s.bpp, s.samples, w, h, slices, ml.pitch, ml.height, copy);
+        return;
+    }
     for (uint32_t z = 0; z < slices; ++z)
         for (uint32_t y = 0; y < h; ++y) {
             uint8_t* out = linear + ((uint64_t(z) * h + y) * w) * bytes;

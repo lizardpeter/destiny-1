@@ -274,6 +274,7 @@ struct Image {
     uint32_t swap = 0;  // render target COMP_SWAP
     uint64_t base = 0;
     VkImageView attachment = VK_NULL_HANDLE;
+    VkImageAspectFlags att_aspect = 0;  // attachment view made when first rendered to (0: none)
     std::unordered_map<uint64_t, VkImageView> views;
     uint64_t last_used = 0;
     uint32_t bind_slice = 0;  // layered target: the slice the current pass renders
@@ -318,7 +319,7 @@ struct Stats {
     uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0, tex_inplace = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
-    uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
+    uint64_t t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     std::unordered_map<std::string, uint64_t> skip;
 };
@@ -330,7 +331,20 @@ struct Heap {
         VkDeviceMemory mem = VK_NULL_HANDLE;
         uint32_t type = 0;
         uint64_t size = 0;
-        std::map<uint64_t, uint64_t> free;  // offset -> size
+        std::map<uint64_t, uint64_t> free;           // offset -> size
+        std::multimap<uint64_t, uint64_t> by_size;  // size -> offset (the same ranges, for best fit)
+        void add(uint64_t off, uint64_t size) {
+            free[off] = size;
+            by_size.emplace(size, off);
+        }
+        void remove(uint64_t off, uint64_t size) {
+            free.erase(off);
+            for (auto [i, e] = by_size.equal_range(size); i != e; ++i)
+                if (i->second == off) {
+                    by_size.erase(i);
+                    break;
+                }
+        }
     };
     std::vector<Block> blocks;
     uint64_t used = 0, reserved = 0;
@@ -765,14 +779,15 @@ Alloc Renderer::heap_alloc(VkMemoryRequirements req) {
         for (size_t bi = 0; bi < heap.blocks.size(); ++bi) {
             auto& b = heap.blocks[bi];
             if (b.type != type) continue;
-            for (auto it = b.free.begin(); it != b.free.end(); ++it) {
-                const uint64_t start = (it->first + align - 1) & ~(align - 1);
-                const uint64_t end = it->first + it->second;
-                if (start + req.size > end) continue;
-                const uint64_t fo = it->first, fs = it->second;
-                b.free.erase(it);
-                if (start > fo) b.free[fo] = start - fo;
-                if (start + req.size < fo + fs) b.free[start + req.size] = fo + fs - (start + req.size);
+            // best fit: the smallest free ranges that can hold the size, until one does once aligned
+            for (auto it = b.by_size.lower_bound(req.size); it != b.by_size.end(); ++it) {
+                ++st.heap_scans;
+                const uint64_t fo = it->second, fs = it->first;
+                const uint64_t start = (fo + align - 1) & ~(align - 1);
+                if (start + req.size > fo + fs) continue;
+                b.remove(fo, fs);
+                if (start > fo) b.add(fo, start - fo);
+                if (start + req.size < fo + fs) b.add(start + req.size, fo + fs - (start + req.size));
                 a.mem = b.mem, a.offset = start, a.size = req.size, a.block = int(bi);
                 heap.used += req.size;
                 return a;
@@ -793,7 +808,8 @@ Alloc Renderer::heap_alloc(VkMemoryRequirements req) {
             nb.mem = VK_NULL_HANDLE;
         }
         if (!nb.mem) break;
-        nb.free[0] = nb.size;
+        ++st.heap_blocks_new;
+        nb.add(0, nb.size);
         heap.reserved += nb.size;
         heap.blocks.push_back(std::move(nb));
     }
@@ -806,21 +822,25 @@ void Renderer::heap_free(Alloc& a) {
     if (a.block < 0) {
         vkFreeMemory(ctx.device, a.mem, nullptr);
     } else {
-        auto& fr = heap.blocks[size_t(a.block)].free;
+        auto& blk = heap.blocks[size_t(a.block)];
+        auto& fr = blk.free;
         uint64_t off = a.offset, size = a.size;
         auto next = fr.lower_bound(off);
         if (next != fr.end() && next->first == off + size) {  // merge with the following range
-            size += next->second;
-            next = fr.erase(next);
+            const uint64_t no = next->first, ns = next->second;
+            size += ns;
+            blk.remove(no, ns);
         }
+        next = fr.lower_bound(off);
         if (next != fr.begin()) {  // and the preceding one
             auto prev = std::prev(next);
             if (prev->first + prev->second == off) {
-                off = prev->first, size += prev->second;
-                fr.erase(prev);
+                const uint64_t po = prev->first, ps = prev->second;
+                off = po, size += ps;
+                blk.remove(po, ps);
             }
         }
-        fr[off] = size;
+        blk.add(off, size);
     }
     a = Alloc{};
 }
@@ -862,10 +882,14 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
     if (depth) ici.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     else if (!bc) ici.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    const uint64_t t0 = now_ns();
     if (vkCreateImage(ctx.device, &ici, nullptr, &img->image) != VK_SUCCESS) return nullptr;
     VkMemoryRequirements req;
     vkGetImageMemoryRequirements(ctx.device, img->image, &req);
+    const uint64_t t1 = now_ns();
+    st.t_vkimg += t1 - t0;
     img->mem = heap_alloc(req);
+    st.t_heap += now_ns() - t1;
     if (!img->mem.mem) {
         static int logged = 0;
         if (logged++ < 5) log("native renderer: out of GPU memory for a %ux%u image (%.0f MiB in use)", w, h,
@@ -873,7 +897,9 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
         vkDestroyImage(ctx.device, img->image, nullptr);
         return nullptr;
     }
+    const uint64_t tb = now_ns();
     vkBindImageMemory(ctx.device, img->image, img->mem.mem, img->mem.offset);
+    st.t_bind += now_ns() - tb;
     // straight to GENERAL, where every image lives
     VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -890,14 +916,9 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
     di.imageMemoryBarrierCount = 1;
     di.pImageMemoryBarriers = &b;
     vkCmdPipelineBarrier2(cmd, &di);
-    if (!bc) {
-        VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        vci.image = img->image;
-        vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        vci.format = f;
-        vci.subresourceRange = {b.subresourceRange.aspectMask, 0, 1, 0, 1};
-        if (!is3d) vkCreateImageView(ctx.device, &vci, nullptr, &img->attachment);
-    }
+    // the attachment view waits until the image is rendered to: most images are textures, and
+    // making views is slow on some drivers
+    if (!bc && !is3d) img->att_aspect = b.subresourceRange.aspectMask;
     return img;
 }
 
@@ -1037,7 +1058,19 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
 }
 
 VkImageView Renderer::attachment_view(Image* img) {
-    if (!img->is3d) return img->attachment;
+    if (!img->is3d) {
+        if (!img->attachment && img->att_aspect) {
+            VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+            vci.image = img->image;
+            vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            vci.format = img->format;
+            vci.subresourceRange = {img->att_aspect, 0, 1, 0, 1};
+            const uint64_t tv = now_ns();
+            vkCreateImageView(ctx.device, &vci, nullptr, &img->attachment);
+            st.t_view += now_ns() - tv;
+        }
+        return img->attachment;
+    }
     const uint64_t key = 0xA77AC4ull << 32 | img->bind_slice;
     auto it = img->views.find(key);
     if (it != img->views.end()) return it->second;
@@ -1090,7 +1123,14 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
 }
 
 Image* Renderer::upload_texture(const uint32_t* t) {
+    const uint64_t t_in = now_ns();
+    struct LoadTimer {
+        Renderer* r;
+        uint64_t t0;
+        ~LoadTimer() { r->st.t_tex_load += now_ns() - t0; }
+    };
     const uint64_t key = hash_bytes(t, 32);
+    ++st.tex_checks;
     std::unique_ptr<Image> prev;
     auto it = textures.find(key);
     if (it != textures.end()) {
@@ -1099,17 +1139,24 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         img->last_used = submit_no;
         // rewritten textures are noticed at the next submission that uses them: the game may rewrite
         // a texture between two submissions of one frame (the null GPU finishes work at once)
-        if (img->checked == submit_no || !img->src_size || !opt.version ||
-            opt.version(img->src_addr, img->src_size) == img->version) {
-            img->checked = submit_no;
+        if (img->checked == submit_no || !img->src_size || !opt.version) {
+            st.t_tex_hit += now_ns() - t_in;
             return img;
         }
+        const uint64_t v = opt.version(img->src_addr, img->src_size);
+        if (v == img->version) {
+            img->checked = submit_no;
+            st.t_tex_hit += now_ns() - t_in;
+            return img;
+        }
+        if (v == ~0ull) ++st.tex_unwatched;
         // the game rewrote the texture's memory (streaming): copy it again (keeping the old
         // copy until the new one is known to be complete)
         prev = std::move(it->second);
         textures.erase(it);
         ++st.tex_reloads;
     }
+    LoadTimer load_timer{this, t_in};
     const auto ts = fmt::decode_tsharp(t);
     const auto fi = fmt::data_format(ts.dfmt);
     const VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
@@ -1144,10 +1191,14 @@ Image* Renderer::upload_texture(const uint32_t* t) {
             img->torn = 0;
             ++st.tex_inplace;
         } else {
+            const uint64_t tm = now_ns();
             img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
+            st.t_mkimg += now_ns() - tm;
         }
         if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
+            const uint64_t tw = now_ns();
             img->version = opt.watch(ts.base, sf.total_size);
+            st.t_watch += now_ns() - tw;
             if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = submit_no;
         }
         if (img) {
@@ -1173,9 +1224,13 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                     uint64_t o = 0;
                     for (uint32_t lv = 0; lv < sf.levels; ++lv) level_off[lv] = o, o += (sizes[lv] + 15) & ~15ull;
                 }
+                const uint64_t td = now_ns();
                 for (uint32_t lv = 0; lv < sf.levels; ++lv)
                     tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), sb.map + level_off[lv]);
+                const uint64_t tf = now_ns();
+                st.t_detile += tf - td;
                 fill_missing_mips(sb.map, level_off, sizes, ts, fi, sf, is3d);
+                st.t_fill += now_ns() - tf;
                 for (uint32_t lv = 0; lv < sf.levels; ++lv) {
                     VkBufferImageCopy r{};
                     r.bufferOffset = base_off + off;
@@ -1240,10 +1295,13 @@ void Renderer::fill_missing_mips(uint8_t* staging, const std::vector<uint64_t>& 
         for (; i < n; ++i) acc |= p[i];
         return acc == 0;
     };
-    if (zero(staging + off[0], sizes[0])) return;
+    // checked in guest memory (the same bytes, tiled): the staging copy may be write-combined
+    // memory, which is very slow to read
+    const uint8_t* guest = reinterpret_cast<const uint8_t*>(ts.base);
+    if (zero(guest + sf.mips[0].offset, sf.mips[0].size)) return;
     uint32_t first = sf.levels;
     for (uint32_t lv = 1; lv < sf.levels; ++lv)
-        if (zero(staging + off[lv], sizes[lv])) {
+        if (zero(guest + sf.mips[lv].offset, sf.mips[lv].size)) {
             first = lv;
             break;
         }
@@ -1883,7 +1941,7 @@ void Renderer::begin_pass(Image* const* colors, Image* depth) {
     }
     VkRenderingAttachmentInfo da{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     if (depth) {
-        da.imageView = depth->attachment;
+        da.imageView = attachment_view(depth);
         da.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
         da.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         da.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -2362,14 +2420,28 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         log("native renderer: dropped every texture (D1_NG_SNAP_RELOAD)");
     }
     // resources first (copies cannot run inside a render pass): targets, then textures
+    // (each distinct target set and T# once per submission: thousands of draws share a few)
+    const uint64_t t_tgt0 = now_ns();
+    const Draw* prev_d = nullptr;
     for (Draw* d : draws) {
+        if (prev_d && std::memcmp(prev_d->color, d->color, sizeof d->color) == 0 &&
+            std::memcmp(prev_d->depth, d->depth, sizeof d->depth) == 0)
+            continue;
+        prev_d = d;
         for (int i = 0; i < 5; ++i) color_target(d->color[i], false);
         depth_target(d->depth, false);
     }
+    st.t_tgt += now_ns() - t_tgt0;
+    struct Seen { uint64_t key, sub; };
+    static std::vector<Seen> seen(1u << 13);
     for (Draw* d : draws)
         for (int s = 0; s < 2; ++s)
             for (int i = 0; i < 16; ++i)
                 if (const uint32_t* t = d->T(s, i)) {
+                    const uint64_t k = hash_bytes(t, 32);
+                    Seen& e = seen[k & (seen.size() - 1)];
+                    if (e.key == k && e.sub == submit_no) continue;
+                    e = {k, submit_no};
                     const uint64_t b = fmt::decode_tsharp(t).base;
                     const bool is_target = target_bases.count(b) != 0;
                     if (is_target) tsharp_bases.insert(b);  // (only render target addresses matter there)
@@ -2383,7 +2455,17 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     }
     end_pass();
     queue_readbacks();
+    // The game reads those results as soon as it sees the work done, which for it is at once
+    // (the null GPU): visibility and the shadow-cascade depth range from an older frame make
+    // objects pop in and out as the camera turns. Wait for them here, so they are in guest memory
+    // before the game goes on. D1_NG_READBACK_SYNC=0: copy them when the work completes anyway.
+    static const bool rb_sync = [] {
+        const char* v = std::getenv("D1_NG_READBACK_SYNC");
+        return !v || std::atoi(v) != 0;
+    }();
+    const bool has_rb = cur != UINT32_MAX && !subs[cur].readbacks.empty();
     submit();
+    if (rb_sync && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
 }
 
 // False when the CPU has written a small render target's memory since the GPU rendered it:
@@ -2953,6 +3035,19 @@ void print_stats() {
             "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,
             double(s.t_pipe) / f / 1e6, double(s.t_geo) / f / 1e6, double(s.t_desc) / f / 1e6, double(s.t_cmd) / f / 1e6,
             double(s.t_submit) / f / 1e6, double(s.t_wait) / f / 1e6);
+    if (const double f = double(s.frames - s.t_frames); f > 0)
+        log("native renderer: pre-pass per frame: targets %.2f ms, texture checks %.2f ms (%.0f, %.0f unwatched), texture loads %.2f ms "
+            "(detile %.2f, mip check %.2f, protect %.2f, new images %.2f)",
+            double(s.t_tgt) / f / 1e6, double(s.t_tex_hit) / f / 1e6, double(s.tex_checks) / f, double(s.tex_unwatched) / f,
+            double(s.t_tex_load) / f / 1e6, double(s.t_detile) / f / 1e6, double(s.t_fill) / f / 1e6,
+            double(s.t_watch) / f / 1e6, double(s.t_mkimg) / f / 1e6);
+    if (const double f = double(s.frames - s.t_frames); f > 0)
+        log("native renderer: new images per frame: vkCreateImage %.2f ms, memory %.2f ms (%.0f free ranges scanned, %llu new blocks), bind %.2f ms, view %.2f ms",
+            double(s.t_vkimg) / f / 1e6, double(s.t_heap) / f / 1e6, double(s.heap_scans) / f, (unsigned long long)s.heap_blocks_new, double(s.t_bind) / f / 1e6, double(s.t_view) / f / 1e6);
+    s.t_bind = s.t_view = 0;
+    s.t_vkimg = s.t_heap = s.heap_scans = s.heap_blocks_new = 0;
+    s.t_detile = s.t_fill = s.t_watch = s.t_mkimg = 0;
+    s.t_tgt = s.t_tex_hit = s.t_tex_load = s.tex_checks = s.tex_unwatched = 0;
     s.t_pre = s.t_pipe = s.t_geo = s.t_desc = s.t_cmd = s.t_submit = s.t_wait = 0, s.t_frames = s.frames;
     std::string why;
     for (auto& [k, v] : s.skip) why += " " + k + "=" + std::to_string(v);
