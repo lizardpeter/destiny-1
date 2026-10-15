@@ -35,11 +35,12 @@
     X(vkCreateComputePipelines) X(vkDestroyPipeline) X(vkCreatePipelineCache) X(vkGetPipelineCacheData) \
     X(vkDestroyPipelineCache) \
     X(vkCmdPipelineBarrier2) X(vkCmdBeginRendering) X(vkCmdEndRendering) X(vkCmdBindPipeline) \
-    X(vkCmdBindVertexBuffers) X(vkCmdBindIndexBuffer) X(vkCmdPushDescriptorSet) X(vkCmdDraw) \
+    X(vkCmdBindVertexBuffers) X(vkCmdBindIndexBuffer) X(vkCmdDraw) \
     X(vkCmdDrawIndexed) X(vkCmdDispatch) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdCopyBuffer) \
     X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) X(vkCmdBlitImage) X(vkCmdClearColorImage) \
     X(vkCmdClearDepthStencilImage) X(vkCmdSetStencilReference) X(vkCmdPushConstants) X(vkCmdClearAttachments) \
-    X(vkCmdSetDepthBias) X(vkCmdSetStencilCompareMask) X(vkCmdSetStencilWriteMask) X(vkCmdCopyImage) X(vkCmdBindVertexBuffers2) \
+    X(vkCmdSetDepthBias) X(vkCreateDescriptorPool) X(vkDestroyDescriptorPool) X(vkResetDescriptorPool) \
+    X(vkAllocateDescriptorSets) X(vkUpdateDescriptorSets) X(vkCmdBindDescriptorSets) X(vkCmdSetStencilCompareMask) X(vkCmdSetStencilWriteMask) X(vkCmdCopyImage) X(vkCmdBindVertexBuffers2) \
     X(vkCreateSwapchainKHR) X(vkDestroySwapchainKHR) X(vkGetSwapchainImagesKHR) X(vkAcquireNextImageKHR) \
     X(vkQueuePresentKHR)
 

@@ -126,6 +126,17 @@ VkFormat vertex_format(uint32_t d, uint32_t n) {
     }
 }
 
+bool is_sint_format(VkFormat f) {
+    switch (f) {
+    case VK_FORMAT_R8_SINT: case VK_FORMAT_R16_SINT: case VK_FORMAT_R32_SINT: case VK_FORMAT_R8G8_SINT:
+    case VK_FORMAT_R16G16_SINT: case VK_FORMAT_R32G32_SINT: case VK_FORMAT_R8G8B8A8_SINT:
+    case VK_FORMAT_R16G16B16A16_SINT: case VK_FORMAT_R32G32B32A32_SINT: case VK_FORMAT_A2B10G10R10_SINT_PACK32:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool is_int_format(VkFormat f) {
     switch (f) {
     case VK_FORMAT_R8_UINT: case VK_FORMAT_R8_SINT: case VK_FORMAT_R16_UINT: case VK_FORMAT_R16_SINT:
@@ -303,6 +314,8 @@ struct Sub {
     std::vector<Buffer> staging;
     std::vector<std::unique_ptr<Image>> dead;
     std::vector<std::array<uint64_t, 3>> dead_geo;  // (block, offset, size) to free
+    std::vector<VkDescriptorPool> pools;            // descriptor sets of this submission's draws
+    size_t pool = 0;                                // the pool being allocated from
 };
 
 // Copies of guest vertex / index buffers kept on the GPU while the game does not write them.
@@ -406,6 +419,7 @@ struct Renderer {
         submit();
         wait_idle();
     }
+    VkDescriptorSet alloc_set(VkDescriptorSetLayout layout);
     void barrier();
     Image* color_target(const uint32_t* c);
     VkImageView attachment_view(Image* img);
@@ -414,7 +428,8 @@ struct Renderer {
     Image* upload_texture(const uint32_t* t);
     void evict_textures();
     VkSampler sampler(const uint32_t* s);
-    Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims);
+    Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in = 0,
+                   uint32_t sint_in = 0);
     Pipeline* pipeline(const Draw& dr, Image* const* colors, Image* depth);
     void begin_pass(Image* const* colors, Image* depth);
     void end_pass();
@@ -544,6 +559,8 @@ void Renderer::begin_record() {
     idle_subs.pop_back();
     Sub& sb = subs[cur];
     sb.ring_begin = ring_head;
+    for (VkDescriptorPool p : sb.pools) vkResetDescriptorPool(ctx.device, p, 0);
+    sb.pool = 0;
     vkResetFences(ctx.device, 1, &sb.fence);
     vkResetCommandBuffer(sb.cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -580,6 +597,32 @@ void Renderer::submit(const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmit
     inflight.push_back(cur);
     cur = UINT32_MAX;
     cmd = VK_NULL_HANDLE;
+}
+
+// Descriptor sets come from pools owned by the recording submission, reset when it is reused.
+VkDescriptorSet Renderer::alloc_set(VkDescriptorSetLayout layout) {
+    Sub& sb = subs[cur];
+    for (;;) {
+        if (sb.pool == sb.pools.size()) {
+            const VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 16384},
+                                                  {VK_DESCRIPTOR_TYPE_SAMPLER, 16384},
+                                                  {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8192}};
+            VkDescriptorPoolCreateInfo pci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            pci.maxSets = 4096;
+            pci.poolSizeCount = 3;
+            pci.pPoolSizes = sizes;
+            VkDescriptorPool p = VK_NULL_HANDLE;
+            if (vkCreateDescriptorPool(ctx.device, &pci, nullptr, &p) != VK_SUCCESS) return VK_NULL_HANDLE;
+            sb.pools.push_back(p);
+        }
+        VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        ai.descriptorPool = sb.pools[sb.pool];
+        ai.descriptorSetCount = 1;
+        ai.pSetLayouts = &layout;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        if (vkAllocateDescriptorSets(ctx.device, &ai, &set) == VK_SUCCESS) return set;
+        ++sb.pool;  // full: the next pool
+    }
 }
 
 void Renderer::retire_one() {
@@ -1250,9 +1293,11 @@ VkSampler Renderer::sampler(const uint32_t* s) {
     return smp;
 }
 
-Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims) {
+Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in,
+                         uint32_t sint_in) {
     const uint8_t* obj = vs ? dr.vs : dr.ps;
-    uint64_t key = mix(mix(uint64_t(obj), vs), hash_bytes(dims, 16));
+    uint64_t key = mix(mix(uint64_t(obj), vs), hash_bytes(dims, 16 * sizeof(gcn::TexDim)));
+    key = mix(mix(key, hash_bytes(kinds, 16)), uint64_t(uint_in) | uint64_t(sint_in) << 32);
     if (!vs) key = mix(key, uint64_t(dr.vs));  // the input mapping depends on the VS
     auto it = shaders.find(key);
     if (it != shaders.end()) return it->second.get();
@@ -1262,7 +1307,8 @@ Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims) {
     d.stage = vs ? gcn::Stage::Vertex : gcn::Stage::Pixel;
     d.code = g.code, d.code_size = g.code_size, d.slots = g.slots, d.user_sgprs = g.user_sgprs;
     d.ps_input_addr = g.ps_input_addr, d.fetch = g.fetch, d.fetch_size = g.fetch_size;
-    for (int i = 0; i < 16; ++i) d.tex_dims[i] = dims[i];
+    for (int i = 0; i < 16; ++i) d.tex_dims[i] = dims[i], d.tex_kind[i] = kinds[i];
+    d.uint_inputs = uint_in, d.sint_inputs = sint_in;
     if (!vs) {
         const GnmShader v = parse_shader(dr.vs, true);
         d.remap_inputs = true;
@@ -1319,8 +1365,30 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
                 if (auto rt = target_by_base.find(fmt::decode_tsharp(dr.T(s, i)).base); rt != target_by_base.end())
                     dims[s][i] = rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
         }
-    Shader* vs = shader(dr, true, dims[0]);
-    Shader* ps = dr.ps ? shader(dr, false, dims[1]) : nullptr;  // no pixel shader: depth-only
+    // integer textures are sampled with integer types
+    uint8_t kinds[2][16] = {};
+    for (int s = 0; s < 2; ++s)
+        for (int i = 0; i < 16; ++i)
+            if (const uint32_t* t = dr.T(s, i)) {
+                const auto ts = fmt::decode_tsharp(t);
+                if (auto rt = target_by_base.find(ts.base); rt != target_by_base.end()) {
+                    const VkFormat f = rt->second->format;
+                    kinds[s][i] = rt->second->depth || !is_int_format(f) ? 0 : is_sint_format(f) ? 2 : 1;
+                } else {
+                    kinds[s][i] = ts.nfmt == 4 ? 1 : ts.nfmt == 5 ? 2 : 0;
+                }
+            }
+    Shader* vs = shader(dr, true, dims[0], kinds[0]);
+    // vertex inputs whose format comes from the V#: integer formats need integer inputs
+    uint32_t uin = 0, sin = 0;
+    for (const auto& a : vs->res.attribs)
+        if (a.dfmt == 0xFF && a.location < 32) {
+            const uint32_t nf = dr.vb[a.vb_slot & 15][3] >> 12 & 7;
+            if (nf == 4) uin |= 1u << a.location;
+            if (nf == 5) sin |= 1u << a.location;
+        }
+    if (uin | sin) vs = shader(dr, true, dims[0], kinds[0], uin, sin);
+    Shader* ps = dr.ps ? shader(dr, false, dims[1], kinds[1]) : nullptr;  // no pixel shader: depth-only
     if (!vs->ok || (ps && !ps->ok)) return nullptr;
     VkPrimitiveTopology topo;
     if (!topology_of(dr.prim, topo)) return nullptr;
@@ -1354,7 +1422,6 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
             b.push_back(lb);
         }
         VkDescriptorSetLayoutCreateInfo dci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        dci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
         dci.bindingCount = uint32_t(b.size());
         dci.pBindings = b.data();
         vkCreateDescriptorSetLayout(ctx.device, &dci, nullptr, &p->sets[s]);
@@ -1781,7 +1848,13 @@ void Renderer::draw(const Draw& dr) {
     }
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
     for (int s = 0; s < 2; ++s)
-        if (nw[s]) vkCmdPushDescriptorSet(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, uint32_t(s), nw[s], writes[s]);
+        if (nw[s]) {
+            VkDescriptorSet set = alloc_set(p->sets[s]);
+            if (!set) return skip("descriptor pool");
+            for (uint32_t k = 0; k < nw[s]; ++k) writes[s][k].dstSet = set;
+            vkUpdateDescriptorSets(ctx.device, nw[s], writes[s], 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, uint32_t(s), 1, &set, 0, nullptr);
+        }
     for (uint32_t slot = 0; slot < 16; ++slot)
         if (vmask >> slot & 1) vkCmdBindVertexBuffers2(cmd, slot, 1, &vbufs[slot], &voffs[slot], &vsizes[slot], nullptr);
     // viewport (GCN y points down the screen: flip with a negative height)

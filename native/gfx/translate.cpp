@@ -269,7 +269,8 @@ Id Translator::texture_var(uint8_t api) {
     if (!v) {
         const TexDim td = api < 16 ? d_.tex_dims[api] : TexDim::Tex2D;
         const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;
-        const Id img = m_.t_image(tf_, dim, false, td == TexDim::Tex2DArray, false, 1);
+        const uint8_t tk = api < 16 ? d_.tex_kind[api] : 0;
+        const Id img = m_.t_image(tk == 0 ? tf_ : tk == 1 ? tu_ : ti_, dim, false, td == TexDim::Tex2DArray, false, 1);
         v = global(m_.t_ptr(SCUniformConstant, img), SCUniformConstant);
         m_.decorate(v, DecDescriptorSet, {d_.stage == Stage::Vertex ? 0u : 1u});
         m_.decorate(v, DecBinding, {api});
@@ -372,11 +373,15 @@ void Translator::emit_fetch_call() {
             if (in.enc == Enc::MUBUF) a.dfmt = a.nfmt = 0xFF;  // format comes from the V# at draw time
             r_.attribs.push_back(a);
             // integer formats stay integers; everything else arrives as float
-            const bool is_int = in.nfmt == 4 || in.nfmt == 5;  // UINT / SINT
-            const Id vt = is_int ? tv4u_ : tv4f_;
+            // (MUBUF: the format, and so the type, comes from the V# at draw time)
+            const bool mubuf = in.enc == Enc::MUBUF;
+            const bool is_sint = mubuf ? (d_.sint_inputs >> a.location & 1) != 0 : in.nfmt == 5;
+            const bool is_int = is_sint || (mubuf ? (d_.uint_inputs >> a.location & 1) != 0 : in.nfmt == 4);
+            const Id vt = is_sint ? m_.t_vec(ti_, 4) : is_int ? tv4u_ : tv4f_;
             const Id var = global(m_.t_ptr(SCInput, vt), SCInput);
             m_.decorate(var, DecLocation, {a.location});
-            const Id val = ld(var, vt);
+            Id val = ld(var, vt);
+            if (is_sint) val = m_.op_r(OpBitcast, tv4u_, {val});
             for (uint32_t c = 0; c < a.components; ++c) {
                 Id comp = m_.op_r(OpCompositeExtract, is_int ? tu_ : tf_, {val, c});
                 st(vreg(a.vgpr + c), is_int ? comp : f2u(comp));
@@ -847,7 +852,11 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     const TexDim td = tex.api < 16 ? d_.tex_dims[tex.api] : TexDim::Tex2D;
     const uint32_t ncoord = td == TexDim::Tex2D ? 2 : 3;  // 2D array / 3D / cube: 3 address VGPRs
     const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;
-    const Id img_t = m_.t_image(tf_, dim, false, td == TexDim::Tex2DArray, false, 1);
+    // integer textures (UINT / SINT T#s) are sampled as integers: the VGPRs get the raw values
+    const uint8_t tk = tex.api < 16 ? d_.tex_kind[tex.api] : 0;
+    const Id sty = tk == 0 ? tf_ : tk == 1 ? tu_ : ti_;
+    const Id rt = tk == 0 ? tv4f_ : m_.t_vec(sty, 4);
+    const Id img_t = m_.t_image(sty, dim, false, td == TexDim::Tex2DArray, false, 1);
     const Id image = ld(texture_var(tex.api), img_t);
     uint32_t a = in.vaddr;
     auto af = [&](uint32_t k) { return u2f(ld(vreg(k), tu_)); };
@@ -898,7 +907,7 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
         for (uint32_t k = 0; k < ncoord; ++k) c[k] = u2i(au(a++));
         const Id coord = ncoord == 2 ? m_.op_r(OpCompositeConstruct, tv2i_, {c[0], c[1]}) : m_.op_r(OpCompositeConstruct, tv3i_, {c[0], c[1], c[2]});
         const Id lod = in.op == Op::IMAGE_LOAD_MIP ? u2i(au(a++)) : m_.c_i32(0);
-        const Id v = m_.op_rv(OpImageFetch, tv4f_, {image, coord, 2 /*Lod*/, lod});
+        const Id v = m_.op_rv(OpImageFetch, rt, {image, coord, 2 /*Lod*/, lod});
         write_result(v, false);
         return;
     }
@@ -929,15 +938,15 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     Id v = 0;
     switch (in.op) {
     case Op::IMAGE_SAMPLE:
-        v = d_.stage == Stage::Pixel ? m_.op_r(OpImageSampleImplicitLod, tv4f_, {si, coord})
-                                     : m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 2, m_.c_f32(0.0f)});
+        v = d_.stage == Stage::Pixel ? m_.op_r(OpImageSampleImplicitLod, rt, {si, coord})
+                                     : m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 2, m_.c_f32(0.0f)});
         break;
     case Op::IMAGE_SAMPLE_B:
-        v = d_.stage == Stage::Pixel ? m_.op_rv(OpImageSampleImplicitLod, tv4f_, {si, coord, 1 /*Bias*/, bias})
-                                     : m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 2, m_.c_f32(0.0f)});
+        v = d_.stage == Stage::Pixel ? m_.op_rv(OpImageSampleImplicitLod, rt, {si, coord, 1 /*Bias*/, bias})
+                                     : m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 2, m_.c_f32(0.0f)});
         break;
-    case Op::IMAGE_SAMPLE_L: v = m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 2, af(a)}); break;
-    case Op::IMAGE_SAMPLE_LZ: v = m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 2, m_.c_f32(0.0f)}); break;
+    case Op::IMAGE_SAMPLE_L: v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 2, af(a)}); break;
+    case Op::IMAGE_SAMPLE_LZ: v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 2, m_.c_f32(0.0f)}); break;
     case Op::IMAGE_SAMPLE_LZ_O: {
         // Vulkan allows register offsets only on gathers: apply the texel offset to the
         // coordinates (exact at LOD 0)
@@ -951,10 +960,10 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
                     m_.op_r(OpFAdd, tf_, {c[1], m_.op_r(OpFDiv, tf_, {oy, sy})}), ncoord > 2 ? c[2] : 0};
         const Id oc = ncoord == 2 ? m_.op_r(OpCompositeConstruct, tv2f_, {cc[0], cc[1]})
                                   : m_.op_r(OpCompositeConstruct, tv3f_, {cc[0], cc[1], cc[2]});
-        v = m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, oc, 2, m_.c_f32(0.0f)});
+        v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, oc, 2, m_.c_f32(0.0f)});
         break;
     }
-    case Op::IMAGE_SAMPLE_D: v = m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 4 /*Grad*/, ddx, ddy}); break;
+    case Op::IMAGE_SAMPLE_D: v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 4 /*Grad*/, ddx, ddy}); break;
     case Op::IMAGE_SAMPLE_C: case Op::IMAGE_SAMPLE_C_LZ: {
         // depth comparison: sampled through a non-depth image; compare in the shader
         const Id s = m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 2, m_.c_f32(0.0f)});
@@ -967,8 +976,8 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     case Op::IMAGE_GATHER4_LZ: case Op::IMAGE_GATHER4_LZ_O: {
         uint32_t comp = 0;
         while (comp < 3 && !(in.dmask >> comp & 1)) ++comp;
-        if (offset) v = m_.op_rv(OpImageGather, tv4f_, {si, coord, m_.c_u32(comp), 0x10, offset});
-        else v = m_.op_r(OpImageGather, tv4f_, {si, coord, m_.c_u32(comp)});
+        if (offset) v = m_.op_rv(OpImageGather, rt, {si, coord, m_.c_u32(comp), 0x10, offset});
+        else v = m_.op_r(OpImageGather, rt, {si, coord, m_.c_u32(comp)});
         break;
     }
     case Op::IMAGE_GET_LOD: {
@@ -981,7 +990,9 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
         problem(std::string("image instruction ") + op_name(in.op));
         return;
     }
-    write_result(v, false);
+    const bool int_result = tk && in.op != Op::IMAGE_SAMPLE_C && in.op != Op::IMAGE_SAMPLE_C_LZ && in.op != Op::IMAGE_GET_LOD;
+    if (int_result) write_result(tk == 2 ? m_.op_r(OpBitcast, tv4u_, {v}) : v, true);
+    else write_result(v, false);
 }
 
 // Typed / untyped buffer loads outside the fetch shader (skinning matrices and the like): the

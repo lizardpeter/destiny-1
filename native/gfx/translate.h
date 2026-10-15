@@ -45,6 +45,9 @@ struct ShaderDesc {
     const uint8_t* fetch = nullptr;  // vertex: fetch shader
     uint32_t fetch_size = 0;
     TexDim tex_dims[16] = {};        // per texture API slot (from the bound T#s)
+    uint8_t tex_kind[16] = {};       // per texture API slot: 0 float, 1 uint, 2 sint (T# number format)
+    // vertex: inputs whose format comes from the V# at draw time and is an integer format
+    uint32_t uint_inputs = 0, sint_inputs = 0;  // bit per input location
     // pixel: PS attribute index -> vertex parameter location (SPI_PS_INPUT_CNTL OFFSET, from
     // the Gnm semantic tables of the PS and the VS it runs with); 0xFF = not exported (reads 0)
     bool remap_inputs = false;

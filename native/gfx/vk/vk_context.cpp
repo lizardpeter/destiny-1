@@ -134,7 +134,6 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     else if (!f13.shaderDemoteToHelperInvocation) missing = "shaderDemoteToHelperInvocation";
     else if (!f13.maintenance4) missing = "maintenance4";
     else if (!f12.timelineSemaphore) missing = "timelineSemaphore";
-    else if (!f14.pushDescriptor) missing = "pushDescriptor";
     else if (!f14.maintenance5) missing = "maintenance5";
     else if (!f.features.shaderImageGatherExtended) missing = "shaderImageGatherExtended";
     if (missing) return fail("%s lacks the Vulkan feature %s", ctx.name, missing);
@@ -142,7 +141,6 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
 
     // enable exactly what we use
     VkPhysicalDeviceVulkan14Features e14{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES};
-    e14.pushDescriptor = VK_TRUE;
     e14.maintenance5 = VK_TRUE;
     e14.maintenance6 = f14.maintenance6;
     e14.hostImageCopy = f14.hostImageCopy;
@@ -174,9 +172,7 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     std::vector<VkExtensionProperties> exts(n);
     vkEnumerateDeviceExtensionProperties(pick, nullptr, &n, exts.data());
     std::vector<const char*> dev_exts;
-    if (has_extension(exts, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) dev_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    // promoted to 1.4 core, but some layers (Wine's) only resolve the extension's entry points
-    if (has_extension(exts, "VK_KHR_push_descriptor")) dev_exts.push_back("VK_KHR_push_descriptor");
+    if (num_inst_exts && has_extension(exts, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) dev_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     if (has_extension(exts, VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME)) {
         dev_exts.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
         ctx.external_memory_host = true;
