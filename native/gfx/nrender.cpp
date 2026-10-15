@@ -311,6 +311,7 @@ struct Stats {
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
     uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
+    uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     std::unordered_map<std::string, uint64_t> skip;
 };
 
@@ -344,7 +345,7 @@ struct Sub {
 struct GeoEntry {
     int block = -1;
     uint64_t off = 0, size = 0;
-    uint64_t version = ~0ull, checked = 0, last_used = 0, uploaded = 0, volatile_until = 0;
+    uint64_t version = ~0ull, checked = 0, checked_frame = 0, last_used = 0, uploaded = 0, volatile_until = 0;
     uint32_t misses = 0;
     uint32_t vfirst = 0, vlast = 0;  // index buffers: the vertex range they reference
     bool valid = false;
@@ -443,9 +444,13 @@ struct Renderer {
     }
     VkDescriptorSet alloc_set(VkDescriptorSetLayout layout);
     void barrier();
-    Image* color_target(const uint32_t* c);
+    // bind = false (the pre-pass): create the image, but leave which image an address names
+    // to the draws themselves, in order (a draw that reads last frame's contents of an
+    // address must not see an image a later draw in this submission renders to)
+    Image* color_target(const uint32_t* c, bool bind = true);
     VkImageView attachment_view(Image* img);
-    Image* depth_target(const uint32_t* d);
+    Image* depth_target(const uint32_t* d, bool bind = true);
+    std::unordered_set<uint64_t> target_bases;  // every address ever rendered to
     VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
     Image* upload_texture(const uint32_t* t);
     void evict_textures();
@@ -511,7 +516,7 @@ bool Renderer::init(const Options& o) {
     pci.queueFamilyIndex = ctx.queue_family;
     vkCreateCommandPool(ctx.device, &pci, nullptr, &pool);
     // command buffers: enough for a few frames of several submissions each
-    subs.resize(48);
+    subs.resize(256);  // ~30 submissions a frame, a few frames in flight
     for (uint32_t i = 0; i < subs.size(); ++i) {
         VkCommandBufferAllocateInfo cai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
         cai.commandPool = pool;
@@ -607,7 +612,9 @@ void Renderer::submit(const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmit
     si.pWaitSemaphoreInfos = wait;
     si.signalSemaphoreInfoCount = signal ? 1 : 0;
     si.pSignalSemaphoreInfos = signal;
+    const uint64_t ts0 = now_ns();
     const VkResult r = vkQueueSubmit2(ctx.queue, 1, &si, sb.fence);
+    st.t_submit += now_ns() - ts0;
     if (r != VK_SUCCESS) {
         static int logged = 0;
         if (logged++ < 5) log("native renderer: vkQueueSubmit2 failed (%d)%s", int(r),
@@ -654,7 +661,9 @@ void Renderer::retire_one() {
     const uint32_t i = inflight.front();
     inflight.pop_front();
     Sub& sb = subs[i];
+    const uint64_t tw = now_ns();
     vkWaitForFences(ctx.device, 1, &sb.fence, VK_TRUE, UINT64_MAX);
+    st.t_wait += now_ns() - tw;
     for (auto& b : sb.staging) free_buffer(b);
     sb.staging.clear();
     for (auto& img : sb.dead) destroy_image(img.get());
@@ -934,7 +943,7 @@ void Renderer::barrier() {
 }
 
 // Gnm RenderTarget: CB_COLOR_BASE, PITCH, SLICE, VIEW, INFO, ATTRIB, packed size, CMASK...
-Image* Renderer::color_target(const uint32_t* c) {
+Image* Renderer::color_target(const uint32_t* c, bool bind) {
     const uint64_t base = uint64_t(c[0]) << 8;
     const uint32_t format = (c[4] >> 2) & 0x1F, number = (c[4] >> 8) & 7, swap = (c[4] >> 11) & 3;
     if (!base || !format) return nullptr;
@@ -966,7 +975,8 @@ Image* Renderer::color_target(const uint32_t* c) {
         targets[key] = std::move(n);
         ++st.targets;
     }
-    target_by_base[base] = img;
+    target_bases.insert(base);
+    if (bind || !target_by_base.count(base)) target_by_base[base] = img;
     img->last_used = submit_no;
     img->bind_slice = std::min(slice, img->d - 1);
     return img;
@@ -991,7 +1001,7 @@ VkImageView Renderer::attachment_view(Image* img) {
 // Gnm DepthRenderTarget: Z_INFO, STENCIL_INFO, Z_READ_BASE, STENCIL_READ_BASE, Z_WRITE_BASE,
 // STENCIL_WRITE_BASE, DEPTH_SIZE, DEPTH_SLICE, DEPTH_VIEW, HTILE_DATA_BASE, HTILE_SURFACE,
 // DEPTH_INFO, packed size
-Image* Renderer::depth_target(const uint32_t* d) {
+Image* Renderer::depth_target(const uint32_t* d, bool bind) {
     const uint32_t zfmt = d[0] & 3, sfmt = d[1] & 1;
     const uint64_t base = uint64_t(d[4]) << 8;
     if (!zfmt || !base) return nullptr;
@@ -1015,8 +1025,10 @@ Image* Renderer::depth_target(const uint32_t* d) {
         targets[key] = std::move(n);
         ++st.targets;
     }
-    target_by_base[base] = img;
-    target_by_base[uint64_t(d[2]) << 8] = img;  // Z_READ_BASE
+    const uint64_t read_base = uint64_t(d[2]) << 8;  // Z_READ_BASE
+    target_bases.insert(base), target_bases.insert(read_base);
+    if (bind || !target_by_base.count(base)) target_by_base[base] = img;
+    if (bind || !target_by_base.count(read_base)) target_by_base[read_base] = img;
     img->last_used = submit_no;
     return img;
 }
@@ -1191,9 +1203,10 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
     e.last_used = submit_no;
     if (e.volatile_until > submit_no) return nullptr;
     if (e.valid) {
-        if (e.checked == submit_no) return ++st.geo_hits, &e;
+        // buffers that never changed are checked once per frame, the others every submission
+        if (e.checked == submit_no || (e.misses == 0 && e.checked_frame == st.frames + 1)) return ++st.geo_hits, &e;
         if (opt.version(addr, size) == e.version) {
-            e.checked = submit_no;
+            e.checked = submit_no, e.checked_frame = st.frames + 1;
             return ++st.geo_hits, &e;
         }
         // written since the copy: drop it; rewritten soon after every upload = dynamic data
@@ -1227,7 +1240,7 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
         if (lo > hi) lo = hi = 0;
         e.vfirst = lo, e.vlast = hi;
     }
-    e.version = ver, e.checked = submit_no, e.uploaded = submit_no, e.valid = true;
+    e.version = ver, e.checked = submit_no, e.checked_frame = st.frames + 1, e.uploaded = submit_no, e.valid = true;
     return &e;
 }
 
@@ -1965,13 +1978,13 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     const uint64_t tp = now_ns();
     // resources first (copies cannot run inside a render pass): targets, then textures
     for (Draw* d : draws) {
-        for (int i = 0; i < 5; ++i) color_target(d->color[i]);
-        depth_target(d->depth);
+        for (int i = 0; i < 5; ++i) color_target(d->color[i], false);
+        depth_target(d->depth, false);
     }
     for (Draw* d : draws)
         for (int s = 0; s < 2; ++s)
             for (int i = 0; i < 16; ++i)
-                if (const uint32_t* t = d->T(s, i); t && !target_by_base.count(fmt::decode_tsharp(t).base))
+                if (const uint32_t* t = d->T(s, i); t && !target_bases.count(fmt::decode_tsharp(t).base))
                     upload_texture(t);
     barrier();
     st.t_pre += now_ns() - tp;
@@ -2444,9 +2457,10 @@ void print_stats() {
         double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
-            "commands %.2f ms", double(s.t_pre) / f / 1e6, double(s.t_pipe) / f / 1e6, double(s.t_geo) / f / 1e6,
-            double(s.t_desc) / f / 1e6, double(s.t_cmd) / f / 1e6);
-    s.t_pre = s.t_pipe = s.t_geo = s.t_desc = s.t_cmd = 0, s.t_frames = s.frames;
+            "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,
+            double(s.t_pipe) / f / 1e6, double(s.t_geo) / f / 1e6, double(s.t_desc) / f / 1e6, double(s.t_cmd) / f / 1e6,
+            double(s.t_submit) / f / 1e6, double(s.t_wait) / f / 1e6);
+    s.t_pre = s.t_pipe = s.t_geo = s.t_desc = s.t_cmd = s.t_submit = s.t_wait = 0, s.t_frames = s.frames;
     std::string why;
     for (auto& [k, v] : s.skip) why += " " + k + "=" + std::to_string(v);
     if (!why.empty()) log("native renderer: skipped:%s", why.c_str());

@@ -834,7 +834,7 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
             frontend::set_status(title);
 #endif
             static int report = 0;
-            if (++report % (getenv("D1_NG_STATS") ? 5 : 60) == 1) {
+            if (++report % (getenv("D1_NG_STATS") ? 5 : 15) == 1) {
                 const double frames = double(std::max<uint64_t>(1, n - n0));
                 log("native gfx: %.1f fps | per frame: record %.1f ms, present+wait %.1f ms", fps,
                     double(nr::g_exec_ns) / 1e6 / frames, double(nr::g_flip_ns) / 1e6 / frames);
