@@ -314,7 +314,7 @@ struct Stats {
     uint64_t frames = 0, submits = 0, draws = 0, clears = 0, skipped = 0, pipelines = 0, textures = 0, targets = 0,
              shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     uint64_t bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, bytes_tex = 0;  // copied into the ring
-    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0;                 // geometry cache uploads
+    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0, tex_inplace = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
     uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
@@ -1095,6 +1095,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
     const auto ts = fmt::decode_tsharp(t);
     const auto fi = fmt::data_format(ts.dfmt);
     const VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
+    tsharp_bases.insert(ts.base);  // memory read as a texture: never a readback target
     Image* out = nullptr;
     if (f != VK_FORMAT_UNDEFINED && fi.bpp && fi.bpp != 96 && ts.base && ts.width <= 16384 && ts.height <= 16384) {
         tiling::Surface sf;
@@ -1115,7 +1116,18 @@ Image* Renderer::upload_texture(const uint32_t* t) {
             textures[key] = nullptr;
             return nullptr;
         }
-        auto img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
+        // a rewrite of the same texture (per-frame tables, streaming into the same slot): copy
+        // into the existing image - earlier submissions read it before this one's copies run
+        // (the barrier at the start of every command buffer) - instead of making a new one
+        std::unique_ptr<Image> img;
+        if (prev && prev->format == f && prev->w == ts.width && prev->h == ts.height && prev->d == sf.depth &&
+            prev->layers == sf.layers && prev->levels == sf.levels && prev->cube == cube && prev->is3d == is3d) {
+            img = std::move(prev);
+            img->torn = 0;
+            ++st.tex_inplace;
+        } else {
+            img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
+        }
         if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
             img->version = opt.watch(ts.base, sf.total_size);
             if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = st.frames + 1;
@@ -2310,8 +2322,9 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
             for (int i = 0; i < 16; ++i)
                 if (const uint32_t* t = d->T(s, i)) {
                     const uint64_t b = fmt::decode_tsharp(t).base;
-                    tsharp_bases.insert(b);
-                    if (!target_bases.count(b) || !target_current(b)) upload_texture(t);
+                    const bool is_target = target_bases.count(b) != 0;
+                    if (is_target) tsharp_bases.insert(b);  // (only render target addresses matter there)
+                    if (!is_target || !target_current(b)) upload_texture(t);
                 }
     barrier();
     st.t_pre += now_ns() - tp;
@@ -2870,10 +2883,10 @@ void print_stats() {
     const double fr = double(std::max<uint64_t>(1, s.frames));
     log("native renderer: copied per frame (average): vertices %.1f MiB, indices %.1f MiB, constants %.1f MiB, "
         "textures %.1f MiB | geometry cache: %.1f MiB uploaded per frame, %.0f hits per frame, %.0f MiB held | "
-        "%llu texture reloads (%llu torn), %llu torn geometry copies, %llu target readbacks, %llu targets rewritten by the CPU, %llu textures with rebuilt mips", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
+        "%llu texture reloads (%llu torn, %llu in place), %llu torn geometry copies, %llu target readbacks, %llu targets rewritten by the CPU, %llu textures with rebuilt mips", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
         double(s.bytes_cb) / fr / 1048576.0, double(s.bytes_tex) / fr / 1048576.0, double(s.bytes_geo) / fr / 1048576.0,
         double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads,
-        (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn, (unsigned long long)s.readbacks,
+        (unsigned long long)s.tex_torn, (unsigned long long)s.tex_inplace, (unsigned long long)s.geo_torn, (unsigned long long)s.readbacks,
         (unsigned long long)s.target_writes, (unsigned long long)s.mips_filled);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
