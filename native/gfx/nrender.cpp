@@ -314,7 +314,7 @@ struct Stats {
     uint64_t frames = 0, submits = 0, draws = 0, clears = 0, skipped = 0, pipelines = 0, textures = 0, targets = 0,
              shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     uint64_t bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, bytes_tex = 0;  // copied into the ring
-    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0;                 // geometry cache uploads
+    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
     uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
@@ -478,6 +478,8 @@ struct Renderer {
     void end_pass();
     void queue_readbacks();
     bool target_current(uint64_t base);
+    void fill_missing_mips(uint8_t* staging, const std::vector<uint64_t>& off, const std::vector<uint64_t>& sizes,
+                           const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d);
     void skip(const char* why) {
         ++st.skipped;
         ++st.skip[why];
@@ -1105,6 +1107,11 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         sf.levels = std::min(ts.last_level + 1, tiling::kMaxMips);
         tiling::layout(sf);
         if (const uint64_t ext = guest_region_extent(ts.base); ext && ext < sf.total_size) {
+            static int told = 0;
+            if (told++ < 20)
+                log("native renderer: texture %llx %ux%u f%u type %u mips %u layers %u needs %llu bytes, mapping has %llu: not drawn",
+                    (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.type, sf.levels, sf.layers,
+                    (unsigned long long)sf.total_size, (unsigned long long)ext);
             textures[key] = nullptr;
             return nullptr;
         }
@@ -1131,8 +1138,15 @@ Image* Renderer::upload_texture(const uint32_t* t) {
             if (sb.map) {
                 std::vector<VkBufferImageCopy> regions;
                 uint64_t off = 0;
+                std::vector<uint64_t> level_off(sf.levels);
+                {
+                    uint64_t o = 0;
+                    for (uint32_t lv = 0; lv < sf.levels; ++lv) level_off[lv] = o, o += (sizes[lv] + 15) & ~15ull;
+                }
+                for (uint32_t lv = 0; lv < sf.levels; ++lv)
+                    tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), sb.map + level_off[lv]);
+                fill_missing_mips(sb.map, level_off, sizes, ts, fi, sf, is3d);
                 for (uint32_t lv = 0; lv < sf.levels; ++lv) {
-                    tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), sb.map + off);
                     VkBufferImageCopy r{};
                     r.bufferOffset = base_off + off;
                     r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, lv, 0, is3d ? 1u : sf.layers};
@@ -1176,6 +1190,62 @@ Image* Renderer::upload_texture(const uint32_t* t) {
     if (prev) subs[cur].dead.push_back(std::move(prev));
     if (!out) textures[key] = nullptr;
     return out;
+}
+
+// Mip levels the game never wrote (all zero) while level 0 has data: the console fills them on
+// the GPU (the 256x256 environment cube maps have only level 0 in memory), so sampling a
+// coarser level here read black - the speckled snow, whose sparkle cube is blended by LOD.
+// Rebuild them from the level above: 2x2 averages for 8-bit RGBA, every other block for BCn
+// (point-sampled, but the right colours), every other texel otherwise.
+void Renderer::fill_missing_mips(uint8_t* staging, const std::vector<uint64_t>& off, const std::vector<uint64_t>& sizes,
+                                 const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d) {
+    if (sf.levels < 2 || is3d || !fi.bpp || fi.bpp % 8) return;
+    auto zero = [](const uint8_t* p, uint64_t n) {
+        uint64_t acc = 0, i = 0;
+        for (; i + 8 <= n; i += 8) {
+            uint64_t v;
+            std::memcpy(&v, p + i, 8);
+            acc |= v;
+        }
+        for (; i < n; ++i) acc |= p[i];
+        return acc == 0;
+    };
+    if (zero(staging + off[0], sizes[0])) return;
+    uint32_t first = sf.levels;
+    for (uint32_t lv = 1; lv < sf.levels; ++lv)
+        if (zero(staging + off[lv], sizes[lv])) {
+            first = lv;
+            break;
+        }
+    if (first == sf.levels) return;
+    const uint32_t bs = fi.bpp / 8;
+    const bool rgba8 = !fi.block && fi.bpp == 32;
+    for (uint32_t lv = first; lv < sf.levels; ++lv) {
+        const uint32_t sw = std::max(1u, ts.width >> (lv - 1)), sh = std::max(1u, ts.height >> (lv - 1));
+        const uint32_t dw = std::max(1u, ts.width >> lv), dh = std::max(1u, ts.height >> lv);
+        const uint32_t sew = fi.block ? (sw + 3) / 4 : sw, seh = fi.block ? (sh + 3) / 4 : sh;
+        const uint32_t dew = fi.block ? (dw + 3) / 4 : dw, deh = fi.block ? (dh + 3) / 4 : dh;
+        for (uint32_t layer = 0; layer < sf.layers; ++layer) {
+            const uint8_t* src = staging + off[lv - 1] + uint64_t(layer) * sew * seh * bs;
+            uint8_t* dst = staging + off[lv] + uint64_t(layer) * dew * deh * bs;
+            for (uint32_t y = 0; y < deh; ++y)
+                for (uint32_t x = 0; x < dew; ++x) {
+                    const uint32_t x0 = std::min(2 * x, sew - 1), y0 = std::min(2 * y, seh - 1);
+                    uint8_t* d = dst + (uint64_t(y) * dew + x) * bs;
+                    if (rgba8) {
+                        const uint32_t x1 = std::min(x0 + 1, sew - 1), y1 = std::min(y0 + 1, seh - 1);
+                        const uint8_t* a = src + (uint64_t(y0) * sew + x0) * 4;
+                        const uint8_t* b = src + (uint64_t(y0) * sew + x1) * 4;
+                        const uint8_t* c = src + (uint64_t(y1) * sew + x0) * 4;
+                        const uint8_t* e = src + (uint64_t(y1) * sew + x1) * 4;
+                        for (int k = 0; k < 4; ++k) d[k] = uint8_t((a[k] + b[k] + c[k] + e[k] + 2) / 4);
+                    } else {
+                        std::memcpy(d, src + (uint64_t(y0) * sew + x0) * bs, bs);
+                    }
+                }
+        }
+    }
+    ++st.mips_filled;
 }
 
 // ---------------------------------------------------------------------------- geometry cache
@@ -1505,6 +1575,31 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
             dims[s][i] = slot_dim(t);
             if (!t) continue;
             const auto ts = fmt::decode_tsharp(t);
+            if (ts.type == 11) {  // cube maps: what they are (diagnostics, once per address)
+                static std::unordered_set<uint64_t> seen;
+                if (seen.size() < 32 && seen.insert(ts.base).second) {
+                    auto rt = target_by_base.find(ts.base);
+                    log("native renderer: cube T# %llx %ux%u f%u.%u mips %u-%u arrays %u-%u tile %u%s",
+                        (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt, ts.base_level, ts.last_level,
+                        ts.base_array, ts.last_array, ts.tiling, rt != target_by_base.end() ? " (a render target)" : "");
+                    if (const char* dir = std::getenv("D1_NG_DUMP_TEX")) {
+                        const auto fi0 = fmt::data_format(ts.dfmt);
+                        tiling::Surface sf0;
+                        sf0.tile_mode = ts.tiling, sf0.bpp = fi0.bpp, sf0.block = fi0.block, sf0.pow2 = ts.pow2;
+                        sf0.width = ts.width, sf0.height = ts.height, sf0.pitch = ts.pitch, sf0.layers = 6;
+                        sf0.levels = std::min(ts.last_level + 1, tiling::kMaxMips);
+                        tiling::layout(sf0);
+                        char path[512];
+                        std::snprintf(path, sizeof path, "%s/cube_%llx.bin", dir, (unsigned long long)ts.base);
+                        if (guest_region_extent(ts.base) >= sf0.total_size)
+                            if (FILE* f = std::fopen(path, "wb")) {
+                                std::fwrite(t, 4, 8, f);
+                                std::fwrite(reinterpret_cast<const void*>(ts.base), 1, sf0.total_size, f);
+                                std::fclose(f);
+                            }
+                    }
+                }
+            }
             if (auto rt = target_by_base.find(ts.base); rt != target_by_base.end()) {
                 dims[s][i] = rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
                 const VkFormat f = rt->second->format;
@@ -2775,11 +2870,11 @@ void print_stats() {
     const double fr = double(std::max<uint64_t>(1, s.frames));
     log("native renderer: copied per frame (average): vertices %.1f MiB, indices %.1f MiB, constants %.1f MiB, "
         "textures %.1f MiB | geometry cache: %.1f MiB uploaded per frame, %.0f hits per frame, %.0f MiB held | "
-        "%llu texture reloads (%llu torn), %llu torn geometry copies, %llu target readbacks, %llu targets rewritten by the CPU", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
+        "%llu texture reloads (%llu torn), %llu torn geometry copies, %llu target readbacks, %llu targets rewritten by the CPU, %llu textures with rebuilt mips", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
         double(s.bytes_cb) / fr / 1048576.0, double(s.bytes_tex) / fr / 1048576.0, double(s.bytes_geo) / fr / 1048576.0,
         double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads,
         (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn, (unsigned long long)s.readbacks,
-        (unsigned long long)s.target_writes);
+        (unsigned long long)s.target_writes, (unsigned long long)s.mips_filled);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
             "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,

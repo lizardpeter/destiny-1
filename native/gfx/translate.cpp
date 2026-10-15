@@ -841,6 +841,31 @@ void Translator::emit_exp(const Inst& in) {
             std::sscanf(e, "%llx:%u,%u,%u,%u", reinterpret_cast<unsigned long long*>(&p.id), &p.v[0], &p.v[1], &p.v[2], &p.v[3]);
         return p;
     }();
+    static const bool id_map = std::getenv("D1_NG_ID_MAP") != nullptr;  // (testing) MRT0 = a colour per shader
+    if (t == 0 && id_map && d_.stage == Stage::Pixel && outputs_[1]) {  // G-buffer shaders (MRT1 written first)
+        Id& var = outputs_[0];
+        if (!var) {
+            var = global(m_.t_ptr(SCOutput, tv4f_), SCOutput);
+            m_.decorate(var, DecLocation, {0u});
+            r_.color_outputs |= 1u;
+        }
+        // only where the shader's own colour is black (or NaN): find who writes black pixels
+        // bytes 1..3 of the object address, stored exactly by an sRGB target
+        auto lin = [](uint32_t b) {
+            const double c = b / 255.0;
+            return float(c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4));
+        };
+        const Id idc = m_.op_r(OpCompositeConstruct, tv4f_, {m_.c_f32(lin(uint32_t(d_.id >> 4) & 255)), m_.c_f32(lin(uint32_t(d_.id >> 12) & 255)),
+                                                             m_.c_f32(lin(uint32_t(d_.id >> 20) & 255)), m_.c_f32(1.0f)});
+        const Id orig = vec4();
+        Id sum = m_.c_f32(0.0f);
+        for (uint32_t k = 0; k < 3; ++k)
+            sum = m_.op_r(OpFAdd, tf_, {sum, m_.ext(tf_, GlslFAbs, {m_.op_r(OpCompositeExtract, tf_, {orig, k})})});
+        const Id dark = m_.op_r(OpLogicalNot, tbool_, {m_.op_r(OpFOrdGreaterThan, tbool_, {sum, m_.c_f32(1e-4f)})});
+        const Id darkv = m_.op_r(OpCompositeConstruct, m_.t_vec(tbool_, 4), {dark, dark, dark, dark});
+        st(var, m_.op_r(OpSelect, tv4f_, {darkv, idc, orig}));
+        return;
+    }
     if (t == 0 && probe.id && probe.id == d_.id) {
         Id& var = outputs_[0];
         if (!var) {
@@ -1017,7 +1042,9 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     }
     case Op::IMAGE_GET_LOD: {
         m_.capability(CapImageQuery);
-        const Id l = m_.op_r(OpImageQueryLod, tv2f_, {si, coord});
+        static const bool lod0 = std::getenv("D1_NG_GETLOD0") != nullptr;  // (testing)
+        const Id l = lod0 ? m_.op_r(OpCompositeConstruct, tv2f_, {m_.c_f32(0.0f), m_.c_f32(0.0f)})
+                          : m_.op_r(OpImageQueryLod, tv2f_, {si, coord});
         v = m_.op_r(OpVectorShuffle, tv4f_, {l, l, 0, 1, 0, 1});
         break;
     }
