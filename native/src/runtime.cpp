@@ -8,6 +8,7 @@
 #else
 #include <asm/prctl.h>
 #include <pthread.h>
+#include <dlfcn.h>
 #include <signal.h>
 #include <sys/syscall.h>
 #include <ucontext.h>
@@ -74,6 +75,17 @@ std::string describe_addr(uint64_t a) {
             std::snprintf(b, sizeof b, "%s+0x%llx", m.name.c_str(), (unsigned long long)(a - m.base));
             return b;
         }
+#ifndef _WIN32
+    // host code: library and nearest exported symbol
+    Dl_info di{};
+    if (dladdr(reinterpret_cast<void*>(a), &di) && di.dli_fname) {
+        char b[512];
+        const char* lib = std::strrchr(di.dli_fname, '/');
+        std::snprintf(b, sizeof b, "0x%llx %s+0x%llx (%s)", (unsigned long long)a, lib ? lib + 1 : di.dli_fname,
+                      (unsigned long long)(a - uint64_t(di.dli_fbase)), di.dli_sname ? di.dli_sname : "?");
+        return b;
+    }
+#endif
     char b[32];
     std::snprintf(b, sizeof b, "0x%llx", (unsigned long long)a);
     return b;

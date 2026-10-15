@@ -784,6 +784,20 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
         pend.resize(keep);
     }
     std::stable_sort(mine.begin(), mine.end(), [](auto& a, auto& b) { return a.first < b.first; });
+    // D1_NG_EVERY_WORLD=<secs>: (testing) draw every frame from <secs> after reaching the world
+    static const double every_world = getenv("D1_NG_EVERY_WORLD") ? std::atof(getenv("D1_NG_EVERY_WORLD")) : -1;
+    if (every_world >= 0 && nr::g_every > 1) {
+        static std::chrono::steady_clock::time_point t_world{};
+        const char* gs = game_state();
+        if (gs && std::strcmp(gs, "activity:in_world") == 0) {
+            if (t_world == std::chrono::steady_clock::time_point{}) t_world = std::chrono::steady_clock::now();
+            else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_world).count() > every_world) {
+                nr::g_every = 1;
+                log("native gfx: now drawing every frame (D1_NG_EVERY_WORLD)");
+                if (getenv("D1_NG_PASSLOG_N")) ng::request_passlog(uint32_t(std::atoi(getenv("D1_NG_PASSLOG_N"))));
+            }
+        }
+    }
     const bool run = (gpu_flip_count() % uint64_t(nr::g_every)) == 0;
     if (run && !mine.empty()) {
         std::vector<ng::Draw*> draws;

@@ -82,6 +82,8 @@ void execute(const std::vector<Draw*>& draws);
 // frames are being written (dump = true), and limit how far the CPU runs ahead.
 void flip(uint64_t addr, uint32_t width, uint32_t height, uint64_t frame, bool dump);
 void print_stats();
+// Log the passes of the next `frames` frames (diagnostics).
+void request_passlog(uint32_t frames);
 // Frame timing for the title bar: presented frames and the GPU name.
 uint64_t presented_frames();
 const char* gpu_name();

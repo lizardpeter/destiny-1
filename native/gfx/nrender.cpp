@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -41,12 +42,30 @@ using namespace d1::vk;
 
 namespace {
 
+// 8 bytes at a time (descriptors and keys are hashed for every draw)
+inline uint64_t mix(uint64_t h, uint64_t v) {
+    h = (h ^ v) * 0x9E3779B97F4A7C15ull;
+    return h ^ (h >> 31);
+}
 uint64_t hash_bytes(const void* p, size_t n, uint64_t h = 0xcbf29ce484222325ull) {
     const uint8_t* b = static_cast<const uint8_t*>(p);
-    for (size_t i = 0; i < n; ++i) h = (h ^ b[i]) * 0x100000001b3ull;
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        uint64_t v;
+        std::memcpy(&v, b + i, 8);
+        h = mix(h, v);
+    }
+    if (i < n) {
+        uint64_t v = 0;
+        std::memcpy(&v, b + i, n - i);
+        h = mix(h, v ^ (uint64_t(n) << 56));
+    }
     return h;
 }
-uint64_t mix(uint64_t h, uint64_t v) { return hash_bytes(&v, 8, h); }
+inline uint64_t now_ns() {
+    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
 
 // ---------------------------------------------------------------------------- Gnm shaders
 struct GnmShader {
@@ -289,6 +308,9 @@ struct Stats {
              shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     uint64_t bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, bytes_tex = 0;  // copied into the ring
     uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0;                 // geometry cache uploads
+    // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
+    // geometry, descriptors, commands; frames counted for averages
+    uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
     std::unordered_map<std::string, uint64_t> skip;
 };
 
@@ -451,6 +473,7 @@ struct Renderer {
     struct PassLog { uint64_t c[5], d; uint32_t draws, clears; uint64_t first_vs, first_ps, caller; std::string tex; };
     std::vector<PassLog> passlog;
     uint64_t passlog_frame = UINT64_MAX;  // D1_NG_PASSLOG=<executed frame>: list that frame's passes
+    uint32_t passlog_count = 1;           // D1_NG_PASSLOG_N: that many consecutive frames
     bool debug = false;
     uint64_t debug_from = 0;  // D1_NG_DEBUG=<executed frame>: log draws and clears from that frame
     int debug_lines = 0;
@@ -461,6 +484,7 @@ Renderer* g = nullptr;
 bool Renderer::init(const Options& o) {
     opt = o;
     if (const char* v = std::getenv("D1_NG_DEBUG")) debug = true, debug_from = std::strtoull(v, nullptr, 10);
+    if (const char* v = std::getenv("D1_NG_PASSLOG_N")) passlog_count = uint32_t(std::max(1, std::atoi(v)));
     if (const char* v = std::getenv("D1_NG_PASSLOG"))
         passlog_frame = std::strcmp(v, "world") == 0 ? UINT64_MAX - 1 : std::strtoull(v, nullptr, 10);
     char err[512];
@@ -931,6 +955,11 @@ Image* Renderer::color_target(const uint32_t* c) {
         const uint32_t depth = layered ? std::max(slice_max + 1, std::min(w, 64u)) : 1;
         auto n = make_image(f, w, h, depth, 1, 1, false, layered, false, false);
         if (!n) return nullptr;
+        {  // new images hold undefined data (garbage on most GPUs): start from zero
+            VkClearColorValue zero{};
+            VkImageSubresourceRange r{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdClearColorImage(cmd, n->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &r);
+        }
         n->base = base, n->swap = swap;
         img = n.get();
         if (auto old = targets.find(key); old != targets.end()) retired.push_back(std::move(old->second));
@@ -976,6 +1005,11 @@ Image* Renderer::depth_target(const uint32_t* d) {
     else {
         auto n = make_image(f, w, h, 1, 1, 1, false, false, true, sfmt != 0);
         if (!n) return nullptr;
+        {
+            VkClearDepthStencilValue z{0.0f, 0};
+            VkImageSubresourceRange r{VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT | (sfmt ? VK_IMAGE_ASPECT_STENCIL_BIT : 0)), 0, 1, 0, 1};
+            vkCmdClearDepthStencilImage(cmd, n->image, VK_IMAGE_LAYOUT_GENERAL, &z, 1, &r);
+        }
         n->base = base;
         img = n.get();
         targets[key] = std::move(n);
@@ -994,9 +1028,10 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         Image* img = it->second.get();
         if (!img) return nullptr;
         img->last_used = submit_no;
-        if (img->checked == submit_no || !img->src_size || !opt.version ||
+        // rewritten textures are noticed once per frame (several submissions share it)
+        if (img->checked == st.frames + 1 || !img->src_size || !opt.version ||
             opt.version(img->src_addr, img->src_size) == img->version) {
-            img->checked = submit_no;
+            img->checked = st.frames + 1;
             return img;
         }
         // the game rewrote the texture's memory (streaming): copy it again
@@ -1025,7 +1060,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         auto img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
         if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
             img->version = opt.watch(ts.base, sf.total_size);
-            if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = submit_no;
+            if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = st.frames + 1;
         }
         if (img) {
             uint64_t total = 0;
@@ -1319,6 +1354,15 @@ Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const
     }
     if (g.code && g.code_size) {
         sh->res = gcn::translate(d);
+        if (const char* dir = std::getenv("D1_NG_DUMP_SPV")) {  // every translated shader, for spirv-val
+            static int n = 0;
+            char path[512];
+            std::snprintf(path, sizeof path, "%s/%04d_%s_%p.spv", dir, n++, vs ? "vs" : "ps", (const void*)obj);
+            if (FILE* f = std::fopen(path, "wb")) {
+                std::fwrite(sh->res.spirv.data(), 4, sh->res.spirv.size(), f);
+                std::fclose(f);
+            }
+        }
         VkShaderModuleCreateInfo mci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
         mci.codeSize = sh->res.spirv.size() * 4;
         mci.pCode = sh->res.spirv.data();
@@ -1403,7 +1447,7 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
     for (int i = 0; i < 8; ++i) key = mix(key, colors[i] ? colors[i]->format : 0);
     key = mix(key, depth ? depth->format : 0);
     auto it = pipelines.find(key);
-    if (it != pipelines.end()) return it->second.get();
+    if (it != pipelines.end()) return it->second->pipeline ? it->second.get() : nullptr;  // failed before
 
     auto p = std::make_unique<Pipeline>();
     p->vs = vs, p->ps = ps;
@@ -1553,8 +1597,25 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
     gci.pColorBlendState = &cbs;
     gci.pDynamicState = &dy;
     gci.layout = p->layout;
-    if (vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &p->pipeline) != VK_SUCCESS)
+    if (const VkResult r = vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &p->pipeline); r != VK_SUCCESS) {
         p->pipeline = VK_NULL_HANDLE;
+        static int logged = 0;
+        if (logged++ < 20)
+            log("native renderer: pipeline creation failed (%d): vs %p ps %p prim %u, %zu vertex inputs, %u colour targets",
+                int(r), (const void*)dr.vs, (const void*)dr.ps, dr.prim, vattr.size(), ncolor);
+        if (const char* dir = std::getenv("D1_NG_DUMP_FAILED")) {  // the SPIR-V, for spirv-val
+            char path[512];
+            for (int k = 0; k < 2; ++k) {
+                const Shader* sh = k ? ps : vs;
+                if (!sh) continue;
+                std::snprintf(path, sizeof path, "%s/%s_%p.spv", dir, k ? "ps" : "vs", (const void*)(k ? dr.ps : dr.vs));
+                if (FILE* f = std::fopen(path, "wb")) {
+                    std::fwrite(sh->res.spirv.data(), 4, sh->res.spirv.size(), f);
+                    std::fclose(f);
+                }
+            }
+        }
+    }
     ++st.pipelines;
     Pipeline* out = p.get();
     pipelines[key] = std::move(p);
@@ -1654,6 +1715,12 @@ void Renderer::clear(const Draw& dr) {
 }
 
 void Renderer::draw(const Draw& dr) {
+    uint64_t t0 = now_ns();
+    auto lap = [&](uint64_t& acc) {
+        const uint64_t t = now_ns();
+        acc += t - t0;
+        t0 = t;
+    };
     if (!dr.vs || uint64_t(dr.vs) < 0x10000 || (dr.ps && uint64_t(dr.ps) < 0x10000)) {
         static std::unordered_set<uint64_t> seen;
         if (seen.insert(dr.caller).second && seen.size() < 20)
@@ -1667,6 +1734,7 @@ void Renderer::draw(const Draw& dr) {
     if (!depth && std::none_of(colors, colors + 8, [](Image* x) { return x != nullptr; })) return skip("no target");
     Pipeline* p = pipeline(dr, colors, depth);
     if (!p) return skip("pipeline");
+    lap(st.t_pipe);
     // geometry into the ring
     VkBuffer vbufs[16];
     VkDeviceSize voffs[16], vsizes[16];
@@ -1736,6 +1804,7 @@ void Renderer::draw(const Draw& dr) {
         vbufs[slot] = ring.buf, voffs[slot] = off, vsizes[slot] = std::max<uint64_t>(size, 16);
         vmask |= 1u << slot;
     }
+    lap(st.t_geo);
     // descriptors (copied constants, image views, samplers)
     VkWriteDescriptorSet writes[2][48];
     VkDescriptorImageInfo images[2][48];
@@ -1778,6 +1847,7 @@ void Renderer::draw(const Draw& dr) {
             ++nw[s];
         }
     }
+    lap(st.t_desc);
     // indices
     uint32_t count = dr.count;
     uint64_t ioff = 0;
@@ -1882,6 +1952,7 @@ void Renderer::draw(const Draw& dr) {
         vkCmdDraw(cmd, count, std::max(1u, dr.instances), 0, 0);
     }
     ++st.draws;
+    lap(st.t_cmd);
 }
 
 void Renderer::execute(const std::vector<Draw*>& draws) {
@@ -1891,6 +1962,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     ++st.submits;
     retire_completed();
     begin_record();
+    const uint64_t tp = now_ns();
     // resources first (copies cannot run inside a render pass): targets, then textures
     for (Draw* d : draws) {
         for (int i = 0; i < 5; ++i) color_target(d->color[i]);
@@ -1902,6 +1974,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
                 if (const uint32_t* t = d->T(s, i); t && !target_by_base.count(fmt::decode_tsharp(t).base))
                     upload_texture(t);
     barrier();
+    st.t_pre += now_ns() - tp;
     for (Draw* d : draws) {
         if (d->kind == Draw::Clear) clear(*d);
         else draw(*d);
@@ -2324,6 +2397,7 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
     std::lock_guard lk(g->m);
     if (g->st.frames == g->passlog_frame) {
         int i = 0;
+        log("ng frame %llu (flip %llu):", (unsigned long long)g->st.frames, (unsigned long long)frame);
         for (auto& pl : g->passlog)
             log("ng pass %3d: c %llx %llx %llx %llx d %llx | %u draws %u clears | vs %llx ps %llx from %#llx |%s", i++,
                 (unsigned long long)pl.c[0], (unsigned long long)pl.c[1], (unsigned long long)pl.c[2],
@@ -2331,11 +2405,22 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
                 (unsigned long long)pl.first_vs, (unsigned long long)pl.first_ps, (unsigned long long)pl.caller,
                 pl.tex.c_str());
     }
+    if (g->st.frames == g->passlog_frame && --g->passlog_count) {
+        g->passlog.clear();
+        ++g->passlog_frame;
+    }
     ++g->st.frames;
     if (addr) g->present(addr);
     if (dump && addr) g->dump(addr, w, h, frame);
     else g->frame_first_submit = g->submit_no;
     g->end_frame();
+}
+void request_passlog(uint32_t frames) {
+    if (!g) return;
+    std::lock_guard lk(g->m);
+    g->passlog.clear();
+    g->passlog_frame = g->st.frames + 1;
+    g->passlog_count = frames;
 }
 uint64_t presented_frames() { return g ? g->sc.presented : 0; }
 const char* gpu_name() { return g ? g->ctx.name : ""; }
@@ -2357,6 +2442,11 @@ void print_stats() {
         "%llu texture reloads", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
         double(s.bytes_cb) / fr / 1048576.0, double(s.bytes_tex) / fr / 1048576.0, double(s.bytes_geo) / fr / 1048576.0,
         double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads);
+    if (const double f = double(s.frames - s.t_frames); f > 0)
+        log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
+            "commands %.2f ms", double(s.t_pre) / f / 1e6, double(s.t_pipe) / f / 1e6, double(s.t_geo) / f / 1e6,
+            double(s.t_desc) / f / 1e6, double(s.t_cmd) / f / 1e6);
+    s.t_pre = s.t_pipe = s.t_geo = s.t_desc = s.t_cmd = 0, s.t_frames = s.frames;
     std::string why;
     for (auto& [k, v] : s.skip) why += " " + k + "=" + std::to_string(v);
     if (!why.empty()) log("native renderer: skipped:%s", why.c_str());

@@ -908,7 +908,8 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
         const Id coord = ncoord == 2 ? m_.op_r(OpCompositeConstruct, tv2i_, {c[0], c[1]}) : m_.op_r(OpCompositeConstruct, tv3i_, {c[0], c[1], c[2]});
         const Id lod = in.op == Op::IMAGE_LOAD_MIP ? u2i(au(a++)) : m_.c_i32(0);
         const Id v = m_.op_rv(OpImageFetch, rt, {image, coord, 2 /*Lod*/, lod});
-        write_result(v, false);
+        if (tk) write_result(tk == 2 ? m_.op_r(OpBitcast, tv4u_, {v}) : v, true);
+        else write_result(v, false);
         return;
     }
     Id c[3];
