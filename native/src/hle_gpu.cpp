@@ -438,10 +438,14 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
             // each dump writes a growing counter with the valid bit into all 8 DB begin/end
             // pairs. Left unwritten, the game reads stale or zero counts, so occlusion-tested
             // objects (lens flares, foliage, distant geometry) pop in and out from frame to frame.
-            if (((b[0] >> 8) & 0xF) == 1 && count >= 3) {
+            // PIXEL_PIPE_STAT_DUMP (0x39) / ZPASS_DONE (0x15); PIXEL_PIPE_STAT_CONTROL (0x38)
+            // carries a control word, not an address
+            const uint32_t et = b[0] & 0x3F;
+            if (((b[0] >> 8) & 0xF) == 1 && (et == 0x39 || et == 0x15) && count >= 3) {
                 static uint64_t pixel_counter = 0;
-                auto* r = reinterpret_cast<volatile uint64_t*>(uint64_t(b[1] & ~7u) | (uint64_t(b[2] & 0xFFFF) << 32));
-                if (r) {
+                const uint64_t a = uint64_t(b[1] & ~7u) | (uint64_t(b[2] & 0xFFFF) << 32);
+                auto* r = reinterpret_cast<volatile uint64_t*>(a);
+                if (a >= 0x10000 && guest_region_extent(a) >= 8 * 16) {
                     for (int k = 0; k < 8; ++k) r[k * 2] = pixel_counter | 0x8000000000000000ull;
                     pixel_counter += 0x2FFFFFFull;
                     ++g_zpass;

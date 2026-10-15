@@ -616,6 +616,7 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
 // version is the sum of its pages' generations, so it changes exactly when a write happened.
 namespace wt {
 constexpr uint64_t kPage = 4096, kChunkBits = 30, kPagesPerChunk = 1ull << (kChunkBits - 12), kChunks = 128;
+constexpr uint64_t kBlockPages = 16;  // a fault opens the protected pages of its 64 KiB block
 enum : uint8_t { kOff = 0, kProtected = 1, kUnprotecting = 2 };
 struct Chunk {
     std::atomic<uint32_t> gen[kPagesPerChunk];
@@ -625,6 +626,25 @@ struct Chunk {
 std::atomic<Chunk*> g_chunks[kChunks];
 std::mutex g_alloc_m;
 std::atomic<uint64_t> g_faults{0};
+const bool g_log_faults = getenv("D1_NG_LOG_FAULTS") != nullptr;
+std::mutex g_census_m;
+std::unordered_map<uint64_t, uint64_t> g_census;
+void print_census() {
+    std::vector<std::pair<uint64_t, uint64_t>> v;
+    {
+        std::lock_guard lk(g_census_m);
+        v.assign(g_census.begin(), g_census.end());
+        g_census.clear();
+    }
+    std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.second > b.second; });
+    std::string out;
+    for (size_t i = 0; i < v.size() && i < 16; ++i) {
+        char b[48];
+        std::snprintf(b, sizeof b, " %llx:%llu", (unsigned long long)(v[i].first << 16), (unsigned long long)v[i].second);
+        out += b;
+    }
+    log("native gfx: write faults by 64 KiB region (%zu regions):%s", v.size(), out.c_str());
+}
 
 Chunk* chunk(uint64_t page, bool create) {
     const uint64_t c = page >> (kChunkBits - 12);
@@ -701,10 +721,35 @@ bool on_fault(uint64_t addr) {
     const uint64_t i = pg & (kPagesPerChunk - 1);
     uint8_t expect = kProtected;
     if (ch->state[i].compare_exchange_strong(expect, kUnprotecting)) {
-        ch->gen[i].fetch_add(1, std::memory_order_relaxed);
-        os::protect(reinterpret_cast<void*>(pg * kPage), kPage, os::kRead | os::kWrite);
-        ch->state[i].store(kOff, std::memory_order_release);
+        // the game writes whole buffers / textures front to back: open the rest of this 64 KiB
+        // block too (the protected pages of it), so a streamed write costs one fault, not 16
+        const uint64_t blk = i & ~uint64_t(kBlockPages - 1);
+        uint32_t taken = 1u << (i - blk);
+        for (uint64_t k = 0; k < kBlockPages; ++k) {
+            if (blk + k == i) continue;
+            uint8_t e = kProtected;
+            if (ch->state[blk + k].compare_exchange_strong(e, kUnprotecting)) taken |= 1u << k;
+        }
+        for (uint64_t k = 0; k < kBlockPages; ++k)
+            if (taken >> k & 1) ch->gen[blk + k].fetch_add(1, std::memory_order_relaxed);
+        for (uint64_t k = 0; k < kBlockPages;) {  // one protect call per run of taken pages
+            if (!(taken >> k & 1)) {
+                ++k;
+                continue;
+            }
+            uint64_t e = k;
+            while (e < kBlockPages && (taken >> e & 1)) ++e;
+            const uint64_t first = (pg & ~(kPagesPerChunk - 1)) + blk + k;
+            os::protect(reinterpret_cast<void*>(first * kPage), (e - k) * kPage, os::kRead | os::kWrite);
+            k = e;
+        }
+        for (uint64_t k = 0; k < kBlockPages; ++k)
+            if (taken >> k & 1) ch->state[blk + k].store(kOff, std::memory_order_release);
         g_faults.fetch_add(1, std::memory_order_relaxed);
+        if (g_log_faults) {  // D1_NG_LOG_FAULTS: which 64 KiB regions keep faulting
+            std::lock_guard lk(g_census_m);
+            ++g_census[pg >> 4];
+        }
         return true;
     }
     // another thread is unprotecting it (or just did): retry the access
@@ -927,6 +972,7 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                     double(faults - faults0) / fault_frames);
                 faults0 = faults;
                 ng::print_stats();
+                if (wt::g_log_faults) wt::print_census();
             }
             t0 = now, n0 = n;
             nr::g_exec_ns = nr::g_flip_ns = 0;

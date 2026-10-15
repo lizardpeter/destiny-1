@@ -1980,6 +1980,28 @@ void Renderer::draw(const Draw& dr) {
             }
         }
         log("ng   attribs:%s", vbs.c_str());
+        if (p->ps) {
+            std::string ts;
+            for (const auto& b : p->ps->res.bindings) {
+                char t[160];
+                if (b.kind == gcn::Binding::Texture) {
+                    const uint32_t* T = dr.T(1, b.api_slot);
+                    if (!T) continue;
+                    const auto d = fmt::decode_tsharp(T);
+                    std::snprintf(t, sizeof t, " t%u:%llx/%ux%u/f%u.%u/mips%u-%u/sel%03o", b.api_slot,
+                                  (unsigned long long)d.base, d.width, d.height, d.dfmt, d.nfmt, d.base_level,
+                                  d.last_level, d.dst_sel);
+                } else if (b.kind == gcn::Binding::Sampler) {
+                    const uint32_t* S = dr.S(1, b.api_slot);
+                    if (!S) continue;
+                    std::snprintf(t, sizeof t, " s%u:%08x.%08x.%08x.%08x", b.api_slot, S[0], S[1], S[2], S[3]);
+                } else {
+                    continue;
+                }
+                ts += t;
+            }
+            log("ng   ps textures:%s", ts.c_str());
+        }
     }
     if (st.frames == passlog_frame && !passlog.empty()) {
         auto& pl = passlog.back();
