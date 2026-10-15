@@ -66,6 +66,11 @@ struct Options {
     const char* present_mode = "Immediate";  // "Fifo", "Mailbox" or "Immediate"
     uint32_t frames_in_flight = 2;           // frames the CPU may record ahead of the GPU
     const char* pipeline_cache = nullptr;    // file for the Vulkan pipeline cache (kept between runs)
+    // write tracking of guest memory (optional): watch() write-protects a range and returns
+    // its version; version() is the current one (~0: unknown / not watched). A copy made after
+    // watch() stays valid while version() returns the same value.
+    uint64_t (*watch)(uint64_t addr, uint64_t size) = nullptr;
+    uint64_t (*version)(uint64_t addr, uint64_t size) = nullptr;
 };
 
 bool init(const Options& opt);

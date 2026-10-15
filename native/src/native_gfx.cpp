@@ -29,6 +29,7 @@
 #include "frontend.h"
 #endif
 #include "hle.h"
+#include "os.h"
 #include "runtime.h"
 #include "tiling.h"
 
@@ -562,6 +563,119 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
 
 }  // namespace
 
+// ---------------------------------------------------------------------------- write tracking
+// The renderer keeps copies of guest memory on the GPU (vertex and index buffers, textures).
+// To know when the game changes them, the pages are write-protected while a copy exists;
+// the first write faults, bumps the page's generation and unprotects the page. A range's
+// version is the sum of its pages' generations, so it changes exactly when a write happened.
+namespace wt {
+constexpr uint64_t kPage = 4096, kChunkBits = 30, kPagesPerChunk = 1ull << (kChunkBits - 12), kChunks = 128;
+enum : uint8_t { kOff = 0, kProtected = 1, kUnprotecting = 2 };
+struct Chunk {
+    std::atomic<uint32_t> gen[kPagesPerChunk];
+    std::atomic<uint8_t> state[kPagesPerChunk];
+    std::atomic<uint8_t> watched[kPagesPerChunk];  // ever protected by us
+};
+std::atomic<Chunk*> g_chunks[kChunks];
+std::mutex g_alloc_m;
+std::atomic<uint64_t> g_faults{0};
+
+Chunk* chunk(uint64_t page, bool create) {
+    const uint64_t c = page >> (kChunkBits - 12);
+    if (c >= kChunks) return nullptr;
+    Chunk* ch = g_chunks[c].load(std::memory_order_acquire);
+    if (ch || !create) return ch;
+    std::lock_guard lk(g_alloc_m);
+    ch = g_chunks[c].load(std::memory_order_acquire);
+    if (!ch) {
+        ch = new Chunk();  // value-initialised: zero
+        g_chunks[c].store(ch, std::memory_order_release);
+    }
+    return ch;
+}
+
+uint64_t version(uint64_t addr, uint64_t size) {
+    uint64_t v = 0;
+    for (uint64_t pg = addr / kPage, end = (addr + size + kPage - 1) / kPage; pg < end; ++pg) {
+        Chunk* ch = chunk(pg, false);
+        if (!ch) return ~0ull;  // never watched
+        const uint64_t i = pg & (kPagesPerChunk - 1);
+        // an unprotected page may change without notice: such a range has no stable version
+        if (ch->state[i].load(std::memory_order_acquire) != kProtected) return ~0ull;
+        v += ch->gen[i].load(std::memory_order_relaxed);
+    }
+    return v;
+}
+
+// Protect [addr, addr+size) (whole pages) and return its version.
+uint64_t watch(uint64_t addr, uint64_t size) {
+    const uint64_t first = addr / kPage, end = (addr + size + kPage - 1) / kPage;
+    uint64_t run = 0, run_len = 0;
+    auto flush = [&] {
+        if (run_len) os::protect(reinterpret_cast<void*>(run * kPage), run_len * kPage, os::kRead);
+        run_len = 0;
+    };
+    for (uint64_t pg = first; pg < end; ++pg) {
+        Chunk* ch = chunk(pg, true);
+        if (!ch) return ~0ull;
+        const uint64_t i = pg & (kPagesPerChunk - 1);
+        uint8_t expect = kOff;
+        if (ch->state[i].compare_exchange_strong(expect, kProtected)) {
+            ch->watched[i].store(1, std::memory_order_relaxed);
+            if (run_len && run + run_len == pg) ++run_len;
+            else flush(), run = pg, run_len = 1;
+        } else if (expect == kUnprotecting) {
+            flush();
+            return ~0ull;  // being written right now: try again later
+        }
+    }
+    flush();
+    return version(addr, size);
+}
+
+// A page we no longer know the contents of (unmapped / remapped).
+void forget(uint64_t addr, uint64_t size) {
+    for (uint64_t pg = addr / kPage, end = (addr + size + kPage - 1) / kPage; pg < end; ++pg) {
+        Chunk* ch = chunk(pg, false);
+        if (!ch) {
+            pg |= kPagesPerChunk - 1;  // skip the rest of this chunk
+            continue;
+        }
+        const uint64_t i = pg & (kPagesPerChunk - 1);
+        ch->gen[i].fetch_add(1, std::memory_order_relaxed);
+        ch->state[i].store(kOff, std::memory_order_release);
+    }
+}
+
+// Fault handler (any thread): true if the fault was one of our write-protected pages.
+bool on_fault(uint64_t addr) {
+    const uint64_t pg = addr / kPage;
+    Chunk* ch = chunk(pg, false);
+    if (!ch) return false;
+    const uint64_t i = pg & (kPagesPerChunk - 1);
+    uint8_t expect = kProtected;
+    if (ch->state[i].compare_exchange_strong(expect, kUnprotecting)) {
+        ch->gen[i].fetch_add(1, std::memory_order_relaxed);
+        os::protect(reinterpret_cast<void*>(pg * kPage), kPage, os::kRead | os::kWrite);
+        ch->state[i].store(kOff, std::memory_order_release);
+        g_faults.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+    // another thread is unprotecting it (or just did): retry the access
+    if (expect == kUnprotecting) {
+        while (ch->state[i].load(std::memory_order_acquire) == kUnprotecting) {}
+        return true;
+    }
+    return ch->watched[i].load(std::memory_order_relaxed) != 0;
+}
+}  // namespace wt
+
+bool native_gfx_on_fault(void* addr) { return nr::g_base && ng::active() && wt::on_fault(uint64_t(addr)); }
+bool native_gfx_active() { return nr::g_base && ng::active(); }
+void native_gfx_on_unmap(uint64_t addr, uint64_t size) {
+    if (native_gfx_active()) wt::forget(addr, size);
+}
+
 // Called once the eboot is loaded and relocated (with the other game hooks).
 void native_gfx_install() {
     const char* mode = getenv("D1_NATIVE_GFX");
@@ -588,6 +702,10 @@ void native_gfx_install() {
         }
         cache_file += "/native_pipelines.bin";
         opt.pipeline_cache = cache_file.c_str();
+        if (!getenv("D1_NG_NOCACHE")) {
+            opt.watch = [](uint64_t a, uint64_t n) { return wt::watch(a, n); };
+            opt.version = [](uint64_t a, uint64_t n) { return wt::version(a, n); };
+        }
         if (const char* v = getenv("D1_NG_FRAMES_IN_FLIGHT")) opt.frames_in_flight = uint32_t(std::max(1, std::atoi(v)));
 #ifdef D1_FRONTEND_SDL
         // the game window (main thread, before the game starts)

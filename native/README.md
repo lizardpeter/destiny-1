@@ -28,6 +28,19 @@ under `/app0` are refused (EROFS, as on the console) and `data/` must lie outsid
 
 ### Windows (cross-compiled from Linux with llvm-mingw)
 
+Native renderer build (no shadPS4; the default from now on):
+
+```bash
+cmake -S native -B build/win -G Ninja -DCMAKE_TOOLCHAIN_FILE=$PWD/native/cmake/windows-llvm-mingw.cmake \
+      -DLLVM_MINGW=/opt/llvm-mingw -DCMAKE_PREFIX_PATH=/opt/SDL2-2.32.10/x86_64-w64-mingw32 \
+      -DCMAKE_BUILD_TYPE=Release
+cmake --build build/win
+```
+
+It draws with `gfx/nrender.cpp` (see `notes/D1_NATIVE_RENDERER_DESIGN.md`), presents to an
+SDL2 window (`src/frontend_sdl.cpp`) and needs a Vulkan 1.4 driver. The temporary
+shadPS4-based renderer is still available:
+
 ```bash
 # llvm-mingw: https://github.com/mstorsjo/llvm-mingw (ucrt build); SDL2 mingw devel package
 cmake -S native -B build/win -G Ninja -DCMAKE_TOOLCHAIN_FILE=native/cmake/windows-llvm-mingw.cmake \
