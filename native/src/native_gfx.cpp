@@ -340,7 +340,9 @@ struct CbEvent {
 std::vector<CbEvent> g_cb_pending;
 ng::Draw::Cb g_ce[ng::kStages][16] = {};  // bindings as of the end of the last submission
 bool g_ce_order = true;                   // D1_NG_CE_ORDER=0: per-context bindings only (old behaviour)
-bool g_cbs_armed = false;  // D1_NG_LOG_CBS: the debugged pixel shader has been drawn
+bool g_cbs_armed = false;
+uint64_t g_dropped = 0;  // draws recorded but never found in a submission
+uint64_t g_late = 0;     // draws found in a submission of a later frame than they were recorded in  // D1_NG_LOG_CBS: the debugged pixel shader has been drawn
 struct CueState {
     ng::Draw::Cb cb[ng::kStages][16] = {};
 };
@@ -508,6 +510,26 @@ void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::
                     e->kind = ng::Draw::ZPass;
                     e->index_addr = uint64_t(b[1] & ~7u) | (uint64_t(b[2] & 0xFFFF) << 32);
                     g_dcb_events->push_back({uint64_t(p + i), e});
+                } else if (op == 0x50 && count >= 5) {  // DMA_DATA
+                    const uint32_t src_sel = (b[0] >> 29) & 3, dst_sel = (b[0] >> 20) & 3;
+                    if ((dst_sel == 0 || dst_sel == 3) && (src_sel == 0 || src_sel == 2 || src_sel == 3)) {
+                        auto* e = new ng::Draw;
+                        e->kind = ng::Draw::Dma;
+                        e->index_addr = b[1] | (uint64_t(b[2]) << 32);
+                        e->caller = b[3] | (uint64_t(b[4]) << 32);
+                        e->count = b[5] & 0x1FFFFF;
+                        e->prim = uint8_t(src_sel), e->index32 = uint8_t(dst_sel), e->instances = b[1];
+                        g_dcb_events->push_back({uint64_t(p + i), e});
+                    }
+                } else if (op == 0x37 && count >= 3) {  // WRITE_DATA to memory
+                    const uint32_t dst_sel = (b[0] >> 8) & 0xF;
+                    if (dst_sel == 2 || dst_sel == 5) {
+                        auto* e = new ng::Draw;
+                        e->kind = ng::Draw::WriteData;
+                        e->caller = b[1] | (uint64_t(b[2]) << 32);
+                        e->inline_vertices.assign(reinterpret_cast<const uint8_t*>(b + 3), reinterpret_cast<const uint8_t*>(b + 3) + (count - 2) * 4);
+                        g_dcb_events->push_back({uint64_t(p + i), e});
+                    }
                 } else if (op == 0x20 && count >= 1) {
                     auto* e = new ng::Draw;
                     const uint32_t pred_op = (b[1] >> 16) & 7;
@@ -1064,12 +1086,13 @@ void native_gfx_install() {
 
 // hle_gpu.cpp: the game submitted command buffers. Execute the captured draws that belong to
 // them, in submission order.
-void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
-    if (!nr::g_base || !ng::active()) return;
+bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
+    if (!nr::g_base || !ng::active()) return false;
     std::vector<std::pair<uint64_t, uint64_t>> ranges;
     std::vector<std::pair<uint64_t, ng::Draw*>> events;
-    static const bool queries = !getenv("D1_NG_QUERIES") || atoi(getenv("D1_NG_QUERIES")) != 0;
-    if (queries) nr::g_dcb_events = &events;
+    static const bool queries_cfg = !getenv("D1_NG_QUERIES") || atoi(getenv("D1_NG_QUERIES")) != 0;
+    const bool queries = queries_cfg && !(ng::debug_toggles() & 1);
+    nr::g_dcb_events = &events;
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && sizes[k]) nr::dcb_ranges(dcbs[k], sizes[k] / 4, 0, ranges);
     nr::g_dcb_events = nullptr;
@@ -1088,10 +1111,32 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
                 }
             if (rng >= 0) mine.push_back({uint64_t(rng) << 40 | ((d->order - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull), d});
             else if (nr::g_seq - d->seq < 200000) pend[keep++] = d;
-            else delete d;  // never submitted
+            else {  // never submitted
+                ++nr::g_dropped;
+                static const bool log_drop = getenv("D1_NG_LOG_DROPS") != nullptr;
+                static int n = 0;
+                if (log_drop && n++ < 100) {
+                    // the nearest range, to see where the draw's recorded position went
+                    int64_t best = -1;
+                    uint64_t dist = ~0ull;
+                    for (size_t r = 0; r < ranges.size(); ++r) {
+                        const uint64_t dd = d->order < ranges[r].first ? ranges[r].first - d->order : d->order >= ranges[r].second ? d->order - ranges[r].second : 0;
+                        if (dd < dist) dist = dd, best = int64_t(r);
+                    }
+                    log("ng drop: draw ps %p from %#llx recorded at %#llx (flip %u), nearest range %lld [%#llx, %#llx) off by %llu",
+                        (const void*)d->ps, (unsigned long long)d->caller, (unsigned long long)d->order, d->frame, (long long)best,
+                        best >= 0 ? (unsigned long long)ranges[size_t(best)].first : 0ull,
+                        best >= 0 ? (unsigned long long)ranges[size_t(best)].second : 0ull, (unsigned long long)dist);
+                }
+                delete d;
+            }
         }
         pend.resize(keep);
         for (auto& [pos, e] : events) {
+            if (!queries && (e->kind == ng::Draw::ZPass || e->kind == ng::Draw::PredOn || e->kind == ng::Draw::PredOff)) {
+                delete e;
+                continue;
+            }
             e->seq = nr::g_seq++;
             int64_t rng = -1;
             for (size_t r = 0; r < ranges.size(); ++r)
@@ -1138,6 +1183,12 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
             }
         }
     }
+    {
+        uint32_t newest = 0;
+        for (auto& [k, d] : mine) newest = std::max(newest, d->frame);
+        for (auto& [k, d] : mine)
+            if (d->kind <= ng::Draw::Clear && d->frame + 1 < newest) ++nr::g_late;
+    }
     std::stable_sort(mine.begin(), mine.end(), [](auto& a, auto& b) { return a.first < b.first; });
     // D1_NG_LOG_STALE=1: draws matched to this submission that were recorded frames ago
     static const bool log_stale = getenv("D1_NG_LOG_STALE") != nullptr;
@@ -1176,6 +1227,7 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
         nr::g_frame_executed = true;
     }
     for (auto& [k, d] : mine) delete d;
+    return run && !mine.empty() && queries;  // (the renderer answered the occlusion dumps)
 }
 
 // Diagnostics (D1_NG_LOG_WAITS): memory waits still unsatisfied after the null GPU ran the
@@ -1236,8 +1288,8 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
             const double fps = double(n - n0) / secs;
 #ifdef D1_FRONTEND_SDL
             char title[256];
-            std::snprintf(title, sizeof title, "Destiny (d1-native) - %.0f fps (%.1f ms) - %s", fps,
-                          fps > 0 ? 1000.0 / fps : 0.0, ng::gpu_name());
+            std::snprintf(title, sizeof title, "Destiny (d1-native) - %.0f fps (%.1f ms) - %s%s", fps,
+                          fps > 0 ? 1000.0 / fps : 0.0, ng::gpu_name(), ng::debug_toggle_text());
             frontend::set_status(title);
 #endif
             static int report = 0;
@@ -1247,9 +1299,13 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                 const uint64_t faults = wt::g_faults.load();
                 const double fault_frames = double(std::max<uint64_t>(1, n - fault_frames0));
                 fault_frames0 = n;
-                log("native gfx: %.1f fps | per frame: record %.1f ms, present+wait %.1f ms, %.0f write faults", fps,
+                static uint64_t dropped0 = 0, late0 = 0;
+                log("native gfx: %.1f fps | per frame: record %.1f ms, present+wait %.1f ms, %.0f write faults | "
+                    "%llu draws never submitted, %llu run in a later frame", fps,
                     double(nr::g_exec_ns) / 1e6 / frames, double(nr::g_flip_ns) / 1e6 / frames,
-                    double(faults - faults0) / fault_frames);
+                    double(faults - faults0) / fault_frames, (unsigned long long)(nr::g_dropped - dropped0),
+                    (unsigned long long)(nr::g_late - late0));
+                dropped0 = nr::g_dropped, late0 = nr::g_late;
                 faults0 = faults;
                 ng::print_stats();
                 if (wt::g_log_faults) wt::print_census();

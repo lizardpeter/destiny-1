@@ -19,6 +19,7 @@
 
 #include "frontend.h"
 #include "render_bridge.h"
+#include "../gfx/nrender.h"
 
 namespace d1 {
 void log(const char* fmt, ...);
@@ -219,6 +220,8 @@ void run_window_loop() {
                 break;
             case SDL_KEYDOWN:
                 if (!e.key.repeat && e.key.keysym.sym == SDLK_F2) set_capture(!g_captured);
+                if (!e.key.repeat && e.key.keysym.sym >= SDLK_F5 && e.key.keysym.sym <= SDLK_F8)  // renderer test switches
+                    d1::ng::flip_debug_toggle(int(e.key.keysym.sym - SDLK_F5));
                 if (!e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||
                                       (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)))) {
                     const bool fs = SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;

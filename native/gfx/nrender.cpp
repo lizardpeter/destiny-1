@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -571,6 +572,7 @@ struct Renderer {
     uint64_t frame_first_submit = 0;
     struct PassLog { uint64_t c[5], d; uint32_t draws, clears; uint64_t first_vs, first_ps, caller; std::string tex; };
     std::vector<PassLog> passlog;
+    std::map<uint64_t, std::pair<uint64_t, uint64_t>> frame_draws;  // D1_NG_DRAWSTATS
     uint64_t passlog_frame = UINT64_MAX;  // D1_NG_PASSLOG=<executed frame>: list that frame's passes
     uint32_t passlog_count = 1;           // D1_NG_PASSLOG_N: that many consecutive frames
     bool debug = false;
@@ -1485,7 +1487,7 @@ void Renderer::geo_free_later(int block, uint64_t off, uint64_t size) {
 // A GPU copy of guest memory [addr, addr+size), valid for this submission, or null (then the
 // caller copies into the ring). Buffers the game keeps rewriting are not cached for a while.
 GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count) {
-    if (!opt.watch || !opt.version || addr < 0x10000 || !size || size > (16ull << 20)) return nullptr;
+    if (!opt.watch || !opt.version || addr < 0x10000 || !size || size > (16ull << 20) || (debug_toggles() & 8)) return nullptr;
     GeoEntry& e = geo[mix(addr, size)];
     e.last_used = submit_no;
     if (e.volatile_until > submit_no) return nullptr;
@@ -2550,6 +2552,12 @@ void Renderer::draw(const Draw& dr) {
     }
     if (predicated) vkCmdEndConditionalRenderingEXT(cmd);
     ++st.draws;
+    // D1_NG_DRAWSTATS: (diagnostics) per logged frame, draws and instances per shader pair
+    static const bool drawstats = std::getenv("D1_NG_DRAWSTATS") != nullptr;
+    if (drawstats && st.frames == passlog_frame) {
+        auto& e = frame_draws[uint64_t(dr.ps) ^ uint64_t(dr.vs) << 20];
+        e.first += 1, e.second += std::max(1u, dr.instances) * uint64_t(count);
+    }
     // D1_NG_TRACE=<target base hex>,<x>,<y>,<w>: (testing) in the logged frame, a row of that
     // target's pixels after every draw into it, to find which draw writes what
     static const struct Trace { uint64_t base = 0; uint32_t x = 0, y = 0, w = 0, h = 1; } trace = [] {
@@ -2645,6 +2653,20 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         case Draw::ZPass: zpass(d->index_addr); break;
         case Draw::PredOn: predicate(d->index_addr, d->count & 1); break;
         case Draw::PredOff: pred_cur = -1; break;
+        case Draw::Dma:  // (the null GPU repeats it after the submission; the same bytes)
+            if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->count) {
+                if (d->prim == 2) {
+                    auto* w = reinterpret_cast<uint32_t*>(d->caller);
+                    for (uint32_t k = 0; k < d->count / 4; ++k) w[k] = d->instances;
+                } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
+                    std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
+                }
+            }
+            break;
+        case Draw::WriteData:
+            if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->inline_vertices.size())
+                std::memcpy(reinterpret_cast<void*>(d->caller), d->inline_vertices.data(), d->inline_vertices.size());
+            break;
         default: draw(*d); break;
         }
     }
@@ -2661,16 +2683,18 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         const char* v = std::getenv("D1_NG_READBACK_SYNC");
         return !v || std::atoi(v) != 0;
     }();
-    const bool has_rb = cur != UINT32_MAX && !subs[cur].readbacks.empty();
+    // occlusion counts too: the game reads them back (object visibility), and the null GPU no
+    // longer answers for executed submissions
+    const bool has_rb = cur != UINT32_MAX && (!subs[cur].readbacks.empty() || !subs[cur].zrecs.empty());
     if (has_rb && std::getenv("D1_NG_LOG_READBACK")) {
         static int n = 0;
         if (n++ < 40)
-            log("ng readback sync: submission %llu of the frame, %zu draws, %zu readbacks (first %llx)",
+            log("ng readback sync: submission %llu of the frame, %zu draws, %zu readbacks, %zu counter dumps",
                 (unsigned long long)(submit_no - frame_first_submit), draws.size(), subs[cur].readbacks.size(),
-                (unsigned long long)subs[cur].readbacks[0].base);
+                subs[cur].zrecs.size());
     }
     submit();
-    if (rb_sync && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
+    if (rb_sync && !(debug_toggles() & 2) && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
 }
 
 // False when the CPU has written a small render target's memory since the GPU rendered it:
@@ -2844,7 +2868,7 @@ void Renderer::queue_readbacks() {
         const char* v = std::getenv("D1_NG_READBACK");
         return v ? std::strtoull(v, nullptr, 10) : 4096ull;
     }();
-    if (!max_pix) return;
+    if (!max_pix || (debug_toggles() & 4)) return;
     bool any = false;
     for (auto& [k, up] : targets) {
         Image* img = up.get();
@@ -3323,6 +3347,19 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
                 (unsigned long long)pl.first_vs, (unsigned long long)pl.first_ps, (unsigned long long)pl.caller,
                 pl.tex.c_str());
     }
+    if (g->st.frames == g->passlog_frame && !g->frame_draws.empty()) {
+        std::string line;
+        uint64_t total = 0;
+        for (auto& [k, v] : g->frame_draws) {
+            char b[64];
+            std::snprintf(b, sizeof b, " %llx:%llu/%llu", (unsigned long long)k, (unsigned long long)v.first,
+                          (unsigned long long)v.second);
+            line += b;
+            total += v.first;
+        }
+        log("ng drawstats flip %llu: %llu draws |%s", (unsigned long long)frame, (unsigned long long)total, line.c_str());
+        g->frame_draws.clear();
+    }
     if (g->st.frames == g->passlog_frame && !g->traces.empty()) {
         vkDeviceWaitIdle(g->ctx.device);
         // <frames dir>/trace.bin: per draw a header (ps, vs, caller, blend, count, bytes) and the pixels
@@ -3360,6 +3397,24 @@ void request_passlog(uint32_t frames) {
 }
 uint64_t presented_frames() { return g ? g->sc.presented : 0; }
 const char* gpu_name() { return g ? g->ctx.name : ""; }
+
+static std::atomic<uint32_t> g_toggles{0};
+uint32_t debug_toggles() { return g_toggles.load(std::memory_order_relaxed); }
+void flip_debug_toggle(int bit) {
+    const uint32_t v = g_toggles.fetch_xor(1u << bit) ^ (1u << bit);
+    static const char* names[] = {"occlusion queries", "waiting for readbacks", "readbacks", "geometry cache"};
+    log("native renderer: %s %s (F%d)", bit < 4 ? names[bit] : "?", (v >> bit & 1) ? "OFF" : "on", 5 + bit);
+}
+const char* debug_toggle_text() {
+    static thread_local char buf[96];
+    const uint32_t v = debug_toggles();
+    buf[0] = 0;
+    if (v & 1) std::strcat(buf, " [F5 queries off]");
+    if (v & 2) std::strcat(buf, " [F6 no readback wait]");
+    if (v & 4) std::strcat(buf, " [F7 readbacks off]");
+    if (v & 8) std::strcat(buf, " [F8 geometry cache off]");
+    return buf;
+}
 void print_stats() {
     if (!g) return;
     std::lock_guard lk(g->m);

@@ -214,7 +214,7 @@ bool native_gfx_on_fault(void* addr);        // a write to a page it watches
 void native_gfx_on_unmap(uint64_t addr, uint64_t size);
 bool gpu_active() { return gpu_real() || native_gfx_active(); }
 
-void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);  // native_gfx.cpp
+bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);  // native_gfx.cpp: true = executed
 void native_gfx_flip(void* addr, uint32_t width, uint32_t height);
 void native_gfx_check_waits(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);
 
@@ -386,6 +386,7 @@ static std::mutex g_gnm_mutex;
 static std::vector<Equeue*> g_eop_eqs;
 static std::atomic<uint64_t> g_packets{0};
 static uint64_t g_op_counts[256];
+static bool g_rendered = false;  // the native renderer executed this submission (it answers occlusion dumps)
 static uint64_t g_zpass = 0;              // occlusion counter dumps answered
 static bool g_pred_on = false;            // SET_PREDICATION active (null GPU statistics)
 static uint64_t g_pred_draws = 0, g_pred_sets = 0;
@@ -451,7 +452,7 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
             // PIXEL_PIPE_STAT_DUMP (0x39) / ZPASS_DONE (0x15); PIXEL_PIPE_STAT_CONTROL (0x38)
             // carries a control word, not an address
             const uint32_t et = b[0] & 0x3F;
-            if (((b[0] >> 8) & 0xF) == 1 && (et == 0x39 || et == 0x15) && count >= 3) {
+            if (((b[0] >> 8) & 0xF) == 1 && (et == 0x39 || et == 0x15) && count >= 3 && !g_rendered) {
                 static uint64_t pixel_counter = 0;
                 const uint64_t a = uint64_t(b[1] & ~7u) | (uint64_t(b[2] & 0xFFFF) << 32);
                 auto* r = reinterpret_cast<volatile uint64_t*>(a);
@@ -528,7 +529,7 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
 
 
 static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
-    native_gfx_submit(count, dcbs, dcb_sizes);
+    g_rendered = native_gfx_submit(count, dcbs, dcb_sizes);
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && dcb_sizes[k]) run_dcb(dcbs[k], dcb_sizes[k] / 4, 0);
     native_gfx_check_waits(count, dcbs, dcb_sizes);

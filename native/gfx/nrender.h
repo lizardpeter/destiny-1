@@ -17,7 +17,10 @@ struct Draw {
     // ZPass / PredOn / PredOff: command-buffer events at their place among the draws (not draws):
     // an occlusion counter dump to index_addr (ZPASS_DONE), draw predication on the query results
     // at index_addr (count bit 0: draw if visible) and its end (SET_PREDICATION)
-    enum Kind : uint8_t { Indexed, Auto, Clear, ZPass, PredOn, PredOff };
+    // Dma / WriteData: CP memory writes (DMA_DATA: src index_addr -> dst caller, count bytes,
+    // prim = src_sel, index32 = dst_sel, instances = fill value; WRITE_DATA: inline_vertices -> caller),
+    // done in order so draws after them read the new data
+    enum Kind : uint8_t { Indexed, Auto, Clear, ZPass, PredOn, PredOff, Dma, WriteData };
     Kind kind = Auto;
     uint8_t prim = 4;           // VGT_DI_PRIM_TYPE
     uint8_t index32 = 0;
@@ -91,5 +94,12 @@ void request_passlog(uint32_t frames);
 // Frame timing for the title bar: presented frames and the GPU name.
 uint64_t presented_frames();
 const char* gpu_name();
+
+// Testing switches flipped at run time (F5..F8 in the window), to narrow down rendering
+// problems while playing: bit 0 occlusion queries off (every query visible, no predication),
+// bit 1 readbacks not waited for, bit 2 no readbacks, bit 3 no geometry cache.
+uint32_t debug_toggles();
+void flip_debug_toggle(int bit);
+const char* debug_toggle_text();  // e.g. " [F5 queries off]" (empty when none is on)
 
 }  // namespace d1::ng
