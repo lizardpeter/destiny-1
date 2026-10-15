@@ -298,7 +298,13 @@ impl Host {
 
 impl Host {
     fn instance(&self) -> Vec<u8> {
-        let (index, insertion) = self.activity.unwrap_or((-1, -1));
+        let (index, mut insertion) = self.activity.unwrap_or((-1, -1));
+        // D1B_INSERTION=<n> (research): answer with this insertion point instead of the
+        // requested one (the client asks for -1, "default", which the real host resolves)
+        if let Some(n) = std::env::var("D1B_INSERTION").ok().and_then(|v| v.parse().ok()) {
+            info!("activity host: insertion point {insertion} -> {n} (D1B_INSERTION)");
+            insertion = n;
+        }
         match scenario_for(index) {
             Some(sc) => instance(sc.name, sc.checksum, sc.bubbles, index, insertion),
             None => {

@@ -1035,3 +1035,17 @@ blotchy, posterised, blurred image. What the instrumented software-renderer runs
 - Open: the in-world image itself (blur/posterisation) is not reproduced locally (the
   software runs reach in_world but present black); the stock-shadPS4 A/B and the prologue
   wake-up effect are still to check.
+
+## 2026-10-15: prologue start point (first tests)
+
+- The client asks the activity host for insertion point -1 ("activity host startup ...
+  insertion_point_index=-1"); our host echoed -1 into the instance details (+0x682).
+- `D1B_INSERTION=0` (backend, research) answers 0 instead: the player never gets a unit
+  (spawn never completes; the camera stays on the pre-spawn transmat glare at the same
+  ambient Cosmodrome spot). So insertion 0 is not the car-graveyard start by itself, and
+  the start location is not chosen from the insertion point alone.
+- `D1_ALLOW_LOADING_CINE` (client, research): the loading cinematics play (cloud descent)
+  and the player still spawns at the ambient spot at night: the Ghost revive / dialogue is
+  the mission script (activity host), not a loading cinematic.
+- Next: log every client -> activity host message during the prologue, and trace the spawn
+  location choice in can_spawn (0x415700) to see what data picks the start point.
