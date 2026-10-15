@@ -874,7 +874,28 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
     if (!nr::g_base || !ng::active()) return;
     if (nr::g_frame_executed) {
         ++nr::g_executed_frames;
-        const bool dump = nr::g_dump_every && nr::g_executed_frames % uint64_t(nr::g_dump_every) == 0;
+        bool dump = nr::g_dump_every && nr::g_executed_frames % uint64_t(nr::g_dump_every) == 0;
+        // D1_NG_SNAP=<state prefix>:<secs>: (testing) <secs> after the game enters that state,
+        // log the next frame's passes and dump it (with D1_NG_FRAMES / D1_NG_TARGETS)
+        static const char* snap = getenv("D1_NG_SNAP");
+        static int snap_phase = 0;  // 0 waiting, 1 armed (passlog requested), 2 done
+        if (snap && snap_phase < 2) {
+            static std::chrono::steady_clock::time_point t_in{};
+            const char* colon = std::strrchr(snap, ':');
+            const size_t n = colon ? size_t(colon - snap) : std::strlen(snap);
+            const char* gs = game_state();
+            if (snap_phase == 1) {
+                dump = true, snap_phase = 2;
+                log("native gfx: snapshot at state '%s'", gs ? gs : "?");
+            } else if (gs && std::strncmp(gs, snap, n) == 0) {
+                if (t_in == std::chrono::steady_clock::time_point{}) t_in = std::chrono::steady_clock::now();
+                else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_in).count() > (colon ? std::atof(colon + 1) : 0)) {
+                    nr::g_every = 1;
+                    ng::request_passlog(1);
+                    snap_phase = 1;
+                }
+            }
+        }
         static const bool log_reloads = getenv("D1_NG_LOG_RELOADS") != nullptr;
         if (log_reloads) log("ng flip %llu", (unsigned long long)gpu_flip_count());
         const auto f0 = std::chrono::steady_clock::now();

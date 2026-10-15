@@ -1261,7 +1261,8 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
         uint32_t lo = UINT32_MAX, hi = 0;
         if (index_size == 4) {
             const uint32_t* ix = reinterpret_cast<const uint32_t*>(dst);
-            for (uint32_t i = 0; i < index_count; ++i) lo = std::min(lo, ix[i]), hi = std::max(hi, ix[i]);
+            for (uint32_t i = 0; i < index_count; ++i)
+                if (ix[i] != 0xFFFFFFFFu) lo = std::min(lo, ix[i]), hi = std::max(hi, ix[i]);
         } else {
             const uint16_t* ix = reinterpret_cast<const uint16_t*>(dst);
             for (uint32_t i = 0; i < index_count; ++i)
@@ -1394,6 +1395,15 @@ Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const
         for (size_t i = 0; i < g.semantics.size() && i < 32; ++i)
             for (uint16_t e : v.semantics)
                 if ((e & 0xFF) == (g.semantics[i] & 0xFF)) d.input_location[i] = uint8_t(e >> 8 & 0x1F);
+    }
+    if (const char* dir = std::getenv("D1_NG_DUMP_GCN"); dir && g.code && g.code_size) {  // for d1-shadertool dis
+        char path[512];
+        std::snprintf(path, sizeof path, "%s/%s_%p.code", dir, vs ? "vs" : "ps", (const void*)obj);
+        if (FILE* f = std::fopen(path, "wb")) std::fwrite(g.code, 1, g.code_size, f), std::fclose(f);
+        if (g.fetch && g.fetch_size) {
+            std::snprintf(path, sizeof path, "%s/%s_%p.fetch", dir, vs ? "vs" : "ps", (const void*)obj);
+            if (FILE* f = std::fopen(path, "wb")) std::fwrite(g.fetch, 1, g.fetch_size, f), std::fclose(f);
+        }
     }
     if (g.code && g.code_size) {
         sh->res = gcn::translate(d);
@@ -1560,6 +1570,10 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
     vi.pVertexAttributeDescriptions = vattr.data();
     VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     ia.topology = topo;
+    // strips are cut with the reset index (0xFFFF / 0xFFFFFFFF), as the engine sets up
+    // VGT_MULTI_PRIM_IB_RESET_EN: without it the cut is drawn as a vertex far away (streaks)
+    ia.primitiveRestartEnable = topo == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP || topo == VK_PRIMITIVE_TOPOLOGY_LINE_STRIP ||
+                                topo == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
     VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     vp.viewportCount = vp.scissorCount = 1;
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -1792,7 +1806,8 @@ void Renderer::draw(const Draw& dr) {
         vfirst = UINT32_MAX, vlast = 0;
         if (dr.index32) {
             const uint32_t* ix = reinterpret_cast<const uint32_t*>(dr.index_addr);
-            for (uint32_t i = 0; i < dr.count; ++i) vfirst = std::min(vfirst, ix[i]), vlast = std::max(vlast, ix[i]);
+            for (uint32_t i = 0; i < dr.count; ++i)
+                if (ix[i] != 0xFFFFFFFFu) vfirst = std::min(vfirst, ix[i]), vlast = std::max(vlast, ix[i]);
         } else {
             const uint16_t* ix = reinterpret_cast<const uint16_t*>(dr.index_addr);
             for (uint32_t i = 0; i < dr.count; ++i)
@@ -1935,6 +1950,36 @@ void Renderer::draw(const Draw& dr) {
             (const void*)dr.ps, (unsigned long long)dr.color[0][0] << 8, (unsigned long long)dr.depth[4] << 8,
             dr.depth_ctl, dr.stencil_ctl, dr.stencil_ref, dr.blend, dr.target_mask, dr.su_sc_mode, dr.vp[0], dr.vp[1],
             dr.vp[2], dr.vp[3], dr.znear, dr.zfar, dr.num_vb, vfirst, vlast, (unsigned long long)dr.caller);
+        std::string vbs;
+        for (const auto& a : p->vs->res.attribs) {
+            const uint32_t* v = dr.vb[a.vb_slot & 15];
+            char b[160];
+            std::snprintf(b, sizeof b, " [%u: %llx stride %u n %u dfmt %u nfmt %u inst %u]", a.vb_slot,
+                          (unsigned long long)(uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32), v[1] >> 16 & 0x3FFF, v[2],
+                          v[3] >> 15 & 0xF, v[3] >> 12 & 7, a.index_vgpr);
+            vbs += b;
+        }
+        for (const auto& b : p->vs->res.bindings)
+            if (b.kind == gcn::Binding::ConstBuffer) {
+                char t[96];
+                std::snprintf(t, sizeof t, " cb%u=%llx/%u", b.api_slot, (unsigned long long)dr.cb[0][b.api_slot & 15].addr,
+                              dr.cb[0][b.api_slot & 15].size);
+                vbs += t;
+            }
+        if (!p->vs->res.attribs.empty()) {  // packed bone index in position.w (16_16_16_16 snorm)
+            const uint32_t* v = dr.vb[p->vs->res.attribs[0].vb_slot & 15];
+            const uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
+            const uint32_t stride = v[1] >> 16 & 0x3FFF;
+            if ((v[3] >> 15 & 0xF) == 12 && (v[3] >> 12 & 7) == 1 && base >= 0x10000 && stride) {
+                int mx = -1;
+                for (uint32_t i = vfirst; i <= vlast && i < v[2]; ++i)
+                    mx = std::max<int>(mx, reinterpret_cast<const int16_t*>(base + uint64_t(i) * stride)[3]);
+                char t[48];
+                std::snprintf(t, sizeof t, " maxw %d", mx);
+                vbs += t;
+            }
+        }
+        log("ng   attribs:%s", vbs.c_str());
     }
     if (st.frames == passlog_frame && !passlog.empty()) {
         auto& pl = passlog.back();
@@ -2465,6 +2510,7 @@ void request_passlog(uint32_t frames) {
     g->passlog.clear();
     g->passlog_frame = g->st.frames + 1;
     g->passlog_count = frames;
+    if (std::getenv("D1_NG_SNAP_DEBUG")) g->debug = true, g->debug_from = g->passlog_frame, g->debug_lines = 0;
 }
 uint64_t presented_frames() { return g ? g->sc.presented : 0; }
 const char* gpu_name() { return g ? g->ctx.name : ""; }

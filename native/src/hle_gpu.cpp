@@ -376,6 +376,7 @@ static std::mutex g_gnm_mutex;
 static std::vector<Equeue*> g_eop_eqs;
 static std::atomic<uint64_t> g_packets{0};
 static uint64_t g_op_counts[256];
+static uint64_t g_zpass = 0;              // occlusion counter dumps answered
 static bool g_pred_on = false;            // SET_PREDICATION active (null GPU statistics)
 static uint64_t g_pred_draws = 0, g_pred_sets = 0;
 
@@ -389,10 +390,11 @@ static void gpu_stats(uint64_t frame) {
     const uint64_t draw = g_op_counts[0x27] + g_op_counts[0x2D] + g_op_counts[0x35] + g_op_counts[0x38] + g_op_counts[0x25];
     const uint64_t disp = g_op_counts[0x15] + g_op_counts[0x16];
     const uint64_t pk = g_packets.load();
-    static uint64_t last_pd = 0, last_ps = 0;
-    log("gpu stats @%llu: %.1f draws (%.1f predicated, %.1f SET_PREDICATION), %.1f dispatches, %.0f packets per frame",
+    static uint64_t last_pd = 0, last_ps = 0, last_zp = 0;
+    log("gpu stats @%llu: %.1f draws (%.1f predicated, %.1f SET_PREDICATION), %.1f dispatches, %.0f packets, %.1f occlusion dumps per frame",
         (unsigned long long)frame, (draw - last_draw) / 300.0, (g_pred_draws - last_pd) / 300.0,
-        (g_pred_sets - last_ps) / 300.0, (disp - last_disp) / 300.0, (pk - last_pk) / 300.0);
+        (g_pred_sets - last_ps) / 300.0, (disp - last_disp) / 300.0, (pk - last_pk) / 300.0, (g_zpass - last_zp) / 300.0);
+    last_zp = g_zpass;
     last_draw = draw, last_disp = disp, last_pk = pk, last_pd = g_pred_draws, last_ps = g_pred_sets;
     print_call_rates(300);
 }
@@ -431,6 +433,22 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
             g_pred_on = ((b[1] >> 16) & 7) != 0;
             ++g_pred_sets;
             break;
+        case 0x46: {  // EVENT_WRITE: occlusion query counters (ZPASS_DONE, event index 1)
+            // Nothing is rasterised here, so report every query as visible the way shadPS4 does:
+            // each dump writes a growing counter with the valid bit into all 8 DB begin/end
+            // pairs. Left unwritten, the game reads stale or zero counts, so occlusion-tested
+            // objects (lens flares, foliage, distant geometry) pop in and out from frame to frame.
+            if (((b[0] >> 8) & 0xF) == 1 && count >= 3) {
+                static uint64_t pixel_counter = 0;
+                auto* r = reinterpret_cast<volatile uint64_t*>(uint64_t(b[1] & ~7u) | (uint64_t(b[2] & 0xFFFF) << 32));
+                if (r) {
+                    for (int k = 0; k < 8; ++k) r[k * 2] = pixel_counter | 0x8000000000000000ull;
+                    pixel_counter += 0x2FFFFFFull;
+                    ++g_zpass;
+                }
+            }
+            break;
+        }
         case 0x47: {  // EVENT_WRITE_EOP
             uint64_t addr = b[1] | (uint64_t(b[2] & 0xFFFF) << 32);
             uint32_t data_sel = b[2] >> 29, int_sel = (b[2] >> 24) & 3;
