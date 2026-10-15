@@ -1190,3 +1190,20 @@ Other payload types: 24 purge 0x80800D10 {i3, u8, mask}, 27 reset authority mask
 
 Next: how host-spawned entities reach a client (the replication path for the host's index
 range), starting from where an unbound phase entry gets bound.
+
+**Reference manager code** (manager = *(0x1AD5030 + ctx x stride + pool), ctx 0x25D6FF8):
+0x106BF0 creates it ("client_reference_manager", 0x2BE20 bytes), 0x106CE0 clears it,
+0x100D5E0 adds a group {key, defining tag: list of 0x10-byte entries with the kind byte at
++0}, entries start unbound (-1, two 0x18-byte slots each), 0x100D2E0 removes a group,
+0x100D0A0 / 0x100D210 / 0x1071D0 / 0x100CB80 / 0x100CCE0 look entries up (by
+id, by type+index, by handle). 0x1195F0 (player entity -> fireteam reference) is one
+binder; entries are bound when the owning entity spawns.
+
+**Sensors.** 0x29F720 sweeps the reference types in a bitmask (*0x2655630; trigger
+volumes 0x3a, nav points 0x2c, 0x29/0x2a/0x2d/0x39) and reports bound ones (0x352E30):
+these are the client's `sensor_sense_update` (6) messages. With incidents (18) they are the
+host's inputs: which triggers the player is in, what happened.
+
+Still open: the transport for host-spawned entities (phases, script objects, cinematics).
+The client sends no UDP to the host (only the BAP TCP connection), so either they arrive
+over BAP or the client spawns them itself on a signal not found yet.
