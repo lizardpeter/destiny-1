@@ -573,6 +573,33 @@ D1_SYSV void r_set_vertex_buffer(uint64_t dev, uint32_t handle, uint32_t stream,
     o_set_vertex_buffer(dev, handle, stream, offset, count);
 }
 
+// engine dispatch(dev, cs object, x, y, z, flag): compute work on the graphics ring
+using DispatchFn = D1_SYSV void (*)(uint64_t, uint64_t, uint32_t, uint32_t, uint32_t, int32_t);
+DispatchFn o_dispatch;
+D1_SYSV void r_dispatch(uint64_t dev, uint64_t cs, uint32_t x, uint32_t y, uint32_t z, int32_t flag) {
+    static const bool census = getenv("D1_NG_LOG_DISPATCH") != nullptr;
+    if (census) {
+        // caller chain (frame pointers): who asks for compute
+        uint64_t chain[4] = {};
+        uint64_t* fp = static_cast<uint64_t*>(__builtin_frame_address(0));
+        for (int i = 0; i < 4 && fp; ++i) {
+            chain[i] = fp[1] - nr::g_base;
+            uint64_t* nfp = reinterpret_cast<uint64_t*>(fp[0]);
+            if (nfp <= fp) break;
+            fp = nfp;
+        }
+        static std::mutex m;
+        static std::unordered_map<uint64_t, uint64_t> seen;
+        std::lock_guard lk(m);
+        const uint64_t key = chain[1] ^ (chain[2] << 20) ^ (chain[3] << 40) ^ cs;
+        if (seen[key]++ < 2)
+            log("ng dispatch: cs %#llx groups %u x %u x %u flag %d | from %#llx < %#llx < %#llx < %#llx", (unsigned long long)cs,
+                x, y, z, flag, (unsigned long long)chain[0], (unsigned long long)chain[1], (unsigned long long)chain[2],
+                (unsigned long long)chain[3]);
+    }
+    o_dispatch(dev, cs, x, y, z, flag);
+}
+
 template <class F>
 bool hook(uint64_t off, F host, F& orig, const char* name) {
     orig = reinterpret_cast<F>(hook_eboot_function(off, reinterpret_cast<const void*>(host)));
@@ -759,6 +786,7 @@ void native_gfx_install() {
         ok &= hook(0x7E2A00, &r_clear, o_clear, "clear");
         ok &= hook(0x7DF630, &r_alloc_constants, o_alloc_constants, "alloc_constants");
         ok &= hook(0x7DEC20, &r_set_vertex_buffer, o_set_vertex_buffer, "set_vertex_buffer");
+        ok &= hook(0x7E0780, &r_dispatch, o_dispatch, "dispatch");
         log("native gfx: rendering natively (every %d frame%s)%s", nr::g_every, nr::g_every == 1 ? "" : "s",
             ok ? "" : " (some hooks failed)");
         return;

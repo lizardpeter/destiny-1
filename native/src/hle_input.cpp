@@ -48,6 +48,12 @@ static constexpr int32_t kPadHandle = 1;
 static uint32_t scripted_buttons(uint64_t now_us) {
     static const char* env = getenv("D1_AUTOPRESS");
     if (!env) return 0;
+    // D1_AUTOPRESS_UNTIL=<state prefix>: stop pressing once the game reaches that state
+    static const char* until = getenv("D1_AUTOPRESS_UNTIL");
+    static bool stopped = false;
+    if (until && !stopped)
+        if (const char* gs = game_state(); gs && std::strncmp(gs, until, std::strlen(until)) == 0) stopped = true;
+    if (stopped) return 0;
     const uint64_t period = uint64_t(atof(env) * 1e6);
     if (!period || (now_us % period) >= period / 3) return 0;
     const char* seq = strchr(env, ':');
