@@ -165,6 +165,22 @@ pub const HOST_INSTANCE: u32 = 1;
 /// (c_time_of_day_game_system starts at 0.2 with a 3600 s cycle).
 pub const HOST_WORLD_GLOBALS: u32 = 2;
 
+/// Host -> client message: claim authority over abandoned entity slots (type 23, handler
+/// 0x10190F0 -> world interface slot 0x340; payload 0x80800D58 {u8, u32[384] slot mask, i3}).
+/// D1B_CLAIM=<u8>,<i8> (research): hand the client the host's whole slot range (0..8191).
+pub const HOST_CLAIM_ABANDONED: u32 = 23;
+
+fn claim_abandoned() -> Option<(u32, Vec<u8>)> {
+    let spec = std::env::var("D1B_CLAIM").ok()?;
+    let mut it = spec.split(',').map(|x| x.trim().parse::<i64>().unwrap_or(0));
+    let (a, b) = (it.next().unwrap_or(0), it.next().unwrap_or(-1));
+    let words = (0..ENTITY_INDEX_WORDS).map(|i| Some(Value::Int(if CLIENT_INDEX_WORDS.contains(&i) { 0 } else { 0xFFFF_FFFF }))).collect();
+    let mut w = BitWriter::default();
+    invest::encode(&mut w, "0x80800d58", &Value::Struct(vec![Some(Value::Int(a)), Some(Value::Array(words)), Some(Value::Int(b))]));
+    info!("activity host: claim abandoned entity slots 0..8191 ({a}, {b}) (D1B_CLAIM)");
+    Some((HOST_CLAIM_ABANDONED, w.finish()))
+}
+
 fn world_globals() -> Option<(u32, Vec<u8>)> {
     let v: f32 = std::env::var("D1B_WORLD_GLOBAL").ok()?.parse().ok()?;
     let mut w = BitWriter::default();
@@ -299,6 +315,7 @@ impl Host {
                 ]
                 .into_iter()
                 .chain(world_globals())
+                .chain(claim_abandoned())
                 .collect()
             }
             t => {
@@ -333,8 +350,10 @@ impl Host {
 }
 
 pub fn entity_indices() -> Vec<u8> {
+    // D1B_GRANT_ALL_INDICES (research): grant the host's range too
+    let grant_all = std::env::var_os("D1B_GRANT_ALL_INDICES").is_some();
     let words = (0..ENTITY_INDEX_WORDS)
-        .map(|i| Some(Value::Int(if CLIENT_INDEX_WORDS.contains(&i) { 0xFFFF_FFFF } else { 0 })))
+        .map(|i| Some(Value::Int(if CLIENT_INDEX_WORDS.contains(&i) || grant_all { 0xFFFF_FFFF } else { 0 })))
         .collect();
     let mut w = BitWriter::default();
     invest::encode(&mut w, TYPE_ENTITY_INDICES, &Value::Struct(vec![Some(Value::Array(words))]));

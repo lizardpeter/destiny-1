@@ -145,6 +145,7 @@ using ZoomMagFn = D1_SYSV float (*)(int32_t unit, int32_t zoom);
 using ZoomAxesFn = D1_SYSV void (*)(int32_t unit, float* yaw, float* pitch);
 static PlayerControlFn g_pc_orig = nullptr;
 static void trace_cameras();
+static void trace_references();
 static std::atomic<int32_t> g_spawn_entity{-1};
 static int client_references(uint64_t b, int type, uint8_t** out, int max);
 static int32_t g_mouse_test_dx = 0, g_mouse_test_dy = 0;  // D1_MOUSE_TEST=dx,dy (headless)
@@ -153,6 +154,7 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     g_pc_orig(dt, f2, slot, player, state, control, action);
     if (player != 0 || !action) return;
     trace_cameras();
+    trace_references();
     if (getenv("D1_TRACE_SPAWN")) {  // research: why the local player gets no unit
         static auto next = std::chrono::steady_clock::now();
         if (std::chrono::steady_clock::now() >= next) {
@@ -530,6 +532,44 @@ static int client_references(uint64_t b, int type, uint8_t** out, int max) {
     }
     return n;
 }
+// D1_TRACE_REFS=<secs> (research): once, <secs> after player control starts, log every client
+// reference type's count and its first entries (tag handle, object offset, first bytes).
+static void trace_references() {
+    static const char* v = getenv("D1_TRACE_REFS");
+    static bool done = false;
+    if (!v || done) return;
+    static const auto start = std::chrono::steady_clock::now();
+    if (std::chrono::steady_clock::now() - start < std::chrono::seconds(atoi(v))) return;
+    done = true;
+    const uint64_t b = rt().modules[0].base;
+    const uint16_t ctx = *reinterpret_cast<uint16_t*>(b + 0x25D6FF8);
+    if (!ctx) { log("refs: no context"); return; }
+    const uint64_t pool = *reinterpret_cast<uint64_t*>(b + 0x1AD5000);
+    const uint64_t stride = *reinterpret_cast<uint32_t*>(b + 0x1AD5010);
+    const uint8_t* mgr = *reinterpret_cast<uint8_t**>(b + 0x1AD5030 + ctx * stride + pool);
+    if (!mgr) { log("refs: no manager"); return; }
+    // groups (0x1071D0): count at int [2], records of 5 ints from int [5]: key at [0], start at [4]
+    const int32_t* gi = reinterpret_cast<const int32_t*>(mgr);
+    for (int g = 0; g < gi[2] && g < 64; ++g) {
+        const int32_t* r = gi + 5 + g * 5;
+        log("refs: group %d key %08x %08x %08x %08x start %d", g, r[0], r[1], r[2], r[3], r[4]);
+    }
+    for (int type = 0; type < 64; ++type) {
+        const int16_t start_i = *reinterpret_cast<const int16_t*>(mgr + 0x2BD1C + type * 4);
+        const int16_t count = *reinterpret_cast<const int16_t*>(mgr + 0x2BD1E + type * 4);
+        if (count <= 0) continue;
+        char line[1024];
+        int n = std::snprintf(line, sizeof line, "refs: type %#x count %d:", type, count);
+        for (int16_t i = 0; i < count && n < 900; ++i) {
+            const int16_t e = *reinterpret_cast<const int16_t*>(mgr + 0x2A51C + (start_i + i) * 2);
+            if (e < 0) continue;
+            const uint8_t* ent = mgr + 0x520 + e * 0x38;
+            n += std::snprintf(line + n, sizeof line - n, " [%d]%08x", e, *reinterpret_cast<const uint32_t*>(ent));
+        }
+        log("%s", line);
+    }
+}
+
 static void publish_fireteam(int32_t entity) {
     const uint64_t b = rt().modules[0].base;
     const uint64_t arr = *reinterpret_cast<uint64_t*>(b + 0x2689588);

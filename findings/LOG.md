@@ -1148,3 +1148,45 @@ Wwise audio; classes 0x80800734 / 0x80801AD7 / 0x80801A6A not decoded yet).
   package (`ps4_cosmo_ambient_activityonl_0268`). The prologue's own script objects
   (phases, objectives, ...) never get instantiated: they are host-side entities, and our
   host creates none, so the client runs on the destination's ambient (patrol) content.
+
+## 2026-10-15 (night): mission objects in the client, and what is missing
+
+**Client references are the mission objects.** `D1_TRACE_REFS=<secs>` (native, research) logs
+the client-reference groups and every reference by type. In the prologue world the
+reference types are exactly the object kinds of the content units' object tables
+(0x3c phase, 0x3b script object, 0x3a trigger volume, 0x1d player trigger, 0x2c nav point,
+0x20 objective, 0x05 sequence, 0x06 cinematic, 0x37 array, 0x3d object, 0x04 object, plus
+0xc player definitions x16, 0xf, 0x10 activity lifetime, 0x11, 0x22, 0x27).
+
+Groups (manager ints from [5], 5 per group: key, flags, defining tag, count, start):
+0 `96e0a5e5` (93 refs, no tag; declared by content units 0x80CB905A and ambient
+0x80CD0252), 1 `992bb471` (95 refs, tag 0x80CC0500; the key is the scenario hash at
++0x08 of `act_cosmo_m0_highway`; the prologue's mission content units declare it at +0x0C),
+2 `3c2f5ed5` (21, 0x80A5EA2B), 3 `4786c0e0` (player definitions). Content units
+(0x8080076E): +0x08 destination hash (0xB22417AE = cosmo), +0x0C group key.
+
+A reference id is {u32 group key, i8, i16 index}; 0x1071D0 finds the group, adds the
+index to its start and returns the entry (manager +0x520 + e x 0x38: object handle,
+offset). Message 7 (0x29D7E0) then hands a typed value to the object's delegate at
++0x108 (0x353340) if the entry is bound.
+
+**Bound vs unbound.** Bound entries have handles 0xSSfa20NN: low 16 bits 0x2000+ = the
+client's entity index range (8192..). Objectives, sequences, trigger volumes and nav points
+are bound (the client spawned them). All 7 phases, all 16 script objects, 3 of 4
+cinematics (incl. `pf_104_res`), most player triggers, arrays and kind 0x04/0x1c/0x1e
+objects are unbound (0xFFFFFFFF): host-spawned entities that no one creates.
+
+**Ruled out** (no change to the unbound set, spawn or lighting):
+- granting the client every entity index (backend `D1B_GRANT_ALL_INDICES`);
+- message 23 `claim_authority_over_abandoned_entity_slots` (payload 0x80800D58 {u8,
+  u32[384] mask, i3}; backend `D1B_CLAIM=<u8>,<i3>`) over slots 0..8191 (nothing was
+  abandoned: the entities were never created);
+- `script_state` / `script_event`: the handlers decode into stack buffers and drop them
+  (payload entries are FNV-1 hashes, initialised to 0x811C9DC5 = ""); a debugging channel.
+
+Other payload types: 24 purge 0x80800D10 {i3, u8, mask}, 27 reset authority mask and
+29 query mask 0x80800D31 / 0x80800B09 {i32}. 23/24/2 go to the world interface object
+*0x264C798 (vtable +0x340 / +0x350 / +0x368).
+
+Next: how host-spawned entities reach a client (the replication path for the host's index
+range), starting from where an unbound phase entry gets bound.
