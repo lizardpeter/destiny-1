@@ -280,6 +280,9 @@ struct Image {
     // textures: the guest memory they were copied from, and its version then (write tracking)
     uint64_t src_addr = 0, src_size = 0, version = ~0ull, checked = 0;
     uint32_t torn = 0;  // reloads in a row that were rewritten while being copied
+    // render targets: guest layout (for readback) and whether any draw samples it
+    uint32_t tile_mode = 0, pitch = 0, bpp = 0;
+    bool sampled = false;
 };
 
 struct Shader {
@@ -308,7 +311,7 @@ struct Stats {
     uint64_t frames = 0, submits = 0, draws = 0, clears = 0, skipped = 0, pipelines = 0, textures = 0, targets = 0,
              shaders = 0, bad_shaders = 0, ring_peak = 0, evicted = 0;
     uint64_t bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, bytes_tex = 0;  // copied into the ring
-    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0;                 // geometry cache uploads
+    uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
     uint64_t t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
@@ -340,6 +343,9 @@ struct Sub {
     std::vector<std::array<uint64_t, 3>> dead_geo;  // (block, offset, size) to free
     std::vector<VkDescriptorPool> pools;            // descriptor sets of this submission's draws
     size_t pool = 0;                                // the pool being allocated from
+    // small render targets the CPU reads: copied to the ring, written to guest memory when done
+    struct Readback { uint64_t base; tiling::Surface sf; uint64_t off; };
+    std::vector<Readback> readbacks;
 };
 
 // Copies of guest vertex / index buffers kept on the GPU while the game does not write them.
@@ -452,6 +458,9 @@ struct Renderer {
     VkImageView attachment_view(Image* img);
     Image* depth_target(const uint32_t* d, bool bind = true);
     std::unordered_set<uint64_t> target_bases;  // every address ever rendered to
+    std::unordered_set<uint64_t> sampled_bases;  // render target addresses some draw sampled
+    std::unordered_set<uint64_t> tsharp_bases;   // every address a draw's T# named
+    std::unordered_map<uint64_t, uint32_t> base_targets;  // render target images made per address
     VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
     Image* upload_texture(const uint32_t* t);
     void evict_textures();
@@ -461,6 +470,7 @@ struct Renderer {
     Pipeline* pipeline(const Draw& dr, Image* const* colors, Image* depth);
     void begin_pass(Image* const* colors, Image* depth);
     void end_pass();
+    void queue_readbacks();
     void skip(const char* why) {
         ++st.skipped;
         ++st.skip[why];
@@ -665,6 +675,11 @@ void Renderer::retire_one() {
     const uint64_t tw = now_ns();
     vkWaitForFences(ctx.device, 1, &sb.fence, VK_TRUE, UINT64_MAX);
     st.t_wait += now_ns() - tw;
+    for (const auto& rb : sb.readbacks)  // the GPU's results where the game reads them
+        if (guest_region_extent(rb.base) >= rb.sf.total_size)
+            tiling::tile(rb.sf, 0, ring.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
+    st.readbacks += sb.readbacks.size();
+    sb.readbacks.clear();
     for (auto& b : sb.staging) free_buffer(b);
     sb.staging.clear();
     for (auto& img : sb.dead) destroy_image(img.get());
@@ -971,6 +986,7 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
             vkCmdClearColorImage(cmd, n->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &r);
         }
         n->base = base, n->swap = swap;
+        ++base_targets[base];
         img = n.get();
         if (auto old = targets.find(key); old != targets.end()) retired.push_back(std::move(old->second));
         targets[key] = std::move(n);
@@ -980,6 +996,8 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
     if (bind || !target_by_base.count(base)) target_by_base[base] = img;
     img->last_used = submit_no;
     img->bind_slice = std::min(slice, img->d - 1);
+    img->tile_mode = c[5] & 0x1F, img->pitch = ((c[1] & 0x7FF) + 1) * 8;
+    img->bpp = fmt::data_format(fmt::color_to_data_format(format)).bpp;
     return img;
 }
 
@@ -1317,6 +1335,8 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
     auto rt = target_by_base.find(ts.base);
     if (rt != target_by_base.end()) {
         Image* img = rt->second;
+        img->sampled = true;
+        sampled_bases.insert(ts.base);
         if (img->depth) return view(img, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true);
         // the render target stored shader component k in memory channel swap(k); our image
         // holds shader components, so map the T#'s memory channels back
@@ -1453,28 +1473,24 @@ gcn::TexDim slot_dim(const uint32_t* t) {
 }
 
 Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth) {
+    // per texture slot: the image dimensionality (a T# on a render target samples our 2D
+    // target image) and whether it is sampled with integer types
     gcn::TexDim dims[2][16];
-    for (int s = 0; s < 2; ++s)
-        for (int i = 0; i < 16; ++i) {
-            dims[s][i] = slot_dim(dr.T(s, i));
-            // a T# on a render target samples our 2D target image
-            if (dr.T(s, i))
-                if (auto rt = target_by_base.find(fmt::decode_tsharp(dr.T(s, i)).base); rt != target_by_base.end())
-                    dims[s][i] = rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
-        }
-    // integer textures are sampled with integer types
     uint8_t kinds[2][16] = {};
     for (int s = 0; s < 2; ++s)
-        for (int i = 0; i < 16; ++i)
-            if (const uint32_t* t = dr.T(s, i)) {
-                const auto ts = fmt::decode_tsharp(t);
-                if (auto rt = target_by_base.find(ts.base); rt != target_by_base.end()) {
-                    const VkFormat f = rt->second->format;
-                    kinds[s][i] = rt->second->depth || !is_int_format(f) ? 0 : is_sint_format(f) ? 2 : 1;
-                } else {
-                    kinds[s][i] = ts.nfmt == 4 ? 1 : ts.nfmt == 5 ? 2 : 0;
-                }
+        for (int i = 0; i < 16; ++i) {
+            const uint32_t* t = dr.T(s, i);
+            dims[s][i] = slot_dim(t);
+            if (!t) continue;
+            const auto ts = fmt::decode_tsharp(t);
+            if (auto rt = target_by_base.find(ts.base); rt != target_by_base.end()) {
+                dims[s][i] = rt->second->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
+                const VkFormat f = rt->second->format;
+                kinds[s][i] = rt->second->depth || !is_int_format(f) ? 0 : is_sint_format(f) ? 2 : 1;
+            } else {
+                kinds[s][i] = ts.nfmt == 4 ? 1 : ts.nfmt == 5 ? 2 : 0;
             }
+        }
     Shader* vs = shader(dr, true, dims[0], kinds[0]);
     // vertex inputs whose format comes from the V#: integer formats need integer inputs
     uint32_t uin = 0, sin = 0;
@@ -2081,8 +2097,11 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     for (Draw* d : draws)
         for (int s = 0; s < 2; ++s)
             for (int i = 0; i < 16; ++i)
-                if (const uint32_t* t = d->T(s, i); t && !target_bases.count(fmt::decode_tsharp(t).base))
-                    upload_texture(t);
+                if (const uint32_t* t = d->T(s, i)) {
+                    const uint64_t b = fmt::decode_tsharp(t).base;
+                    tsharp_bases.insert(b);
+                    if (!target_bases.count(b)) upload_texture(t);
+                }
     barrier();
     st.t_pre += now_ns() - tp;
     for (Draw* d : draws) {
@@ -2090,7 +2109,62 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         else draw(*d);
     }
     end_pass();
+    queue_readbacks();
     submit();
+}
+
+// Small render targets that no draw samples are results the CPU reads back (the depth
+// reduction at 0x579200000 that fits the shadow cascades, for one): the game would find them
+// in guest memory once the GPU is done, so copy them there when this submission completes.
+// D1_NG_READBACK=<max pixels> (default 4096; 0 off).
+void Renderer::queue_readbacks() {
+    static const uint64_t max_pix = [] {
+        const char* v = std::getenv("D1_NG_READBACK");
+        return v ? std::strtoull(v, nullptr, 10) : 4096ull;
+    }();
+    if (!max_pix) return;
+    bool any = false;
+    for (auto& [k, up] : targets) {
+        Image* img = up.get();
+        // only memory used for nothing else: one target there, never sampled or read as a texture
+        if (!img || img->last_used != submit_no || img->depth || img->is3d || img->swap || !img->bpp || img->bpp % 8 ||
+            uint64_t(img->w) * img->h > max_pix || !img->base)
+            continue;
+        if (img->sampled || sampled_bases.count(img->base) || base_targets[img->base] != 1 || tsharp_bases.count(img->base)) {
+            static std::unordered_set<uint64_t> told;
+            if (std::getenv("D1_NG_LOG_READBACK") && told.insert(img->base).second)
+                log("native renderer: not reading back %llx %ux%u: sampled %d/%d, targets %u, T# %d", (unsigned long long)img->base,
+                    img->w, img->h, int(img->sampled), int(sampled_bases.count(img->base)), base_targets[img->base],
+                    int(tsharp_bases.count(img->base)));
+            continue;
+        }
+        tiling::Surface sf;
+        sf.tile_mode = img->tile_mode, sf.bpp = img->bpp, sf.width = img->w, sf.height = img->h, sf.pitch = img->pitch;
+        tiling::layout(sf);
+        const uint64_t bytes = uint64_t(img->w) * img->h * (img->bpp / 8);
+        const uint64_t off = ring_alloc(bytes, 16);
+        if (off == UINT64_MAX) break;
+        if (!any) barrier(), any = true;
+        VkBufferImageCopy r{};
+        r.bufferOffset = off;
+        r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        r.imageExtent = {img->w, img->h, 1};
+        vkCmdCopyImageToBuffer(cmd, img->image, VK_IMAGE_LAYOUT_GENERAL, ring.buf, 1, &r);
+        subs[cur].readbacks.push_back({img->base, sf, off});
+        static std::unordered_set<uint64_t> seen;
+        if (seen.size() < 64 && seen.insert(img->base ^ uint64_t(img->w) << 40 ^ uint64_t(img->h) << 52).second)
+            log("native renderer: reading back target %llx %ux%u (format %d, tile mode %u) to guest memory",
+                (unsigned long long)img->base, img->w, img->h, int(img->format), img->tile_mode);
+    }
+    if (any) {
+        VkMemoryBarrier2 mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        mb.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT, mb.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        mb.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT, mb.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+        VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        di.memoryBarrierCount = 1;
+        di.pMemoryBarriers = &mb;
+        vkCmdPipelineBarrier2(cmd, &di);
+    }
 }
 
 // ---------------------------------------------------------------------------- presentation
@@ -2551,10 +2625,10 @@ void print_stats() {
     const double fr = double(std::max<uint64_t>(1, s.frames));
     log("native renderer: copied per frame (average): vertices %.1f MiB, indices %.1f MiB, constants %.1f MiB, "
         "textures %.1f MiB | geometry cache: %.1f MiB uploaded per frame, %.0f hits per frame, %.0f MiB held | "
-        "%llu texture reloads (%llu torn), %llu torn geometry copies", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
+        "%llu texture reloads (%llu torn), %llu torn geometry copies, %llu target readbacks", double(s.bytes_vtx) / fr / 1048576.0, double(s.bytes_idx) / fr / 1048576.0,
         double(s.bytes_cb) / fr / 1048576.0, double(s.bytes_tex) / fr / 1048576.0, double(s.bytes_geo) / fr / 1048576.0,
         double(s.geo_hits) / fr, double(g->geo_bytes) / 1048576.0, (unsigned long long)s.tex_reloads,
-        (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn);
+        (unsigned long long)s.tex_torn, (unsigned long long)s.geo_torn, (unsigned long long)s.readbacks);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: CPU per frame: pre-pass %.2f ms, pipelines %.2f ms, geometry %.2f ms, descriptors %.2f ms, "
             "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,

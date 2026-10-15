@@ -354,6 +354,16 @@ static void do_flip(int32_t index, int64_t arg) {
     for (auto* q : qs) q->trigger(6, kFilterVideoOut, 6 | (uint64_t(arg) << 16), true);
     uint64_t n = ++g_frames;
     if (n == 1 || n == 10 || n == 100 || n % 1000 == 0) log("flip #%llu (buffer %d, arg %lld)", n, index, arg);
+    static const bool rate = getenv("D1_GPU_STATS") != nullptr;
+    if (rate) {  // game frames per second (every 5 s)
+        static auto t0 = std::chrono::steady_clock::now();
+        static uint64_t n0 = 0;
+        const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        if (s >= 5.0) {
+            log("gpu stats: %.1f flips per second", double(n - n0) / s);
+            t0 = std::chrono::steady_clock::now(), n0 = n;
+        }
+    }
     gpu_stats(n);
 }
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {

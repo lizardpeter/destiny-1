@@ -279,4 +279,33 @@ void detile(const Surface& s, uint32_t lv, const uint8_t* tiled, uint8_t* linear
         }
 }
 
+// The inverse of detile: writes mip `level` from a tightly packed buffer into tiled memory.
+void tile(const Surface& s, uint32_t lv, const uint8_t* linear, uint8_t* tiled) {
+    const ModeInfo& mi = kModes[s.tile_mode & 31];
+    const MipLayout& ml = s.mips[lv];
+    const uint32_t bytes = s.bpp / 8;
+    uint32_t w = std::max(1u, s.width >> lv), h = std::max(1u, s.height >> lv);
+    if (s.block) w = (w + 3) / 4, h = (h + 3) / 4;
+    const uint32_t slices = std::max(1u, s.depth >> lv) * s.layers;
+    uint8_t* base = tiled + ml.offset;
+    if (mi.array == LinearAligned || mi.array == LinearGeneral) {
+        for (uint32_t z = 0; z < slices; ++z)
+            for (uint32_t y = 0; y < h; ++y)
+                std::memcpy(base + ((uint64_t(z) * ml.height + y) * ml.pitch) * bytes,
+                            linear + ((uint64_t(z) * h + y) * w) * bytes, uint64_t(w) * bytes);
+        return;
+    }
+    const bool micro = ml.micro || !macro_tiled(mi.array);
+    const Macro m = micro ? Macro{} : macro_params(s.tile_mode, s.bpp, s.samples);
+    for (uint32_t z = 0; z < slices; ++z)
+        for (uint32_t y = 0; y < h; ++y) {
+            const uint8_t* in = linear + ((uint64_t(z) * h + y) * w) * bytes;
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint64_t a = micro ? addr_micro(mi.micro, s.bpp, s.samples, x, y, z, ml.pitch, ml.height, ml.thickness)
+                                         : addr_macro(mi, m, s.bpp, s.samples, x, y, z, ml.pitch, ml.height);
+                std::memcpy(base + a, in + uint64_t(x) * bytes, bytes);
+            }
+        }
+}
+
 }  // namespace d1::tiling

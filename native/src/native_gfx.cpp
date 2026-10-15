@@ -592,12 +592,61 @@ D1_SYSV void r_dispatch(uint64_t dev, uint64_t cs, uint32_t x, uint32_t y, uint3
         static std::unordered_map<uint64_t, uint64_t> seen;
         std::lock_guard lk(m);
         const uint64_t key = chain[1] ^ (chain[2] << 20) ^ (chain[3] << 40) ^ cs;
-        if (seen[key]++ < 2)
+        if (seen[key]++ < 2) {
             log("ng dispatch: cs %#llx groups %u x %u x %u flag %d | from %#llx < %#llx < %#llx < %#llx", (unsigned long long)cs,
                 x, y, z, flag, (unsigned long long)chain[0], (unsigned long long)chain[1], (unsigned long long)chain[2],
                 (unsigned long long)chain[3]);
+            const uint32_t* w = reinterpret_cast<const uint32_t*>(cs);
+            std::string hex;
+            for (int i = 0; i < 32; ++i) {
+                char b[12];
+                std::snprintf(b, sizeof b, " %08x", w[i]);
+                hex += b;
+            }
+            log("ng dispatch: cs object%s", hex.c_str());
+            if (const char* dir = getenv("D1_NG_DUMP_GCN")) {
+                char path[512];
+                std::snprintf(path, sizeof path, "%s/cs_%#llx.code", dir, (unsigned long long)cs);
+                if (FILE* f = std::fopen(path, "wb")) {
+                    std::fwrite(reinterpret_cast<const void*>(uint64_t(w[2]) << 8 | uint64_t(w[3]) << 40), 1, w[0] & 0x7FFFFF, f);
+                    std::fclose(f);
+                }
+            }
+        }
     }
+    const uint64_t ctx = field<uint64_t>(dev, 0x50);
+    const uint64_t before = ctx ? field<uint64_t>(ctx, 0x10) : 0;
     o_dispatch(dev, cs, x, y, z, flag);
+    const uint64_t after = ctx ? field<uint64_t>(ctx, 0x10) : 0;
+    if (census && before && after > before && after - before < 4096) {
+        // the user data the engine wrote for this dispatch (SET_SH_REG COMPUTE_USER_DATA_*)
+        uint32_t ud[16] = {};
+        const uint32_t* p = reinterpret_cast<const uint32_t*>(before);
+        const uint32_t n = uint32_t((after - before) / 4);
+        for (uint32_t i = 0; i < n;) {
+            const uint32_t h = p[i], type = h >> 30, count = (h >> 16) & 0x3FFF;
+            if (type == 3 && ((h >> 8) & 0xFF) == 0x76 && i + 1 < n) {
+                const uint32_t reg = p[i + 1] & 0xFFFF;
+                for (uint32_t k = 0; k < count && i + 2 + k < n; ++k)
+                    if (reg + k >= 0x240 && reg + k < 0x250) ud[reg + k - 0x240] = p[i + 2 + k];
+            }
+            i += type == 2 ? 1 : count + 2;
+        }
+        static int logged = 0;
+        if (logged++ < 6) {
+            const auto src = fmt::decode_tsharp(ud + 4);
+            const uint32_t* dt = reinterpret_cast<const uint32_t*>(uint64_t(ud[2]) | uint64_t(ud[3]) << 32);
+            const uint64_t cbb = uint64_t(ud[12]) | uint64_t(ud[13] & 0xFFF) << 32;
+            const uint32_t* cb = reinterpret_cast<const uint32_t*>(cbb);
+            if (dt && cb) {
+                const auto dst = fmt::decode_tsharp(dt);
+                log("ng dispatch: src %llx %ux%u f%u.%u tile %u | dst %llx %ux%u f%u.%u tile %u | cb %u %u %u %u %u %u",
+                    (unsigned long long)src.base, src.width, src.height, src.dfmt, src.nfmt, src.tiling,
+                    (unsigned long long)dst.base, dst.width, dst.height, dst.dfmt, dst.nfmt, dst.tiling, cb[0], cb[1], cb[2],
+                    cb[3], cb[4], cb[5]);
+            }
+        }
+    }
 }
 
 template <class F>
@@ -617,9 +666,11 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
 namespace wt {
 constexpr uint64_t kPage = 4096, kChunkBits = 30, kPagesPerChunk = 1ull << (kChunkBits - 12), kChunks = 128;
 constexpr uint64_t kBlockPages = 16;  // a fault opens the protected pages of its 64 KiB block
+constexpr uint64_t kCoarsePages = 256;  // 1 MiB: a generation per block too, for quick checks
 enum : uint8_t { kOff = 0, kProtected = 1, kUnprotecting = 2 };
 struct Chunk {
     std::atomic<uint32_t> gen[kPagesPerChunk];
+    std::atomic<uint32_t> coarse[kPagesPerChunk / kCoarsePages];  // bumped with any page's gen
     std::atomic<uint8_t> state[kPagesPerChunk];
     std::atomic<uint8_t> watched[kPagesPerChunk];  // ever protected by us
 };
@@ -660,7 +711,7 @@ Chunk* chunk(uint64_t page, bool create) {
     return ch;
 }
 
-uint64_t version(uint64_t addr, uint64_t size) {
+uint64_t fine_version(uint64_t addr, uint64_t size) {
     uint64_t v = 0;
     for (uint64_t pg = addr / kPage, end = (addr + size + kPage - 1) / kPage; pg < end; ++pg) {
         Chunk* ch = chunk(pg, false);
@@ -670,6 +721,40 @@ uint64_t version(uint64_t addr, uint64_t size) {
         if (ch->state[i].load(std::memory_order_acquire) != kProtected) return ~0ull;
         v += ch->gen[i].load(std::memory_order_relaxed);
     }
+    return v;
+}
+
+// The sum of the 1 MiB block generations over a range (~0: never watched).
+uint64_t coarse_sum(uint64_t addr, uint64_t size) {
+    uint64_t v = 0;
+    const uint64_t first = addr / kPage, end = (addr + size + kPage - 1) / kPage;
+    for (uint64_t pg = first & ~(kCoarsePages - 1); pg < end; pg += kCoarsePages) {
+        Chunk* ch = chunk(pg, false);
+        if (!ch) return ~0ull;
+        v += ch->coarse[(pg & (kPagesPerChunk - 1)) / kCoarsePages].load(std::memory_order_acquire);
+    }
+    return v;
+}
+
+// A range's version, remembered with the 1 MiB block generations it was computed under: while
+// none of those changed, no page in the range was written or unprotected, so a big buffer is
+// checked with a few loads instead of one per page. Only the renderer thread calls this.
+struct VCached { uint64_t addr, size, coarse, version; };
+std::unordered_map<uint64_t, VCached> g_vcache;
+uint64_t version(uint64_t addr, uint64_t size) {
+    const uint64_t c = coarse_sum(addr, size);  // before the pages: see on_fault
+    if (c == ~0ull) return ~0ull;
+    const uint64_t key = (addr * 0x9E3779B97F4A7C15ull) ^ size;
+    auto it = g_vcache.find(key);
+    if (it != g_vcache.end() && it->second.addr == addr && it->second.size == size && it->second.coarse == c)
+        return it->second.version;
+    const uint64_t v = fine_version(addr, size);
+    if (v == ~0ull) {
+        if (it != g_vcache.end()) g_vcache.erase(it);
+        return v;
+    }
+    if (g_vcache.size() > (1u << 20)) g_vcache.clear();
+    g_vcache[key] = {addr, size, c, v};
     return v;
 }
 
@@ -709,6 +794,7 @@ void forget(uint64_t addr, uint64_t size) {
         }
         const uint64_t i = pg & (kPagesPerChunk - 1);
         ch->gen[i].fetch_add(1, std::memory_order_relaxed);
+        ch->coarse[i / kCoarsePages].fetch_add(1, std::memory_order_release);
         ch->state[i].store(kOff, std::memory_order_release);
     }
 }
@@ -732,6 +818,8 @@ bool on_fault(uint64_t addr) {
         }
         for (uint64_t k = 0; k < kBlockPages; ++k)
             if (taken >> k & 1) ch->gen[blk + k].fetch_add(1, std::memory_order_relaxed);
+        // after the page generations (version() reads the block generation first)
+        ch->coarse[blk / kCoarsePages].fetch_add(1, std::memory_order_release);
         for (uint64_t k = 0; k < kBlockPages;) {  // one protect call per run of taken pages
             if (!(taken >> k & 1)) {
                 ++k;

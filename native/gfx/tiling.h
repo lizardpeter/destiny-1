@@ -36,6 +36,9 @@ void layout(Surface& s);
 // (rows of mip width elements, slices one after another). `tiled` points at the surface base.
 void detile(const Surface& s, uint32_t level, const uint8_t* tiled, uint8_t* linear);
 
+// The inverse: writes mip `level` from a tightly packed buffer into tiled guest memory.
+void tile(const Surface& s, uint32_t level, const uint8_t* linear, uint8_t* tiled);
+
 const char* tile_mode_name(uint32_t tile_mode);
 
 }  // namespace d1::tiling
