@@ -14,7 +14,10 @@ namespace d1::ng {
 constexpr int kStages = 2;  // 0 = vertex, 1 = pixel
 
 struct Draw {
-    enum Kind : uint8_t { Indexed, Auto, Clear };
+    // ZPass / PredOn / PredOff: command-buffer events at their place among the draws (not draws):
+    // an occlusion counter dump to index_addr (ZPASS_DONE), draw predication on the query results
+    // at index_addr (count bit 0: draw if visible) and its end (SET_PREDICATION)
+    enum Kind : uint8_t { Indexed, Auto, Clear, ZPass, PredOn, PredOff };
     Kind kind = Auto;
     uint8_t prim = 4;           // VGT_DI_PRIM_TYPE
     uint8_t index32 = 0;

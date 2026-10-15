@@ -75,6 +75,9 @@ skip_intro = true              # [D1_SKIP_INTRO=0]
 # localres (load global resources locally), spawn (finish loading into a mission once the
 # player has spawned).
 bypass = prereq,transport,localres,spawn   # [D1_BYPASS]
+
+# Any D1_* switch from the README can be set here too, e.g.
+# D1_NG_READBACK_SYNC = 0
 )";
 
 static bool truthy(const std::string& v) { return v == "1" || v == "true" || v == "on" || v == "yes"; }
@@ -104,6 +107,16 @@ static void apply_setting(const std::string& key, const std::string& v) {
     }
     else if (key == "mouse_invert") s.mouse_invert = truthy(v);
     else if (key == "mouse_zoom_scale") s.mouse_zoom_scale = std::atof(v.c_str());
+    else if (key.rfind("D1_", 0) == 0) {  // any D1_* environment setting (testing switches), unless already set
+        if (!std::getenv(key.c_str())) {
+#if defined(_WIN32)
+            _putenv_s(key.c_str(), v.c_str());
+#else
+            setenv(key.c_str(), v.c_str(), 1);
+#endif
+            log("settings: %s = %s", key.c_str(), v.c_str());
+        }
+    }
     else log("settings: unknown key '%s'", key.c_str());
 }
 

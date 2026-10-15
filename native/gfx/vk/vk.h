@@ -42,7 +42,12 @@
     X(vkCmdSetDepthBias) X(vkCreateDescriptorPool) X(vkDestroyDescriptorPool) X(vkResetDescriptorPool) \
     X(vkAllocateDescriptorSets) X(vkUpdateDescriptorSets) X(vkCmdBindDescriptorSets) X(vkCmdSetStencilCompareMask) X(vkCmdSetStencilWriteMask) X(vkCmdCopyImage) X(vkCmdBindVertexBuffers2) \
     X(vkCreateSwapchainKHR) X(vkDestroySwapchainKHR) X(vkGetSwapchainImagesKHR) X(vkAcquireNextImageKHR) \
-    X(vkQueuePresentKHR)
+    X(vkQueuePresentKHR) \
+    X(vkCreateQueryPool) X(vkDestroyQueryPool) X(vkCmdBeginQuery) X(vkCmdEndQuery) X(vkCmdResetQueryPool) \
+    X(vkGetQueryPoolResults) X(vkCmdCopyQueryPoolResults) X(vkCmdFillBuffer)
+
+// optional (VK_EXT_conditional_rendering: GCN draw predication)
+#define D1_VK_OPTIONAL_DEVICE_FUNCS(X) X(vkCmdBeginConditionalRenderingEXT) X(vkCmdEndConditionalRenderingEXT)
 
 namespace d1::vk {
 
@@ -50,6 +55,7 @@ namespace d1::vk {
 D1_VK_GLOBAL_FUNCS(D1_VK_DECLARE)
 D1_VK_INSTANCE_FUNCS(D1_VK_DECLARE)
 D1_VK_DEVICE_FUNCS(D1_VK_DECLARE)
+D1_VK_OPTIONAL_DEVICE_FUNCS(D1_VK_DECLARE)
 #undef D1_VK_DECLARE
 
 // The native renderer's Vulkan context.
@@ -64,6 +70,8 @@ struct Context {
     VkPhysicalDeviceMemoryProperties memory{};
     bool host_image_copy = false;     // VK 1.4 hostImageCopy feature
     bool external_memory_host = false;
+    bool conditional_rendering = false;  // VK_EXT_conditional_rendering
+    bool occlusion_precise = false;      // exact sample counts from occlusion queries
     char name[256] = {};
 };
 

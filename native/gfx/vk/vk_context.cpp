@@ -19,6 +19,7 @@ namespace d1::vk {
 D1_VK_GLOBAL_FUNCS(D1_VK_DEFINE)
 D1_VK_INSTANCE_FUNCS(D1_VK_DEFINE)
 D1_VK_DEVICE_FUNCS(D1_VK_DEFINE)
+D1_VK_OPTIONAL_DEVICE_FUNCS(D1_VK_DEFINE)
 #undef D1_VK_DEFINE
 
 namespace {
@@ -126,6 +127,8 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     VkPhysicalDeviceVulkan13Features f13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, &f14};
     VkPhysicalDeviceVulkan12Features f12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &f13};
     VkPhysicalDeviceVulkan11Features f11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, &f12};
+    VkPhysicalDeviceConditionalRenderingFeaturesEXT fcr{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT};
+    f14.pNext = &fcr;
     VkPhysicalDeviceFeatures2 f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &f11};
     vkGetPhysicalDeviceFeatures2(pick, &f);
     const char* missing = nullptr;
@@ -166,6 +169,8 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     ef.features.textureCompressionBC = f.features.textureCompressionBC;
     ef.features.fragmentStoresAndAtomics = f.features.fragmentStoresAndAtomics;
     ef.features.vertexPipelineStoresAndAtomics = f.features.vertexPipelineStoresAndAtomics;
+    ef.features.occlusionQueryPrecise = f.features.occlusionQueryPrecise;
+    ctx.occlusion_precise = f.features.occlusionQueryPrecise;
 
     // device extensions
     vkEnumerateDeviceExtensionProperties(pick, nullptr, &n, nullptr);
@@ -173,6 +178,13 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     vkEnumerateDeviceExtensionProperties(pick, nullptr, &n, exts.data());
     std::vector<const char*> dev_exts;
     if (num_inst_exts && has_extension(exts, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) dev_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    VkPhysicalDeviceConditionalRenderingFeaturesEXT ecr{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT};
+    if (fcr.conditionalRendering && has_extension(exts, VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME)) {
+        dev_exts.push_back(VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME);
+        ecr.conditionalRendering = VK_TRUE;
+        e14.pNext = &ecr;
+        ctx.conditional_rendering = true;
+    }
     if (has_extension(exts, VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME)) {
         dev_exts.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
         ctx.external_memory_host = true;
@@ -220,6 +232,10 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
         missing_fns += std::string(missing_fns.empty() ? "" : ", ") + #f;
     D1_VK_DEVICE_FUNCS(D1_VK_LOAD)
 #undef D1_VK_LOAD
+#define D1_VK_LOAD_OPT(f) f = reinterpret_cast<PFN_##f>(vkGetDeviceProcAddr(ctx.device, #f));
+    D1_VK_OPTIONAL_DEVICE_FUNCS(D1_VK_LOAD_OPT)
+#undef D1_VK_LOAD_OPT
+    if (!vkCmdBeginConditionalRenderingEXT || !vkCmdEndConditionalRenderingEXT) ctx.conditional_rendering = false;
     if (!missing_fns.empty()) return fail("%s: the driver lacks %s", ctx.name, missing_fns.c_str());
     vkGetDeviceQueue(ctx.device, ctx.queue_family, 0, &ctx.queue);
     return true;

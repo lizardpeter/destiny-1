@@ -319,7 +319,7 @@ struct Stats {
     uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0, tex_inplace = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
-    uint64_t t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
+    uint64_t predicated = 0, zpass_dumps = 0, t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     std::unordered_map<std::string, uint64_t> skip;
 };
@@ -364,6 +364,12 @@ struct Sub {
     // small render targets the CPU reads: copied to the ring, written to guest memory when done
     struct Readback { uint64_t base; tiling::Surface sf; uint64_t off; };
     std::vector<Readback> readbacks;
+    // occlusion counting (ZPASS_DONE dumps): one query per stretch of draws between two dumps
+    // (and render pass boundaries); a dump's counter is the sum of the stretches before it
+    VkQueryPool qpool = VK_NULL_HANDLE;
+    uint32_t q_used = 0;
+    struct ZRec { uint64_t dest; uint32_t boundary; };
+    std::vector<ZRec> zrecs;
 };
 
 // Copies of guest vertex / index buffers kept on the GPU while the game does not write them.
@@ -479,6 +485,22 @@ struct Renderer {
     std::unordered_set<uint64_t> sampled_bases;  // render target addresses some draw sampled
     std::unordered_set<uint64_t> tsharp_bases;   // every address a draw's T# named
     bool reload_all = false;
+    // occlusion queries and predication (GCN ZPASS_DONE / SET_PREDICATION)
+    static constexpr uint32_t kQueries = 2048, kPredSlots = 4096;
+    bool q_on = false;           // this submission dumps occlusion counters
+    int32_t q_active = -1;       // the query counting now (in the current pass)
+    Buffer pred_buf;             // 32-bit predicates for conditional rendering, one slot per query address
+    std::unordered_map<uint64_t, uint32_t> pred_slots;
+    int32_t pred_cur = -1;       // the slot predicating draws now (-1: none)
+    bool pred_invert = false;
+    uint64_t zcount_base = 0;    // occlusion counter value before the oldest unwritten submission
+    void q_begin();
+    void q_end();
+    uint32_t pred_slot(uint64_t base);
+    void zpass(uint64_t dest);
+    void predicate(uint64_t base, bool draw_if_visible);
+    void store_query_predicates();
+    void write_zpass_results(Sub& sb);
     struct TraceRec { uint64_t ps, vs, caller, off; uint32_t bytes, w, blend, count; };
     std::vector<TraceRec> traces;  // D1_NG_TRACE
     std::unordered_map<uint64_t, uint32_t> base_targets;  // render target images made per address
@@ -702,6 +724,7 @@ void Renderer::retire_one() {
     const uint64_t tw = now_ns();
     vkWaitForFences(ctx.device, 1, &sb.fence, VK_TRUE, UINT64_MAX);
     st.t_wait += now_ns() - tw;
+    write_zpass_results(sb);
     for (const auto& rb : sb.readbacks)  // the GPU's results where the game reads them
         if (guest_region_extent(rb.base) >= rb.sf.total_size)
             tiling::tile(rb.sf, 0, ring.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
@@ -1915,6 +1938,7 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
 
 void Renderer::end_pass() {
     if (!in_pass) return;
+    q_end();
     vkCmdEndRendering(cmd);
     in_pass = false;
     barrier();
@@ -1956,13 +1980,14 @@ void Renderer::begin_pass(Image* const* colors, Image* depth) {
     ri.pDepthAttachment = depth ? &da : nullptr;
     ri.pStencilAttachment = depth && depth->stencil ? &da : nullptr;
     vkCmdBeginRendering(cmd, &ri);
+    in_pass = true;
+    q_begin();
     if (st.frames == passlog_frame) {
         PassLog pl{};
         for (int i = 0; i < 5; ++i) pl.c[i] = colors[i] ? colors[i]->base + colors[i]->bind_slice : 0;
         pl.d = depth ? depth->base : 0;
         passlog.push_back(pl);
     }
-    in_pass = true;
     pass_key = key, pass_depth = depth, pass_w = w, pass_h = h;
 }
 
@@ -2368,12 +2393,22 @@ void Renderer::draw(const Draw& dr) {
     vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref >> 8 & 0xFF);
     vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref >> 16 & 0xFF);
     vkCmdSetDepthBias(cmd, dr.poly_offset, 0.0f, dr.poly_scale);
+    const bool predicated = pred_cur >= 0 && ctx.conditional_rendering && pred_buf.buf;
+    if (predicated) {
+        VkConditionalRenderingBeginInfoEXT cr{VK_STRUCTURE_TYPE_CONDITIONAL_RENDERING_BEGIN_INFO_EXT};
+        cr.buffer = pred_buf.buf;
+        cr.offset = uint64_t(pred_cur) * 4;
+        cr.flags = pred_invert ? VK_CONDITIONAL_RENDERING_INVERTED_BIT_EXT : 0;
+        vkCmdBeginConditionalRenderingEXT(cmd, &cr);
+        ++st.predicated;
+    }
     if (indexed) {
         vkCmdBindIndexBuffer(cmd, index_buf, ioff, itype);
         vkCmdDrawIndexed(cmd, count, std::max(1u, dr.instances), 0, -int32_t(vfirst), 0);
     } else {
         vkCmdDraw(cmd, count, std::max(1u, dr.instances), 0, 0);
     }
+    if (predicated) vkCmdEndConditionalRenderingEXT(cmd);
     ++st.draws;
     // D1_NG_TRACE=<target base hex>,<x>,<y>,<w>: (testing) in the logged frame, a row of that
     // target's pixels after every draw into it, to find which draw writes what
@@ -2449,11 +2484,34 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
                 }
     barrier();
     st.t_pre += now_ns() - tp;
+    q_on = false;
+    for (Draw* d : draws) q_on |= d->kind == Draw::ZPass;
+    if (q_on) {
+        Sub& sb = subs[cur];
+        if (!sb.qpool) {
+            VkQueryPoolCreateInfo qci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+            qci.queryType = VK_QUERY_TYPE_OCCLUSION;
+            qci.queryCount = kQueries;
+            vkCreateQueryPool(ctx.device, &qci, nullptr, &sb.qpool);
+        }
+        if (sb.qpool) {
+            end_pass();  // (resets happen outside render passes)
+            vkCmdResetQueryPool(cmd, sb.qpool, 0, kQueries);
+        } else q_on = false;
+    }
     for (Draw* d : draws) {
-        if (d->kind == Draw::Clear) clear(*d);
-        else draw(*d);
+        switch (d->kind) {
+        case Draw::Clear: clear(*d); break;
+        case Draw::ZPass: zpass(d->index_addr); break;
+        case Draw::PredOn: predicate(d->index_addr, d->count & 1); break;
+        case Draw::PredOff: pred_cur = -1; break;
+        default: draw(*d); break;
+        }
     }
     end_pass();
+    pred_cur = -1;
+    if (q_on) store_query_predicates();
+    q_on = false;
     queue_readbacks();
     // The game reads those results as soon as it sees the work done, which for it is at once
     // (the null GPU): visibility and the shadow-cascade depth range from an older frame make
@@ -2464,6 +2522,13 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         return !v || std::atoi(v) != 0;
     }();
     const bool has_rb = cur != UINT32_MAX && !subs[cur].readbacks.empty();
+    if (has_rb && std::getenv("D1_NG_LOG_READBACK")) {
+        static int n = 0;
+        if (n++ < 40)
+            log("ng readback sync: submission %llu of the frame, %zu draws, %zu readbacks (first %llx)",
+                (unsigned long long)(submit_no - frame_first_submit), draws.size(), subs[cur].readbacks.size(),
+                (unsigned long long)subs[cur].readbacks[0].base);
+    }
     submit();
     if (rb_sync && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
 }
@@ -2483,6 +2548,151 @@ bool Renderer::target_current(uint64_t base) {
     img->tv_version = ~0ull, img->tv_frame = 0;
     ++st.target_writes;
     return false;
+}
+
+// ---------------------------------------------------------------------------- occlusion
+// The game counts samples that pass the depth test with ZPASS_DONE dumps (8 DB counters,
+// 16 bytes apart: begin at +0, end at +8 of a query's results) and either reads the counts or
+// predicates draws on them (SET_PREDICATION: lens flares and light halos behind walls). One
+// Vulkan occlusion query counts each stretch of draws between two dumps; at a dump the
+// counter is the sum of the stretches so far. Predicates for conditional rendering are copied
+// from the query between a begin and an end dump into a slot per query address.
+void Renderer::q_begin() {
+    if (!q_on || q_active >= 0 || !in_pass) return;
+    Sub& sb = subs[cur];
+    if (sb.q_used >= kQueries) return;
+    vkCmdBeginQuery(cmd, sb.qpool, sb.q_used, ctx.occlusion_precise ? VK_QUERY_CONTROL_PRECISE_BIT : 0);
+    q_active = int32_t(sb.q_used++);
+}
+
+void Renderer::q_end() {
+    if (q_active < 0) return;
+    vkCmdEndQuery(cmd, subs[cur].qpool, uint32_t(q_active));
+    q_active = -1;
+}
+
+void Renderer::zpass(uint64_t dest) {
+    if (!q_on) return;
+    Sub& sb = subs[cur];
+    uint32_t boundary;
+    if (q_active >= 0) {
+        q_end();
+        boundary = sb.q_used;
+        q_begin();
+    } else {
+        boundary = sb.q_used;
+    }
+    sb.zrecs.push_back({dest, boundary});
+    ++st.zpass_dumps;
+}
+
+uint32_t Renderer::pred_slot(uint64_t base) {
+    auto it = pred_slots.find(base);
+    if (it != pred_slots.end()) return it->second;
+    if (pred_slots.size() >= kPredSlots) pred_slots.clear();  // (reused from the start)
+    const uint32_t slot = uint32_t(pred_slots.size());
+    pred_slots[base] = slot;
+    return slot;
+}
+
+// Copies the predicate for the query at `base` (begin and end dumped in this submission) into
+// its slot: the one query between the two dumps, 0 when no draw ran between them, and
+// "visible" when the stretch spans several queries (render pass changes).
+static bool query_span(const std::vector<Sub::ZRec>& zr, uint64_t base, uint32_t& b0, uint32_t& b1) {
+    for (size_t i = zr.size(); i-- > 0;)
+        if (zr[i].dest == base + 8) {
+            for (size_t j = i; j-- > 0;)
+                if (zr[j].dest == base) {
+                    b0 = zr[j].boundary, b1 = zr[i].boundary;
+                    return true;
+                }
+            return false;
+        }
+    return false;
+}
+
+void Renderer::predicate(uint64_t base, bool draw_if_visible) {
+    pred_cur = -1;
+    if (!ctx.conditional_rendering) return;
+    if (!pred_buf.buf) {
+        pred_buf = make_buffer(kPredSlots * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT, false);
+        if (!pred_buf.buf) return;
+    }
+    Sub& sb = subs[cur];
+    uint32_t b0 = 0, b1 = 0;
+    if (q_on && query_span(sb.zrecs, base, b0, b1)) {
+        const uint32_t slot = pred_slot(base);
+        end_pass();  // (copies run outside render passes; the next draw starts a new one)
+        if (b1 - b0 == 1)
+            vkCmdCopyQueryPoolResults(cmd, sb.qpool, b0, 1, pred_buf.buf, uint64_t(slot) * 4, 4, VK_QUERY_RESULT_WAIT_BIT);
+        else
+            vkCmdFillBuffer(cmd, pred_buf.buf, uint64_t(slot) * 4, 4, b1 == b0 ? 0u : 1u);
+        barrier();
+        pred_cur = int32_t(slot);
+    } else if (auto it = pred_slots.find(base); it != pred_slots.end()) {
+        pred_cur = int32_t(it->second);  // from an earlier submission (store_query_predicates)
+    } else {
+        return;  // never counted: draw
+    }
+    pred_invert = !draw_if_visible;
+    static const bool log_q = std::getenv("D1_NG_LOG_QUERIES") != nullptr;
+    static int n = 0;
+    if (log_q && n++ < 400) log("ng predicate %llx: draw if %s", (unsigned long long)base, draw_if_visible ? "visible" : "hidden");
+}
+
+// At the end of a submission: predicates of the queries it completed, for later submissions.
+void Renderer::store_query_predicates() {
+    if (!ctx.conditional_rendering) return;
+    Sub& sb = subs[cur];
+    if (!pred_buf.buf)
+        pred_buf = make_buffer(kPredSlots * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT, false);
+    if (!pred_buf.buf) return;
+    bool any = false;
+    for (const auto& z : sb.zrecs) {
+        if ((z.dest & 15) != 0) continue;  // begins
+        uint32_t b0, b1;
+        if (!query_span(sb.zrecs, z.dest, b0, b1)) continue;
+        const uint32_t slot = pred_slot(z.dest);
+        if (b1 - b0 == 1)
+            vkCmdCopyQueryPoolResults(cmd, sb.qpool, b0, 1, pred_buf.buf, uint64_t(slot) * 4, 4, VK_QUERY_RESULT_WAIT_BIT);
+        else
+            vkCmdFillBuffer(cmd, pred_buf.buf, uint64_t(slot) * 4, 4, b1 == b0 ? 0u : 1u);
+        any = true;
+    }
+    if (any) barrier();
+}
+
+// When the submission is done: every dump's counter into guest memory (DB 0 carries the count,
+// DBs 1-7 zero; bit 63: valid), where the game reads them.
+void Renderer::write_zpass_results(Sub& sb) {
+    if (sb.zrecs.empty() && !sb.q_used) return;
+    std::vector<uint64_t> res(sb.q_used, 0);
+    if (sb.q_used)
+        vkGetQueryPoolResults(ctx.device, sb.qpool, 0, sb.q_used, res.size() * 8, res.data(), 8,
+                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+    std::vector<uint64_t> prefix(sb.q_used + 1, 0);
+    for (uint32_t i = 0; i < sb.q_used; ++i) prefix[i + 1] = prefix[i] + res[i];
+    for (const auto& z : sb.zrecs) {
+        if (z.dest < 0x10000 || guest_region_extent(z.dest) < 8 * 16) continue;
+        auto* r = reinterpret_cast<volatile uint64_t*>(z.dest);
+        const uint64_t v = (zcount_base + prefix[std::min<uint32_t>(z.boundary, sb.q_used)]) & 0x7FFFFFFFFFFFFFFFull;
+        for (int k = 0; k < 8; ++k) r[k * 2] = (k == 0 ? v : 0) | 0x8000000000000000ull;
+    }
+    // D1_NG_LOG_QUERIES: (diagnostics) each query's sample count
+    static const bool log_q = std::getenv("D1_NG_LOG_QUERIES") != nullptr;
+    if (log_q) {
+        static int n = 0;
+        for (const auto& z : sb.zrecs) {
+            uint32_t b0, b1;
+            if ((z.dest & 15) || !query_span(sb.zrecs, z.dest, b0, b1) || n >= 400) continue;
+            ++n;
+            log("ng query %llx: %llu samples (%u stretches)", (unsigned long long)z.dest,
+                (unsigned long long)(prefix[std::min(b1, sb.q_used)] - prefix[std::min(b0, sb.q_used)]), b1 - b0);
+        }
+    }
+    zcount_base += prefix[sb.q_used];
+    sb.q_used = 0;
+    sb.zrecs.clear();
 }
 
 // Small render targets that no draw samples are results the CPU reads back (the depth
@@ -3045,6 +3255,10 @@ void print_stats() {
         log("native renderer: new images per frame: vkCreateImage %.2f ms, memory %.2f ms (%.0f free ranges scanned, %llu new blocks), bind %.2f ms, view %.2f ms",
             double(s.t_vkimg) / f / 1e6, double(s.t_heap) / f / 1e6, double(s.heap_scans) / f, (unsigned long long)s.heap_blocks_new, double(s.t_bind) / f / 1e6, double(s.t_view) / f / 1e6);
     s.t_bind = s.t_view = 0;
+    if (s.zpass_dumps || s.predicated)
+        log("native renderer: occlusion: %llu counter dumps, %llu predicated draws%s", (unsigned long long)s.zpass_dumps,
+            (unsigned long long)s.predicated, g->ctx.conditional_rendering ? "" : " (no conditional rendering: drawn)");
+    s.zpass_dumps = s.predicated = 0;
     s.t_vkimg = s.t_heap = s.heap_scans = s.heap_blocks_new = 0;
     s.t_detile = s.t_fill = s.t_watch = s.t_mkimg = 0;
     s.t_tgt = s.t_tex_hit = s.t_tex_load = s.tex_checks = s.tex_unwatched = 0;

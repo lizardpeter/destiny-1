@@ -462,6 +462,10 @@ void push(ng::Draw* d) {
     g_pending.push_back(d);
 }
 
+// Occlusion counter dumps and predication packets of the submission being collected, as
+// pseudo-draws at their command-buffer positions (dcb_ranges fills it while set).
+std::vector<std::pair<uint64_t, ng::Draw*>>* g_dcb_events = nullptr;
+
 // Collect the DCB ranges of a submission, following INDIRECT_BUFFER packets.
 int g_wait_phase = 0;  // diagnostics: 1 = after the null GPU ran the command buffers
 // The ranges come out in execution order: a buffer is split at each INDIRECT_BUFFER packet,
@@ -495,6 +499,22 @@ void dcb_ranges(const uint32_t* p, uint32_t dwords, int depth, std::vector<std::
                         log("ng wait: unsatisfied at submit: [%#llx] & %#x %s %#x (now %#x), %llu of %llu waits",
                             (unsigned long long)a, mask, fn == 3 ? "==" : fn == 4 ? "!=" : fn == 5 ? ">=" : fn == 6 ? ">" : "<",
                             ref, v, (unsigned long long)bad.load(), (unsigned long long)total.load());
+                }
+            }
+            if (g_dcb_events && i + 2 < dwords) {
+                const uint32_t* b = p + i + 1;
+                if (op == 0x46 && ((b[0] >> 8) & 0xF) == 1 && ((b[0] & 0x3F) == 0x39 || (b[0] & 0x3F) == 0x15) && count >= 2) {
+                    auto* e = new ng::Draw;
+                    e->kind = ng::Draw::ZPass;
+                    e->index_addr = uint64_t(b[1] & ~7u) | (uint64_t(b[2] & 0xFFFF) << 32);
+                    g_dcb_events->push_back({uint64_t(p + i), e});
+                } else if (op == 0x20 && count >= 1) {
+                    auto* e = new ng::Draw;
+                    const uint32_t pred_op = (b[1] >> 16) & 7;
+                    e->kind = pred_op ? ng::Draw::PredOn : ng::Draw::PredOff;
+                    e->index_addr = uint64_t(b[0] & ~15u) | (uint64_t(b[1] & 0xFF) << 32);
+                    e->count = (b[1] >> 8) & 1;  // draw if visible
+                    g_dcb_events->push_back({uint64_t(p + i), e});
                 }
             }
             if ((op == 0x3F || op == 0x33) && i + 3 < dwords) {
@@ -1045,8 +1065,12 @@ void native_gfx_install() {
 void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
     if (!nr::g_base || !ng::active()) return;
     std::vector<std::pair<uint64_t, uint64_t>> ranges;
+    std::vector<std::pair<uint64_t, ng::Draw*>> events;
+    static const bool queries = !getenv("D1_NG_QUERIES") || atoi(getenv("D1_NG_QUERIES")) != 0;
+    if (queries) nr::g_dcb_events = &events;
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && sizes[k]) nr::dcb_ranges(dcbs[k], sizes[k] / 4, 0, ranges);
+    nr::g_dcb_events = nullptr;
     std::vector<std::pair<uint64_t, ng::Draw*>> mine;
     {
         std::lock_guard lk(nr::g_m);
@@ -1065,6 +1089,17 @@ void native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
             else delete d;  // never submitted
         }
         pend.resize(keep);
+        for (auto& [pos, e] : events) {
+            e->seq = nr::g_seq++;
+            int64_t rng = -1;
+            for (size_t r = 0; r < ranges.size(); ++r)
+                if (pos >= ranges[r].first && pos < ranges[r].second) {
+                    rng = int64_t(r);
+                    break;
+                }
+            if (rng >= 0) mine.push_back({uint64_t(rng) << 40 | ((pos - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull), e});
+            else delete e;
+        }
         // constant buffer bindings recorded in this submission's command buffers, merged in order
         if (nr::g_ce_order) {
             std::vector<std::pair<std::pair<uint64_t, uint32_t>, const nr::CbEvent*>> evs;
