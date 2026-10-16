@@ -668,7 +668,10 @@ pub fn profile_baseline() -> FamilyUpdate {
     // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
     let ov: Vec<Option<Value>> = PROFILE_FLAG_OVERRIDES
         .iter()
-        .map(|&(flag, state)| Some(Struct(vec![Some(Int(flag)), Some(Int(state))])))
+        .map(|&(flag, state)| {
+            let done = flag == 836 && std::env::var("D1B_PROLOGUE_DONE").is_ok_and(|v| v == "1");
+            Some(Struct(vec![Some(Int(flag)), Some(Int(if done { 2 } else { state }))]))
+        })
         .collect();
     profile[12] = Some(Struct(vec![None, Some(Struct(vec![Some(Int(ov.len() as i64)), Some(Array(ov))])),
                                    Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))]))]));
@@ -696,7 +699,8 @@ pub fn profile_baseline() -> FamilyUpdate {
         // +0x6FD0 (0x808018BB) +0x84: up to 20 {flag, state} overrides for flags kept
         // nowhere else (scope 0 in the master flag table, vtable +0x2B8; applied by
         // 0x28BC60). Flag 836 is one of those and gates the prologue.
-        let overrides = vec![Some(Struct(vec![Some(Int(836)), Some(Int(1))]))];
+        // 836 true once the prologue is done (with 2838 false: what finishing it leaves)
+        let overrides = vec![Some(Struct(vec![Some(Int(836)), Some(Int(if prologue_done { 2 } else { 1 }))]))];
         let mut st = vec![None; 6];
         st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));
         c[15] = Some(Struct(st));
