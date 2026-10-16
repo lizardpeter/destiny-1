@@ -1198,6 +1198,37 @@ static void dump_flag_scopes() {
             }
         }
     }
+    // scope 12: {i64 count, i64 relative array @+8} of 16-byte {i16 flag, i16 state, i64
+    // threshold @+8}: flag = state once the character's value reaches the threshold
+    using List64Fn = D1_SYSV const int64_t* (*)(void*);
+    if (const int64_t* t = reinterpret_cast<List64Fn>(vt[0x2B0 / 8])(defs)) {
+        const auto* e = reinterpret_cast<const uint8_t*>(t + 1) + t[1] + 0x10;
+        std::string line;
+        for (int64_t i = 0; i < t[0]; ++i) {
+            char buf[48];
+            std::snprintf(buf, sizeof buf, " %d=%d@%lld", *reinterpret_cast<const int16_t*>(e + i * 16),
+                          *reinterpret_cast<const int16_t*>(e + i * 16 + 2), (long long)*reinterpret_cast<const int64_t*>(e + i * 16 + 8));
+            line += buf;
+            if (line.size() > 900 || i + 1 == t[0]) {
+                log("flagscope: 12 up to entry %lld:%s", (long long)i, line.c_str());
+                line.clear();
+            }
+        }
+    }
+}
+
+// The time the scheduled flags (scope 12) are compared against (0x265100(context, character)
+// -> character +0x3E88 when +0x3E80 is set, else context +8; replaced, same logic). Logged
+// on change.
+static D1_SYSV const int64_t* flag_time_hook(const uint8_t* ctx, const uint8_t* ch) {
+    const auto* r = reinterpret_cast<const int64_t*>(ch && ch[0x3E80] ? ch + 0x3E88 : ctx + 8);  // the original
+    static std::atomic<int64_t> last{-1};
+    if (r && last.exchange(*r) != *r)
+        log("flagtime: %lld from %s (context %p vtable %s, +0x10 %llx, character %p)", (long long)*r,
+            ch && ch[0x3E80] ? "character +0x3E88" : "context +8", (const void*)ctx,
+            describe_addr(*reinterpret_cast<const uint64_t*>(ctx)).c_str(),
+            (unsigned long long)*reinterpret_cast<const uint64_t*>(ctx + 0x10), (const void*)ch);
+    return r;
 }
 
 static D1_SYSV int32_t activity_state_hook(void* c, const uint8_t* list) {
@@ -1606,6 +1637,8 @@ void install_game_hooks() {
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    if (getenv("D1_TRACE_DIRECTOR"))
+        replace_function(exe.base + 0x265100, reinterpret_cast<const void*>(&flag_time_hook));
     if (getenv("D1_TRACE_DIRECTOR"))
         g_activity_state_orig = reinterpret_cast<ActivityStateFn>(hook_function(exe.base + 0x264360, reinterpret_cast<const void*>(&activity_state_hook)));
     if (getenv("D1_TRACE_UNLOCK"))

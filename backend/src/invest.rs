@@ -644,6 +644,13 @@ fn profile_flag_overrides() -> Vec<(i64, i64)> {
     ov
 }
 
+/// Seconds since 1970 for the client's scheduled content: now, or D1B_SERVER_TIME (research).
+pub fn server_time() -> i64 {
+    std::env::var("D1B_SERVER_TIME").ok().and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    })
+}
+
 fn unlock_flags(n: usize) -> Value {
     Value::Array((0..n).map(|_| Some(Value::Int(1))).collect())
 }
@@ -716,6 +723,13 @@ pub fn profile_baseline() -> FamilyUpdate {
         };
         c.resize(16, None);
         c[7] = stored_state(ch.client_state.clone(), TYPE_CHARACTER_CLIENT_STATE);
+        // +0x3E58 (0x80801755) member 7 (+0x3E80, 0x808017B4 {present, i64 seconds}): the
+        // server time the scheduled unlock flags (scope 12: expansions, events, weekly
+        // rotations) are evaluated at (0x265100). Without it the client counts from 0, i.e.
+        // 1970, before anything was released.
+        let mut timing = vec![None; 8];
+        timing[7] = Some(Struct(vec![Some(Bool(true)), Some(Int(server_time()))]));
+        c[9] = Some(Struct(timing));
         // character flags; slot 673 = flag 2838, set on a new character: the prologue
         // (first mission) needs it true and flag 836 false
         let mut flags = unlock_flags(2560);
