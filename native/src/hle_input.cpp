@@ -4,6 +4,8 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "hle.h"
 #include "render_bridge.h"
@@ -69,6 +71,43 @@ static uint32_t scripted_buttons(uint64_t now_us) {
     }
 }
 
+// D1_STATE_PRESS=<state prefix>:<letter>@<secs>,<letter>@<secs>,... (headless testing): once
+// the game reaches that state, press each button (letters as for D1_AUTOPRESS) for half a
+// second at the given time, once. E.g. setup:orbit:o@5,p@10 dismisses a screen in orbit, then
+// opens the director.
+static uint32_t state_buttons(uint64_t now_us) {
+    static const char* env = getenv("D1_STATE_PRESS");
+    if (!env) return 0;
+    static std::string prefix;
+    static std::vector<std::pair<char, uint64_t>> presses;
+    static bool parsed = false;
+    static uint64_t since = 0;
+    if (!parsed) {
+        parsed = true;
+        const std::string spec = env;
+        const size_t colon = spec.rfind(':', spec.find('@'));
+        prefix = spec.substr(0, colon);
+        std::string rest = spec.substr(colon + 1);
+        size_t pos = 0;
+        while (pos < rest.size()) {
+            size_t comma = rest.find(',', pos);
+            const std::string item = rest.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+            if (item.size() > 2 && item[1] == '@') presses.push_back({item[0], uint64_t(atof(item.c_str() + 2) * 1e6)});
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+    }
+    if (!since) {
+        if (const char* gs = game_state(); gs && std::strncmp(gs, prefix.c_str(), prefix.size()) == 0) since = now_us;
+        return 0;
+    }
+    uint32_t b = 0;
+    for (auto& [c, at] : presses)
+        if (now_us - since >= at && now_us - since < at + 500000)
+            b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u : 0x4000u;
+    return b;
+}
+
 static void fill(PadData* d) {
     std::memset(d, 0, sizeof *d);
     d->lx = d->ly = d->rx = d->ry = 0x80;
@@ -78,7 +117,7 @@ static void fill(PadData* d) {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     d->timestamp = uint64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
-    d->buttons = scripted_buttons(d->timestamp);
+    d->buttons = scripted_buttons(d->timestamp) | state_buttons(d->timestamp);
     render::PadState p;
     if (render::read_pad(p)) {  // window input (renderer build)
         d->buttons |= p.buttons;

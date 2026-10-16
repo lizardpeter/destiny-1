@@ -539,6 +539,19 @@ fn stored_state(hex_state: Option<String>, ty: &str) -> Option<Value> {
     Some(decode(&mut BitReader::new(&bytes), ty))
 }
 
+/// D1B_TEST_CHARACTER accounts start with every "seen" bit of the account client state set
+/// (0x8080172C: 128 x u64 and 4 x u32; dismissing the Destiny 2 offer sets bits 11/15/16 of
+/// u32 [0], "Armsday" lives in the u32s too), so the one-time screens (the Destiny 2 pre-order offer, Armsday,
+/// ...) do not queue up in front of a test. The client's own reports replace it.
+fn test_account_state() -> Option<Value> {
+    use Value::*;
+    if !std::env::var("D1B_TEST_CHARACTER").map(|v| v != "0").unwrap_or(false) {
+        return None;
+    }
+    let words = Array((0..128).map(|_| Some(Int(-1))).collect());
+    Some(Struct(vec![Some(Struct(vec![Some(words), Some(Array((0..4).map(|_| Some(Int(0xFFFF_FFFF))).collect()))])), None]))
+}
+
 /// Store a reported client state (0x2BD account, 0x2BE active character); true if changed.
 fn store_client_state(id: u16, v: &Value) -> bool {
     let ty = if id == 0x2bd { TYPE_ACCOUNT_CLIENT_STATE } else { TYPE_CHARACTER_CLIENT_STATE };
@@ -648,7 +661,8 @@ pub fn profile_baseline() -> FamilyUpdate {
     let active = characters().last().cloned();
     let mut profile: Vec<Option<Value>> = vec![Some(Int(account_id())), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))];
     profile.resize(15, None);
-    profile[5] = stored_state(crate::account::with(|a| a.client_state.clone()), TYPE_ACCOUNT_CLIENT_STATE);
+    profile[5] = stored_state(crate::account::with(|a| a.client_state.clone()), TYPE_ACCOUNT_CLIENT_STATE)
+        .or_else(test_account_state);
     profile[10] = Some(unlock_flags(3100));
     // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
     // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
