@@ -773,6 +773,19 @@ static void trace_players() {
         }
     }
     log("players:%s", out.empty() ? " none" : out.c_str());
+    // handle-looking fields of each record (u32, low 16 bits 0x2000..0x2FFF, high 16 not 0
+    // or 0xFFFF): where a player record points at its entities (unit, ...)
+    for (int i = 0; i < 4; ++i) {
+        const uint8_t* r = players + size_t(i) * 0x2AF0;
+        std::string h;
+        for (int o = 0; o + 4 <= 0x2AF0; o += 4) {
+            const uint32_t v = *reinterpret_cast<const uint32_t*>(r + o);
+            if ((v & 0xF000) == 0x2000 && (v >> 16) != 0 && (v >> 16) != 0xFFFF) {
+                char buf[32]; std::snprintf(buf, sizeof buf, " +%#x=%08x", o, v); h += buf;
+            }
+        }
+        if (!h.empty()) log("players: record %d handles%s", i, h.c_str());
+    }
 
     // Player updates (0xBB6080 → 0xBA6760): the simulation (*0x2801518, role @+8; 1 = client)
     // diffs its tracked players (P = *sim: mask @+0x10, generation @+0xC) against the activity
@@ -864,6 +877,22 @@ static void trace_players() {
             int low = 0;
             for (int i = 0; i < 8192; ++i)
                 if (live(i)) ++low;
+            // entities held for other machines (not owned): index, and the start of their
+            // record in the replication entity table (0x28832D8, 0x80 each: +0 view, +1 state,
+            // +4 type?, +8 handle)
+            std::string remote;
+            for (int i = 8192; i < 12288; ++i) {
+                if (!live(i)) continue;
+                const uint32_t own = *reinterpret_cast<const uint32_t*>(db + 0x120B8 + uint64_t(i >> 5) * 4);
+                if (own >> (i & 31) & 1) continue;
+                const int16_t r = *reinterpret_cast<const int16_t*>(db + 0xB4 + uint64_t(i) * 6);
+                const uint8_t* rec = reinterpret_cast<const uint8_t*>(b + 0x28832D8 + uint64_t(r) * 0x80);
+                char buf[96];
+                std::snprintf(buf, sizeof buf, " %d:[%02x %02x %08x %08x %08x]", i, rec[0], rec[1], *reinterpret_cast<const uint32_t*>(rec + 4),
+                              *reinterpret_cast<const uint32_t*>(rec + 8), *reinterpret_cast<const uint32_t*>(rec + 12));
+                remote += buf;
+            }
+            if (!remote.empty()) log("players: remote entities%s", remote.c_str());
             // per-view replication objects the database feeds (0xB5A220 -> 0xB5EBA0: view index
             // @+0xC, database @+0x10, entities queued for creation @+0x28)
             std::string dv;

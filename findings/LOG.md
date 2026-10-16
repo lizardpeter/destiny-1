@@ -1526,3 +1526,9 @@ entity, which should arrive by replication from its owner, is not created yet.
   are not allocated from it (they are 0x2000 + player index on every machine).
 - D1_TRACE_PLAYERS also logs the views, the per-slice entity counts and the replication
   queues.
+- ftp39/ftp40: replication runs both ways for the whole session. B holds all of A's
+  entities (8192..8195, the last two parented to the second), A holds B's one (8448).
+  Both machines show the same player simulation entity handles in the player records
+  (+0x4: A 0x..ff2000, B 0x..ff2001), and each side's copy of the other's record carries
+  that player's gear tags (0x80A7xxxx). Whether the remote biped is drawn is not checked
+  yet (headless runs, null GPU).
