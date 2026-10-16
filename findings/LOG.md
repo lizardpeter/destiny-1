@@ -1271,3 +1271,20 @@ systems a mission drives are present and reachable through the simulation queue 
 object/start-stop 0x37/0x39, player resurrection 0x52, ghost dialog / transmat 0x40,
 objectives, slice-set transitions); the original transport for host-spawned entities is not
 found (no UDP to the host; possibly the NAT relay channel + replication protocol).
+
+## 2026-10-15 (night): probe - how a host machine's entities would reach a client
+
+- Simulation **views** are per remote machine: the domain membership watcher (0xBA3770)
+  creates a view for a machine id in the domain only if that machine is a peer of the
+  network session (session 0x75F130, state +0x8C48 in 4..9; machine records 0x168 bytes at
+  membership +0x30) with a connected channel (0xAF8D60 entry +0x1CA8 == 5). Views establish
+  with a signature check ("view ... signature didn't match our local, dying").
+- So a host that owns entities must be a **session peer with a channel**: the stack is
+  UDP -> Demonware secure transport (bdSocketRouter, bdSecurityID / bdSecurityKeyMap,
+  bdCrypto*) -> Bungie channel (connect request/response, channel ids, sequences; 149 log
+  strings; NAT relay fallback) -> network / managed session membership (~400 log strings,
+  44 classes) -> simulation view -> replication (entity database / event manager /
+  control / player views, 12 classes).
+- The client contains both ends of every layer (consoles replicate to each other), so it
+  is reversible from the binary; the security layer can be hooked in the runtime rather
+  than reimplemented. The same stack is what console-to-console co-op needs.
