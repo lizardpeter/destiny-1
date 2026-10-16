@@ -79,6 +79,8 @@ bool backend_http(const std::string& method, const std::string& host, const std:
 // Queue a system-service event for the game (hle_services.cpp), e.g. 0x10000002 session
 // invitation with its 0x8C-byte parameter.
 void push_system_event(int32_t type, const void* data, size_t size);
+// Per-frame research tick (hooks.cpp), run from sceSystemServiceGetStatus.
+void hooks_system_tick();
 
 // Sockets the game opened (hle_net.cpp): `close` routes them to the network layer.
 bool net_is_socket(int fd);

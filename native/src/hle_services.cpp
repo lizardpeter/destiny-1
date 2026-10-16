@@ -226,6 +226,7 @@ void push_system_event(int32_t type, const void* data, size_t size) {
 }
 struct SystemServiceStatus { int32_t event_num; bool system_ui, overlay, cpu_mode7, bg_media; uint8_t reserved[128]; };
 static int32_t sceSystemServiceGetStatus(SystemServiceStatus* s) {
+    hooks_system_tick();
     std::memset(s, 0, sizeof *s);
     std::lock_guard lk(g_event_mutex);
     s->event_num = int32_t(g_events.size());

@@ -1350,3 +1350,36 @@ other as PSN friends, publish presence game data, and B can start a join to A. F
   needs true (backend: character flag slot 673). So a character in the opening mission can
   neither join nor be joined, as in the original game (the session also advertises
   sessionMaxUser 1). Co-op needs characters past the prologue, in a joinable activity.
+
+## 2026-10-16: co-op path, step 3 - first fireteam between two clients
+
+With both characters past the prologue (backend `D1B_PROLOGUE_DONE=1`: character flag 2838
+false), sign-in leads to orbit (`setup:orbit_loading` -> `setup:orbit`, ~40 s headless; the
+orbit map loader notes "last-orbited-destination is invalid": a client-side cache,
+*0x26BC410 +0x40 +0x480, written when an activity is set up, 0x7A9B40 / 0x7AC910). In orbit
+B joined A through the system-UI path, and everything after the PSN part is the game's own
+networking, unchanged:
+
+1. B reads A's PSN session and data, leaves its own PSN session (`DELETE .../sessions/<own>`)
+   and joins A's (`POST .../sessions/<A>/members`);
+2. remote join to session id E8171EB4:44D49873, security key from the 78-byte session data,
+   host address 10.0.2.15:3074;
+3. **DemonWare** (layer 1): NAT traversal INTRO REQ / reply over our UDP routing
+   (10.0.2.n -> 127.0.0.n), then DTLS init / cookie echo / ack with the session key:
+   "DTLS established";
+4. **Bungie channel** (layer 2): connect request, first "temporarily refused
+   (unknown-stranger)" (A had not yet seen B), then A's own connect request crosses, both
+   establish: "established after 112 ms WITHOUT RELAY";
+5. **session membership** (layer 3): A's fireteam session accepts peer #1 (1 of 19 open
+   slots), B goes `_joined -> _waiting -> _ready -> _established`, join-complete both ways;
+   B disbands its old solo fireteam. Both sides then hold `peers valid: 0x3` until the end
+   of the run.
+
+So layers 1-3 need no reimplementation: given the session data, a session invitation event
+and a UDP path between the consoles, the clients connect themselves. Next: the fireteam
+leader launching an activity (the activity host and the replication layers 4-5).
+
+Test setup (scratchpad tooling, not in the repo): one backend, two headless instances
+(`D1_NET_ID` 15 / 16, separate data dirs), `D1_JOIN_TEST=<secs>` on B (now ticked from
+sceSystemServiceGetStatus, so it also runs in orbit; the timer starts when the friend appears
+in the roster).

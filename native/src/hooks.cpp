@@ -158,7 +158,6 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     if (player != 0 || !action) return;
     trace_cameras();
     trace_references();
-    roster_tick();
     if (getenv("D1_TRACE_SPAWN")) {  // research: why the local player gets no unit
         static auto next = std::chrono::steady_clock::now();
         if (std::chrono::steady_clock::now() >= next) {
@@ -654,6 +653,10 @@ static bool join_friend(const std::string& friend_id) {
     return true;
 }
 
+// Called once per game frame (the game polls sceSystemServiceGetStatus every frame, in every
+// state: boot, orbit, world).
+void hooks_system_tick() { roster_tick(); }
+
 // Investment roster (*0x26BC448: count @+0x20, 0x68-byte records from +0x30; a record starts
 // with the player's 0x30-byte roster identity, compared by 0x2B82D0). D1_TRACE_ROSTER (research)
 // dumps it every 10 s in the world; D1_JOIN_TEST=<secs> joins the first record that is not the
@@ -664,14 +667,15 @@ static void roster_tick() {
     static const bool trace = getenv("D1_TRACE_ROSTER") != nullptr;
     static const int join_after = getenv("D1_JOIN_TEST") ? atoi(getenv("D1_JOIN_TEST")) : -1;
     if (!trace && join_after < 0) return;
-    static const auto start = std::chrono::steady_clock::now();
-    static auto next = start;
+    static auto next = std::chrono::steady_clock::now();
+    static std::chrono::steady_clock::time_point start{};  // the friend first in the roster
     static bool joined = false;
     const auto now = std::chrono::steady_clock::now();
     const uint64_t b = rt().modules[0].base;
     const uint8_t* r = *reinterpret_cast<uint8_t* const*>(b + 0x26BC448);
     if (!r) return;
     const int32_t n = *reinterpret_cast<const int32_t*>(r + 0x20);
+    if (n > 1 && start == std::chrono::steady_clock::time_point{}) start = now;
     if (trace && now >= next) {
         next = now + std::chrono::seconds(10);
         using JoinMgrFn = D1_SYSV uint64_t (*)();
@@ -692,7 +696,7 @@ static void roster_tick() {
             log("%s", line);
         }
     }
-    if (join_after >= 0 && !joined && now - start > std::chrono::seconds(join_after) && n > 1) {
+    if (join_after >= 0 && !joined && n > 1 && now - start > std::chrono::seconds(join_after)) {
         joined = true;
         // the first record whose name (record +0, up to '@') is not ours
         const std::string me = settings().name;

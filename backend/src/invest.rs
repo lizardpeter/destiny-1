@@ -631,8 +631,11 @@ pub fn profile_baseline() -> FamilyUpdate {
         // character flags; slot 673 = flag 2838, set on a new character: the prologue
         // (first mission) needs it true and flag 836 false
         let mut flags = unlock_flags(2560);
+        // D1B_PROLOGUE_DONE=1 (research): the character has finished the prologue, so it is
+        // not held in the new-player experience (2838 also gates joining, 0x546F20)
+        let prologue_done = std::env::var("D1B_PROLOGUE_DONE").is_ok_and(|v| v == "1");
         if let Array(f) = &mut flags {
-            f[673] = Some(Int(2));
+            f[673] = Some(Int(if prologue_done { 1 } else { 2 }));
         }
         c[11] = Some(flags);
         // +0x6FD0 (0x808018BB) +0x84: up to 20 {flag, state} overrides for flags kept
