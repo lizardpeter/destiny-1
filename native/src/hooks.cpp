@@ -17,6 +17,7 @@
 #include <map>
 #include <mutex>
 #include "hle.h"
+#include "os.h"
 #include "render_bridge.h"
 #include "runtime.h"
 #include "settings.h"
@@ -769,7 +770,11 @@ static void roster_tick() {
     const uint8_t* r = *reinterpret_cast<uint8_t* const*>(b + 0x26BC448);
     if (!r) return;
     const int32_t n = *reinterpret_cast<const int32_t*>(r + 0x20);
-    if (n > 1 && start == std::chrono::steady_clock::time_point{}) start = now;
+    // the timer starts once the friend is listed and we are in orbit (0x1B) or in the world
+    // (0x24): a join that arrives while loading is dropped (0x57A260, message 0x26BC328)
+    const uint64_t wc = *reinterpret_cast<const uint64_t*>(b + 0x26CA078);
+    const int32_t wstate = wc ? *reinterpret_cast<const int32_t*>(wc + 0x1B0) : -1;
+    if (n > 1 && (wstate == 0x1B || wstate == 0x24) && start == std::chrono::steady_clock::time_point{}) start = now;
     if (trace && now >= next) {
         next = now + std::chrono::seconds(10);
         using JoinMgrFn = D1_SYSV uint64_t (*)();
@@ -790,7 +795,8 @@ static void roster_tick() {
             log("%s", line);
         }
     }
-    if (join_after >= 0 && !joined && n > 1 && now - start > std::chrono::seconds(join_after)) {
+    if (join_after >= 0 && !joined && n > 1 && start != std::chrono::steady_clock::time_point{} &&
+        now - start > std::chrono::seconds(join_after)) {
         joined = true;
         // the first record whose name (record +0, up to '@') is not ours
         const std::string me = settings().name;
@@ -1034,6 +1040,39 @@ static D1_SYSV void bap_update_hook(void* h) {
     if (*step != before) log("bootflow: bap_signin step %d -> %d", before, *step);
 }
 
+// bootflow:bootload steps (0x79A730, step at handler+0x30: 1 open the unpatchable package
+// async, 2 wait for the open, 3/4 async read, 5/6 startup package sets, 0x10 done). Logged on
+// change, so a stalled boot names its step.
+static HandlerUpdateFn g_bootload_step_orig = nullptr;
+static D1_SYSV void bootload_step_hook(void* h) {
+    auto* step = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + 0x30);
+    const int32_t before = *step;
+    g_bootload_step_orig(h);
+    if (*step != before) log("bootflow: bootload step %d -> %d", before, *step);
+}
+
+// bootflow:intro_screen_display (handler update 0x79D840, enter 0x79D800): on entering, the
+// handler registers its "continue" listener (0x78E950(handler + 0x30)) only if the UI mode
+// (*0x26CF430, 0x752150) is already 3, which game init sets (0x52C020 -> 0x751EE0). When the
+// state is entered first (thread timing), nothing is registered, the flag at +0x38 never gets
+// set and the game stays on the intro screen. Registration only stores the pointer, so the
+// update re-registers while the flag is clear and the mode is 3.
+static HandlerUpdateFn g_intro_update_orig = nullptr;
+static D1_SYSV void intro_update_hook(void* h) {
+    const uint64_t b = rt().modules[0].base;
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        log("intro: first update, UI mode %d, listener flag %d", *reinterpret_cast<const int32_t*>(b + 0x26CF430),
+            *(static_cast<uint8_t*>(h) + 0x38));
+    }
+    if (!*(static_cast<uint8_t*>(h) + 0x38) && *reinterpret_cast<const int32_t*>(b + 0x26CF430) == 3) {
+        using RegFn = D1_SYSV void (*)(void*);
+        reinterpret_cast<RegFn>(b + 0x78E950)(static_cast<uint8_t*>(h) + 0x30);
+    }
+    g_intro_update_orig(h);
+}
+
 // investment_signin (eboot+0x79DA10): step at +0x30, sub-step at +0x34 (done at 7/3)
 static HandlerUpdateFn g_invest_update_orig = nullptr;
 static D1_SYSV void invest_update_hook(void* h) {
@@ -1247,6 +1286,21 @@ void install_game_hooks() {
             hook_function(exe.base + 0x799A70, reinterpret_cast<const void*>(&bap_update_hook)));
         g_invest_update_orig = reinterpret_cast<HandlerUpdateFn>(
             hook_function(exe.base + 0x79DA10, reinterpret_cast<const void*>(&invest_update_hook)));
+        g_bootload_step_orig = reinterpret_cast<HandlerUpdateFn>(
+            hook_function(exe.base + 0x79A730, reinterpret_cast<const void*>(&bootload_step_hook)));
+        // its first instruction is a short branch (no room for a jump patch): replace the
+        // handler's vtable slot (0x1946528 + 0x40) instead
+        {
+            auto* slot = reinterpret_cast<uint64_t*>(exe.base + 0x1946528 + 0x40);
+            if (*slot == exe.base + 0x79D840) {
+                g_intro_update_orig = reinterpret_cast<HandlerUpdateFn>(exe.base + 0x79D840);
+                const uint64_t f = reinterpret_cast<uint64_t>(&intro_update_hook);
+                os::write_backing(slot, &f, sizeof f);
+                log("hooks: intro screen listener registration retried while the UI mode settles");
+            } else {
+                log("hooks: intro handler vtable slot is %#llx, not hooked", (unsigned long long)*slot);
+            }
+        }
         if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "profile")) g_profile_bypass = true;
         const void* step_hooks[] = {reinterpret_cast<const void*>(&step_trace_hook<0>),
                                     reinterpret_cast<const void*>(&step_trace_hook<1>),

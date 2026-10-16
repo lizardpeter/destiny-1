@@ -97,12 +97,26 @@ const TYPE_MEMBERSHIP: &str = "0x808009ed";
 /// ```
 /// A region is ready for a player once its entry carries the player's current slice-set
 /// transition token (1 for the initial transition) in that player's byte.
-fn region_table(regions: &[i64], players: usize) -> Value {
+fn region_table(regions: &[i64], players: usize, session: Option<&RegionSession>) -> Value {
     use Value::*;
     let tokens: Vec<Option<Value>> = (0..players).map(|_| Some(Int(1))).collect();
+    let peers = (1i64 << players) - 1;
     let mut entries: Vec<Option<Value>> = regions
         .iter()
         .map(|&id| {
+            // @0x28 {u8, u20, i8[20] transition tokens, session description (0x808043BC: u8
+            // count + bytes; the region session's 78-byte data, as the ambassador reports it),
+            // i64 public activity host instance}: what citizens join (0x77CD20)
+            let (blob, ah) = match session {
+                Some(r) => (
+                    Struct(vec![
+                        Some(Int(r.data.len() as i64)),
+                        Some(Array(r.data.iter().map(|&b| Some(Int(b as i64))).collect())),
+                    ]),
+                    Int(r.host as i64),
+                ),
+                None => (Struct(vec![Some(Int(0)), Some(Array(vec![]))]), Int(0)),
+            };
             Some(Struct(vec![
                 Some(Int(id)),
                 Some(Int(0)),
@@ -111,8 +125,8 @@ fn region_table(regions: &[i64], players: usize) -> Value {
                 // for other public sessions and spins up a new one (0x77C3D0, +0x4A9)}. Nobody
                 // else is in the region, so there is nothing to find.
                 Some(Struct(vec![Some(Int(0)), Some(Int(1)), Some(Int(0)), Some(Bool(true))])),
-                Some(Int(0)),
-                Some(Struct(vec![Some(Int(0)), Some(Int(0)), Some(Array(tokens.clone()))])),
+                Some(Int(peers)),
+                Some(Struct(vec![Some(Int(0)), Some(Int(0)), Some(Array(tokens.clone())), Some(blob), Some(ah)])),
             ]))
         })
         .collect();
@@ -120,6 +134,33 @@ fn region_table(regions: &[i64], players: usize) -> Value {
         entries.push(Some(Struct(vec![Some(Int(-1))])));
     }
     Struct(vec![Some(Array(entries))])
+}
+
+/// A region's public session, as its ambassador reported it.
+#[derive(Clone)]
+pub struct RegionSession {
+    /// 78-byte session data (id, host address, security key)
+    pub data: Vec<u8>,
+    /// the public activity host instance the ambassador started for it
+    pub host: u64,
+}
+
+/// The region session description in a client_authoritative_data_update (type 21). The update
+/// is delta-encoded against the previous one (0x29D620 -> 0x2C9D20 / 0x2C7FA0, payload type
+/// *0x191A300); until that encoding is decoded the description is found by its shape: an
+/// 8-bit count 0x4E, then a non-zero 8-byte id and the host's IPv4 address (10.0.2.n).
+pub fn find_region_session(data: &[u8]) -> Option<Vec<u8>> {
+    // bits past the end read as zero (the encoder drops trailing zero bytes)
+    let bit = |i: usize| data.get(i >> 3).map_or(0, |b| (b >> (7 - (i & 7))) & 1);
+    let byte_at = |i: usize| (0..8).fold(0u8, |v, k| (v << 1) | bit(i + k));
+    let total = data.len() * 8;
+    (0..total.saturating_sub(8 + 14 * 8)).find_map(|i| {
+        if byte_at(i) != 0x4E {
+            return None;
+        }
+        let d: Vec<u8> = (0..78).map(|k| byte_at(i + 8 + k * 8)).collect();
+        (d[..8].iter().any(|&b| b != 0) && d[8] == 10 && d[9] == 0 && d[10] == 2).then_some(d)
+    })
 }
 
 /// Membership with the given players (identity blocks) in slots 0.., all valid.
@@ -134,13 +175,20 @@ pub struct Player {
 }
 
 pub fn membership(players: &[Player]) -> Vec<u8> {
+    membership_with(players, None)
+}
+
+pub fn membership_with(players: &[Player], region: Option<&RegionSession>) -> Vec<u8> {
     let slots: Vec<Option<Value>> = players
         .iter()
         .enumerate()
         .map(|(i, p)| {
             // slot state 0x80800C56: {properties, ?, ?, ?} (all optional)
             let state = p.properties.clone().map(|pr| Value::Struct(vec![Some(pr)]));
-            Some(Value::Struct(vec![Some(p.identity.clone()), state, Some(Value::Int(i as i64))]))
+            // @0x248 (i4, optional) is the slot's boot reason (1 = "debug-command", ...), not an
+            // index: a member given 1 there is booted by its own client. Left out.
+            let _ = i;
+            Some(Value::Struct(vec![Some(p.identity.clone()), state, None]))
         })
         .collect();
     let mask = (1i64 << players.len()) - 1;
@@ -148,7 +196,7 @@ pub fn membership(players: &[Player]) -> Vec<u8> {
         Some(Value::Int(1)),
         Some(Value::Int(1)),
         Some(Value::Array(slots)),
-        Some(region_table(&[0], players.len())),
+        Some(region_table(&[0], players.len(), region)),
         Some(Value::Int(mask)),
         Some(Value::Int(mask)),
         Some(Value::Int(0)),
@@ -287,6 +335,8 @@ pub const KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_se
 #[allow(dead_code)]
 pub const HOST_CLIENT_REFERENCE: u32 = 7;
 
+/// Client -> host: client_authoritative_data_update (delta-encoded client data).
+pub const CLIENT_AUTHORITATIVE_DATA_UPDATE: u32 = 21;
 /// Client -> host: request_peer_reservation (payload 0x80800BB9).
 pub const CLIENT_REQUEST_PEER_RESERVATION: u32 = 12;
 const TYPE_PEER_RESERVATION: &str = "0x80800bb9";
@@ -310,6 +360,27 @@ struct Instance {
     /// the session host for a fireteam member that has not joined yet) has connection 0 and
     /// no channel
     members: Vec<(u64, Player, Option<Push>)>,
+    /// the public region's session, once its ambassador reported it
+    region: Option<RegionSession>,
+}
+
+impl Instance {
+    fn membership(&self) -> Vec<u8> {
+        let players: Vec<Player> = self.members.iter().map(|(_, p, _)| p.clone()).collect();
+        membership_with(&players, self.region.as_ref())
+    }
+    /// Send the current membership to every member except `skip`.
+    fn push_membership(&self, skip: u64) -> Vec<u8> {
+        let m = self.membership();
+        for (c, _, push) in &self.members {
+            if *c != skip {
+                if let Some(push) = push {
+                    let _ = push.send((HOST_MEMBERSHIP, m.clone()));
+                }
+            }
+        }
+        m
+    }
 }
 
 fn instances() -> &'static std::sync::Mutex<std::collections::HashMap<u64, Instance>> {
@@ -356,8 +427,7 @@ impl Drop for Host {
             inst.members.retain(|(c, _, _)| *c != self.connection);
             if inst.members.len() != before {
                 info!("activity host: instance {:#x}: a player left ({} remain)", self.instance, inst.members.len());
-                let players: Vec<Player> = inst.members.iter().map(|(_, p, _)| p.clone()).collect();
-                let m = membership(&players);
+                let m = inst.membership();
                 for (_, _, push) in &inst.members {
                     if let Some(push) = push {
                         let _ = push.send((HOST_MEMBERSHIP, m.clone()));
@@ -405,7 +475,7 @@ impl Host {
     pub fn register(&mut self, id: u64) {
         self.instance = id;
         if let Some(a) = self.activity {
-            instances().lock().unwrap().insert(id, Instance { activity: a, members: Vec::new() });
+            instances().lock().unwrap().insert(id, Instance { activity: a, members: Vec::new(), region: None });
         }
     }
 
@@ -456,7 +526,7 @@ impl Host {
                                 None => inst.members.push((self.connection, p, Some(push))),
                             }
                             let players: Vec<Player> = inst.members.iter().map(|(_, p, _)| p.clone()).collect();
-                            let m = membership(&players);
+                            let m = inst.membership();
                             for (c, _, push) in &inst.members {
                                 if *c != self.connection {
                                     if let Some(push) = push {
@@ -465,6 +535,28 @@ impl Host {
                                 }
                             }
                             info!("activity host: instance {:#x} now has {} players", self.instance, players.len());
+                            let activity = inst.activity;
+                            let me = self.instance;
+                            let this_machine = machine.clone();
+                            // a player joining a second instance of the same activity: that is the
+                            // public host of the region the first instance's region entry names
+                            let private = all
+                                .iter()
+                                // same activity index (the public client asks with insertion point -1)
+                                .filter(|(id, i)| **id < me && i.activity.0 == activity.0)
+                                .filter(|(_, i)| i.members.iter().any(|(_, p, _)| machine_of(&p.identity) == this_machine))
+                                .map(|(id, _)| *id)
+                                .max();
+                            if let Some(pid) = private {
+                                if let Some(pi) = all.get_mut(&pid) {
+                                    let r = pi.region.get_or_insert(RegionSession { data: Vec::new(), host: 0 });
+                                    if r.host != me {
+                                        r.host = me;
+                                        info!("activity host: instance {pid:#x}: region public host {me:#x}");
+                                        pi.push_membership(0);
+                                    }
+                                }
+                            }
                             players
                         }
                         _ => player.into_iter().collect(),
@@ -473,13 +565,34 @@ impl Host {
                 vec![
                     (HOST_JOIN_RESULT, join_result(&identity)),
                     (HOST_ENTITY_INDICES, entity_indices()),
-                    (HOST_MEMBERSHIP, membership(&players)),
+                    (HOST_MEMBERSHIP, {
+                        let all = instances().lock().unwrap();
+                        membership_with(&players, all.get(&self.instance).and_then(|i| i.region.as_ref()))
+                    }),
                     (HOST_INSTANCE, self.instance()),
                 ]
                 .into_iter()
                 .chain(world_globals())
                 .chain(claim_abandoned())
                 .collect()
+            }
+            CLIENT_AUTHORITATIVE_DATA_UPDATE => {
+                let Some(data) = find_region_session(m.data) else {
+                    return Vec::new();
+                };
+                let mut all = instances().lock().unwrap();
+                // the public host is linked when the ambassador joins it (see join)
+                let host = all.get(&self.instance).and_then(|i| i.region.as_ref()).map_or(0, |r| r.host);
+                if let Some(inst) = all.get_mut(&self.instance) {
+                    let changed = inst.region.as_ref().map_or(true, |r| r.data != data || r.host != host);
+                    if changed {
+                        info!("activity host: instance {:#x}: region session {} on public host {host:#x}",
+                              self.instance, crate::pb::hex(&data[..8]));
+                        inst.region = Some(RegionSession { data, host });
+                        return vec![(HOST_MEMBERSHIP, inst.push_membership(self.connection))];
+                    }
+                }
+                Vec::new()
             }
             CLIENT_REQUEST_PEER_RESERVATION => {
                 // {u32 request, {count, up to 20 {.., identity 0x80800C2D}}} (0x80800BB9): the
@@ -516,8 +629,7 @@ impl Host {
                             inst.members.push((0, Player { identity: id, properties: None }, None));
                         }
                     }
-                    let players: Vec<Player> = inst.members.iter().map(|(_, p, _)| p.clone()).collect();
-                    let mm = membership(&players);
+                    let mm = inst.membership();
                     for (c, _, push) in &inst.members {
                         if *c != self.connection {
                             if let Some(push) = push {
@@ -612,5 +724,16 @@ mod instance_tests {
         let v = invest::decode(&mut BitReader::new(&bytes), TYPE_INSTANCE);
         let s = invest::show(&v);
         assert!(s.contains("\"act_cosmo_m0_highway\""), "{s}");
+    }
+
+    #[test]
+    fn region_session_in_authoritative_update() {
+        // captured client_authoritative_data_update (type 21) after the ambassador created
+        // its region session 883CD132:F8AC8803 at 10.0.2.15:3074
+        let p = crate::pb::unhex("a802000000010000000128049d1079a265f15910061400041e041801fe01fe000001fe01fe00001400041e041805a23f89fd8e0400000000005881226e3b7eac11bd58eccabcc14e24000000000000000000000000000000");
+        let d = find_region_session(&p).expect("session description");
+        assert_eq!(d.len(), 78);
+        assert_eq!(&d[..8], &[0x88, 0x3c, 0xd1, 0x32, 0xf8, 0xac, 0x88, 0x03]);
+        assert_eq!(&d[8..14], &[10, 0, 2, 15, 0x02, 0x0c]);
     }
 }

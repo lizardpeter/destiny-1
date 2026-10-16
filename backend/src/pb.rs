@@ -158,3 +158,9 @@ pub fn first_bytes(b: &[u8], field: u32) -> Option<Vec<u8>> {
         _ => None,
     })
 }
+
+/// Bytes from a hex string (tests).
+#[cfg(test)]
+pub fn unhex(s: &str) -> Vec<u8> {
+    (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect()
+}
