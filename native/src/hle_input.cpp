@@ -71,7 +71,7 @@ static uint32_t scripted_buttons(uint64_t now_us) {
     }
 }
 
-// D1_STATE_PRESS=<state prefix>:<letter>@<secs>,<letter>@<secs>,... (headless testing): once
+// D1_STATE_PRESS=<state>:<letter>@<secs>,<letter>@<secs>,... (headless testing): once
 // the game reaches that state, press each button (letters as for D1_AUTOPRESS) for half a
 // second at the given time, once. E.g. setup:orbit:o@5,p@10 dismisses a screen in orbit, then
 // opens the director.
@@ -98,7 +98,7 @@ static uint32_t state_buttons(uint64_t now_us) {
         }
     }
     if (!since) {
-        if (const char* gs = game_state(); gs && std::strncmp(gs, prefix.c_str(), prefix.size()) == 0) since = now_us;
+        if (const char* gs = game_state(); gs && prefix == gs) since = now_us;  // exact: setup:orbit is not setup:orbit_loading
         return 0;
     }
     uint32_t b = 0;
