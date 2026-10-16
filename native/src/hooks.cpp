@@ -746,8 +746,38 @@ static void launch_tick() {
     reinterpret_cast<StateFn>(b + 0x783ED0)(0x19);
 }
 
+// D1_TRACE_PLAYERS (research): every 15 s, the machine ids (02:D1:..) found in the game's
+// player records (*(*0x273EA80 + 8), 0x2AF0 each), i.e. which players this client simulates.
+static void trace_players() {
+    static const bool on = getenv("D1_TRACE_PLAYERS") != nullptr;
+    if (!on) return;
+    static auto next = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next) return;
+    next = now + std::chrono::seconds(15);
+    const uint64_t b = rt().modules[0].base;
+    const uint64_t pm = *reinterpret_cast<const uint64_t*>(b + 0x273EA80);
+    if (!pm) return;
+    const uint8_t* players = *reinterpret_cast<uint8_t* const*>(pm + 8);
+    if (!players) return;
+    std::string out;
+    for (int i = 0; i < 16; ++i) {
+        const uint8_t* r = players + size_t(i) * 0x2AF0;
+        for (int o = 0; o + 8 <= 0x2AF0; o += 8) {
+            if (r[o] == 0x02 && r[o + 1] == 0xD1 && r[o + 6] == 0 && r[o + 7] == 0 && (r[o + 2] | r[o + 3] | r[o + 4] | r[o + 5])) {
+                char buf[64];
+                std::snprintf(buf, sizeof buf, " [%d]+%#x=%02x%02x%02x%02x", i, o, r[o + 2], r[o + 3], r[o + 4], r[o + 5]);
+                out += buf;
+                break;
+            }
+        }
+    }
+    log("players:%s", out.empty() ? " none" : out.c_str());
+}
+
 void hooks_system_tick() {
     roster_tick();
+    trace_players();
     launch_tick();
     dump_activity_vtables();
 }
@@ -1069,6 +1099,16 @@ static D1_SYSV void intro_update_hook(void* h) {
     if (!*(static_cast<uint8_t*>(h) + 0x38) && *reinterpret_cast<const int32_t*>(b + 0x26CF430) == 3) {
         using RegFn = D1_SYSV void (*)(void*);
         reinterpret_cast<RegFn>(b + 0x78E950)(static_cast<uint8_t*>(h) + 0x30);
+    }
+    // Headless tests (D1_AUTOPRESS): occasionally the title screen's UI never delivers the
+    // accept (the listener is registered, the UI-side caller 0x9CE1D0 never calls it). After
+    // 20 s do what the listener's callback (0x79D860) does.
+    static const bool autopress = getenv("D1_AUTOPRESS") != nullptr;
+    static auto since = std::chrono::steady_clock::now();
+    if (autopress && !*(static_cast<uint8_t*>(h) + 0x38) &&
+        std::chrono::steady_clock::now() - since > std::chrono::seconds(20)) {
+        log("intro: no accept from the title screen after 20 s, continuing (D1_AUTOPRESS)");
+        *(static_cast<uint8_t*>(h) + 0x38) = 1;
     }
     g_intro_update_orig(h);
 }

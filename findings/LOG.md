@@ -1437,3 +1437,35 @@ and a joining member takes over its reserved slot (matched by machine id).
 - A member that lags behind the leader's life-cycle state too long is booted
   ("invalid_life_cycle_hierarchy" timeout); two instances on two cores are slow enough to
   hit it when the leader launches right after the join.
+
+## 2026-10-16 (later): two players in the same patrol
+
+The fireteam leader (A) launches Earth patrol from orbit and the member (B) follows into the
+same world: both reach activity:in_world in one run (~10 min headless, two instances).
+What it took beyond the reservations:
+- **Membership slot @0x248** (i4, optional) is a boot reason (1 = `debug-command`), not a
+  slot index; B in slot 1 was booted by its own client. Now left out.
+- **Join timing**: a platform join that arrives while loading (before orbit sets the
+  "joined from the system" flag) is dropped with message 0x26BC328; the join test now waits
+  for orbit or the world.
+- **Citizen join** (B into A's public region): A reports its region session in
+  `client_authoritative_data_update` (21; delta-encoded against the previous update,
+  0x29D620 -> 0x2C9D20 / 0x2C7FA0, payload type *0x191A300). The description is the region
+  session's 78-byte data (8-bit count 0x4E + id, host 10.0.2.n:3074, DemonWare key;
+  trailing zero bytes are not sent). The region entry's @0x28 struct carries it (0x808043BC
+  count + bytes) and the public host instance (i64 @0xA8). The backend finds the
+  description by its shape (until type 21's delta encoding is decoded), links the public
+  instance when the ambassador joins it (same activity index; the public client starts
+  with insertion point -1), and pushes membership. B then joins A's group session as a
+  citizen ("citizen joining to slot 1") and its public client joins the public instance.
+- **Intro-screen hang** (headless, ~1 in 4 two-instance boots): the handler's accept
+  listener (0x78E950 -> mode UI object +0x21A0) is registered, but the title screen's UI
+  (0x9CE1D0) never calls it. The vtable slot (0x1946568) now points to a wrapper that
+  re-registers while the flag is clear; with D1_AUTOPRESS (tests only) it also sets the flag
+  after 20 s. Bootload steps are traced (0x79A730).
+
+**Next layer: the simulation's players.** D1_TRACE_PLAYERS logs the machine ids in the
+game's player records (*(*0x273EA80 + 8), 0x2AF0 each, machine id @0x620). In the shared
+patrol B has [A, B], A only [A]. Players are added by simulation-queue `player_update`
+events (0xBAD260, from the dispatcher 0xBB4690), not by the activity membership, which A
+does receive (pushed) with both players.
