@@ -1174,7 +1174,35 @@ static std::string expr_ops(const int64_t* expr) {
 }
 using ActivityStateFn = D1_SYSV int32_t (*)(void*, const uint8_t*);
 static ActivityStateFn g_activity_state_orig = nullptr;
+// Where each unlock flag is stored (research, D1_TRACE_DIRECTOR): the definitions manager
+// (0x25A550) lists, per storage scope, the master flag index of each stored slot. Vtable +0x298:
+// profile flags (scope 3), +0x2A0: character flags (scope 7, slot i = character +0x53C0 + i),
+// both {i32 count, i64 relative array @+8} of 8-byte entries {.. i16 master index @+0x14}
+// (as read by 0x28BC60). Logged once as "flagscope: <scope> <slot> <master>".
+static void dump_flag_scopes() {
+    using GetFn = D1_SYSV void* (*)();
+    using ListFn = D1_SYSV const int32_t* (*)(void*);
+    void* defs = reinterpret_cast<GetFn>(rt().modules[0].base + 0x25A550)();
+    if (!defs) return;
+    const auto vt = *reinterpret_cast<const uint64_t* const*>(defs);
+    for (auto [scope, off] : {std::pair{3, 0x298}, std::pair{7, 0x2A0}}) {
+        const int32_t* lst = reinterpret_cast<ListFn>(vt[off / 8])(defs);
+        if (!lst) continue;
+        const auto* base = reinterpret_cast<const uint8_t*>(lst) + 8 + *reinterpret_cast<const int64_t*>(lst + 2);
+        std::string line;
+        for (int32_t i = 0; i < lst[0]; ++i) {
+            line += " " + std::to_string(*reinterpret_cast<const int16_t*>(base + i * 8 + 0x14));
+            if (line.size() > 900 || i + 1 == lst[0]) {
+                log("flagscope: %d up to slot %d:%s", scope, i, line.c_str());
+                line.clear();
+            }
+        }
+    }
+}
+
 static D1_SYSV int32_t activity_state_hook(void* c, const uint8_t* list) {
+    static std::once_flag scopes;
+    std::call_once(scopes, dump_flag_scopes);
     const int32_t r = g_activity_state_orig(c, list);
     static std::mutex m;
     static std::map<const void*, int> seen;

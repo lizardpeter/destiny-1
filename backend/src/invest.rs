@@ -730,7 +730,14 @@ pub fn profile_baseline() -> FamilyUpdate {
         // nowhere else (scope 0 in the master flag table, vtable +0x2B8; applied by
         // 0x28BC60). Flag 836 is one of those and gates the prologue.
         // 836 true once the prologue is done (with 2838 false: what finishing it leaves)
-        let overrides = vec![Some(Struct(vec![Some(Int(836)), Some(Int(if prologue_done { 2 } else { 1 }))]))];
+        // The same list carries the veteran flags (and D1B_FLAGS_TRUE/FALSE): the profile's
+        // override list alone does not reach them.
+        let mut overrides = vec![Some(Struct(vec![Some(Int(836)), Some(Int(if prologue_done { 2 } else { 1 }))]))];
+        for (flag, state) in profile_flag_overrides() {
+            if flag != 836 && !PROFILE_FLAG_OVERRIDES.iter().any(|&(f, _)| f == flag) && overrides.len() < 20 {
+                overrides.push(Some(Struct(vec![Some(Int(flag)), Some(Int(state))])));
+            }
+        }
         let mut st = vec![None; 6];
         st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));
         c[15] = Some(Struct(st));
