@@ -567,6 +567,21 @@ static void trace_references() {
             n += std::snprintf(line + n, sizeof line - n, " [%d]%08x", e, *reinterpret_cast<const uint32_t*>(ent));
         }
         log("%s", line);
+        // first bound entry: the object's message delegate block at +0x108 (0x29D7E0 / 0x353340)
+        for (int16_t i = 0; i < count; ++i) {
+            const int16_t e = *reinterpret_cast<const int16_t*>(mgr + 0x2A51C + (start_i + i) * 2);
+            if (e < 0) continue;
+            const uint8_t* ent = mgr + 0x520 + e * 0x38;
+            const uint32_t h = *reinterpret_cast<const uint32_t*>(ent);
+            if (h == 0xFFFFFFFFu) continue;
+            const uint8_t* obj = tag_data(b, h);
+            if (!obj) break;
+            obj += *reinterpret_cast<const int64_t*>(ent + 8);
+            const uint32_t* d = reinterpret_cast<const uint32_t*>(obj + 0x108);
+            log("refs:   type %#x [%d] obj %p delegate %08x %08x %08x %08x %08x %08x %08x %08x", type, e, (const void*)obj,
+                d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+            break;
+        }
     }
 }
 

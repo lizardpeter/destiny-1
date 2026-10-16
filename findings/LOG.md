@@ -1207,3 +1207,19 @@ host's inputs: which triggers the player is in, what happened.
 Still open: the transport for host-spawned entities (phases, script objects, cinematics).
 The client sends no UDP to the host (only the BAP TCP connection), so either they arrive
 over BAP or the client spawns them itself on a signal not found yet.
+
+**Object table index = reference index.** Group 0's entries line up with the prologue
+content unit's object table (80CB8165) entry by entry: [0] static skeleton (kind 4),
+[1]/[2] `pf_104_res(_fp)._cinematic` (6), [3] first `_player_objective` (0x20), [4]/[5]
+its sequences (5), [6] `o_weapon` (4), ... So a mission object's reference id is
+{group key, -, index in the object table}.
+
+**No message delegates.** D1_TRACE_REFS now also dumps the delegate block (object +0x108)
+of the first bound reference of each type: in the prologue every one is unset
+(ffffffff ffffffff ffffffff 0 ...), objectives, sequences, the bound cinematic, nav
+points, trigger volumes, player definitions alike. Message 7 (0x29D7E0) skips objects
+whose +0x108 is 0 or -1, so in this state it reaches none of them.
+
+**Relay.** The client registers as a NAT relay client at sign-in (302); the relay
+(300 initiate / request_relay_connection / nat_punch_relay_intro) is the console-to-console
+channel fallback, not an activity host transport.
