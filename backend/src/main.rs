@@ -68,6 +68,7 @@ async fn main() {
         .init();
     let args = Args::parse();
     account::init(args.data_dir.clone());
+    npwebapi::init(args.data_dir.clone());
 
     let st: Shared = Arc::new(Config {
         public_ip: args.public_ip,

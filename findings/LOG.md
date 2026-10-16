@@ -1288,3 +1288,24 @@ found (no UDP to the host; possibly the NAT relay channel + replication protocol
 - The client contains both ends of every layer (consoles replicate to each other), so it
   is reversible from the binary; the security layer can be hooked in the runtime rather
   than reimplemented. The same stack is what console-to-console co-op needs.
+
+## 2026-10-15 (night): co-op path, step 1 - the PSN session data
+
+The fireteam's PSN session (`POST sessionInvitation/v1/sessions`, multipart) has three
+parts; the backend now keeps them per session (and writes them to `<data>/sessions/<id>/`):
+- `session-request` JSON: `{"availablePlatforms":["PS4"],"sessionMaxUser":1,
+  "sessionName":"Destiny Fireteam","sessionPrivacy":"public","sessionStatus":"",
+  "sessionType":"owner-bind"}` (max 1 user in the prologue: the opening mission is solo);
+- `session-image` (42,882 bytes);
+- `session-data` (78 bytes), what a joining console reads:
+  ```
+  5d6dc3f3 3303e021            8-byte id
+  0a00020f 0c02                10.0.2.15:3074 (host address)
+  00ff 00ff 0000 00ff 00ff 0000
+  0a00020f 0c02 02d1           address again (+ 0x02d1)
+  00000001 0200 00000000
+  48401dff63af4ed14cc8a24e84035570   16 bytes: security key (DemonWare)?
+  ```
+Between two real clients the secure transport (layer 1) is DemonWare's own code once the
+joiner has this blob; what the services must provide is the session data, the invitation /
+join flow, and a network path between the consoles.
