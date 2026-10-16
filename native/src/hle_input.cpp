@@ -71,15 +71,19 @@ static uint32_t scripted_buttons(uint64_t now_us) {
     }
 }
 
-// D1_STATE_PRESS=<state>:<letter>@<secs>,<letter>@<secs>,... (headless testing): once
-// the game reaches that state, press each button (letters as for D1_AUTOPRESS) for two
-// seconds (several frames even with software rendering) at the given time, once. E.g. setup:orbit:o@5,p@10 dismisses a screen in orbit, then
-// opens the director.
-static uint32_t state_buttons(uint64_t now_us) {
+// D1_STATE_PRESS=<state>:<letter>@<secs>[+<hold secs>],... (headless testing): once the game
+// reaches that state (exact name), press each button (letters as for D1_AUTOPRESS) at the
+// given time, once, for two seconds (several frames even with software rendering) or the
+// given hold. h j k l push the left stick left / down / up / right (moves the cursor). E.g.
+// setup:orbit:h@5+1.5,j@7+0.8,x@9 moves the orbit cursor down-left onto a button and
+// presses Cross.
+struct StickPush { int8_t x, y; };
+static uint32_t state_buttons(uint64_t now_us, StickPush& stick) {
     static const char* env = getenv("D1_STATE_PRESS");
     if (!env) return 0;
+    struct Press { char c; uint64_t at, hold; };
     static std::string prefix;
-    static std::vector<std::pair<char, uint64_t>> presses;
+    static std::vector<Press> presses;
     static bool parsed = false;
     static uint64_t since = 0;
     if (!parsed) {
@@ -92,7 +96,11 @@ static uint32_t state_buttons(uint64_t now_us) {
         while (pos < rest.size()) {
             size_t comma = rest.find(',', pos);
             const std::string item = rest.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
-            if (item.size() > 2 && item[1] == '@') presses.push_back({item[0], uint64_t(atof(item.c_str() + 2) * 1e6)});
+            if (item.size() > 2 && item[1] == '@') {
+                const size_t plus = item.find('+');
+                const double hold = plus == std::string::npos ? 2.0 : atof(item.c_str() + plus + 1);
+                presses.push_back({item[0], uint64_t(atof(item.c_str() + 2) * 1e6), uint64_t(hold * 1e6)});
+            }
             if (comma == std::string::npos) break;
             pos = comma + 1;
         }
@@ -104,11 +112,17 @@ static uint32_t state_buttons(uint64_t now_us) {
     uint32_t b = 0;
     static size_t announced = 0;
     for (size_t i = 0; i < presses.size(); ++i) {
-        auto& [c, at] = presses[i];
-        if (now_us - since >= at && now_us - since < at + 2000000) {
-            b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u : 0x4000u;
-            if (announced <= i) announced = i + 1, log("input: state press '%c' at %.0f s", c, at / 1e6);
+        const auto& [c, at, hold] = presses[i];
+        if (now_us - since < at || now_us - since >= at + hold) continue;
+        switch (c) {
+            case 'h': stick.x = -127; break;
+            case 'l': stick.x = 127; break;
+            case 'k': stick.y = -127; break;
+            case 'j': stick.y = 127; break;
+            default:
+                b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u : 0x4000u;
         }
+        if (announced <= i) announced = i + 1, log("input: state press '%c' at %.1f s", c, at / 1e6);
     }
     return b;
 }
@@ -122,11 +136,14 @@ static void fill(PadData* d) {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     d->timestamp = uint64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
-    d->buttons = scripted_buttons(d->timestamp) | state_buttons(d->timestamp);
+    StickPush stick{0, 0};
+    d->buttons = scripted_buttons(d->timestamp) | state_buttons(d->timestamp, stick);
+    d->lx = uint8_t(0x80 + stick.x), d->ly = uint8_t(0x80 + stick.y);
     render::PadState p;
     if (render::read_pad(p)) {  // window input (renderer build)
         d->buttons |= p.buttons;
-        d->lx = p.lx, d->ly = p.ly, d->rx = p.rx, d->ry = p.ry;
+        if (!stick.x && !stick.y) d->lx = p.lx, d->ly = p.ly;
+        d->rx = p.rx, d->ry = p.ry;
         d->l2 = p.l2, d->r2 = p.r2;
     }
 }
