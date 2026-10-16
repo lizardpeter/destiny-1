@@ -7,6 +7,9 @@
 #include <ctime>
 #include <string>
 #include <algorithm>
+#include <deque>
+#include <mutex>
+#include <vector>
 
 #include "hle.h"
 #include "settings.h"
@@ -209,12 +212,38 @@ static int32_t sceSystemServiceParamGetInt(int id, int32_t* v) {
     return SCE_OK;
 }
 HLE("sceSystemServiceParamGetInt", sceSystemServiceParamGetInt)
+// System events (what the PS4 system software tells the game, e.g. 0x10000002 session
+// invitation: the player chose "Join" on a friend or accepted an invitation). Queued by
+// push_system_event; the game polls sceSystemServiceGetStatus().event_num, then receives them.
+struct SystemServiceEvent { int32_t type; uint8_t data[8192]; };
+static std::mutex g_event_mutex;
+static std::deque<std::pair<int32_t, std::vector<uint8_t>>> g_events;
+void push_system_event(int32_t type, const void* data, size_t size) {
+    std::lock_guard lk(g_event_mutex);
+    const auto* p = static_cast<const uint8_t*>(data);
+    g_events.emplace_back(type, std::vector<uint8_t>(p, p + std::min<size_t>(size, 8192)));
+    log("system service: event %#x queued (%zu bytes)", type, size);
+}
 struct SystemServiceStatus { int32_t event_num; bool system_ui, overlay, cpu_mode7, bg_media; uint8_t reserved[128]; };
-static int32_t sceSystemServiceGetStatus(SystemServiceStatus* s) { std::memset(s, 0, sizeof *s); return SCE_OK; }
+static int32_t sceSystemServiceGetStatus(SystemServiceStatus* s) {
+    std::memset(s, 0, sizeof *s);
+    std::lock_guard lk(g_event_mutex);
+    s->event_num = int32_t(g_events.size());
+    return SCE_OK;
+}
 HLE("sceSystemServiceGetStatus", sceSystemServiceGetStatus)
 static int32_t sceSystemServiceHideSplashScreen() { log("sceSystemServiceHideSplashScreen: game finished its boot splash"); return SCE_OK; }
 HLE("sceSystemServiceHideSplashScreen", sceSystemServiceHideSplashScreen)
-static int32_t sceSystemServiceReceiveEvent(void*) { return int32_t(0x80A10003); }  // no event
+static int32_t sceSystemServiceReceiveEvent(SystemServiceEvent* e) {
+    std::lock_guard lk(g_event_mutex);
+    if (g_events.empty() || !e) return int32_t(0x80A10003);  // no event
+    std::memset(e, 0, sizeof *e);
+    e->type = g_events.front().first;
+    std::memcpy(e->data, g_events.front().second.data(), g_events.front().second.size());
+    g_events.pop_front();
+    log("system service: event %#x delivered", e->type);
+    return SCE_OK;
+}
 HLE("sceSystemServiceReceiveEvent", sceSystemServiceReceiveEvent)
 
 }  // namespace d1

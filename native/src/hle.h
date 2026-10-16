@@ -76,6 +76,10 @@ bool backend_http(const std::string& method, const std::string& host, const std:
                   const std::vector<std::pair<std::string, std::string>>& headers, const void* data,
                   size_t size, BackendReply& out);
 
+// Queue a system-service event for the game (hle_services.cpp), e.g. 0x10000002 session
+// invitation with its 0x8C-byte parameter.
+void push_system_event(int32_t type, const void* data, size_t size);
+
 // Sockets the game opened (hle_net.cpp): `close` routes them to the network layer.
 bool net_is_socket(int fd);
 int net_close_socket(int fd);

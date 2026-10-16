@@ -17,6 +17,7 @@
 #include <strings.h>
 
 #include "hle.h"
+#include "settings.h"
 
 namespace d1 {
 namespace {
@@ -111,6 +112,8 @@ int32_t sceNpWebApiSendRequest(int64_t id, const void* data, uint64_t size) {
     std::vector<std::pair<std::string, std::string>> headers;
     if (!r->content_type.empty()) headers.push_back({"Content-Type", r->content_type});
     headers.push_back({"X-D1-NpWebApi-Group", r->group});
+    // the user's PSN access token, as libSceNpWebApi sends it (the backend's caller identity)
+    headers.push_back({"Authorization", "Bearer d1b-D1NATIVE-" + settings().name});
     const std::string host = r->group + ".np.playstation.net";
     if (!backend_http(r->method, host, "/npwebapi/" + r->group + r->path, headers, data, size_t(size), r->reply)) {
         log("npwebapi: %s %s%s -> backend unreachable", r->method.c_str(), r->group.c_str(), r->path.c_str());

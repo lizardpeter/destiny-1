@@ -1309,3 +1309,44 @@ parts; the backend now keeps them per session (and writes them to `<data>/sessio
 Between two real clients the secure transport (layer 1) is DemonWare's own code once the
 joiner has this blob; what the services must provide is the session data, the invitation /
 join flow, and a network path between the consoles.
+
+## 2026-10-16: co-op path, step 2 - how a player joins a friend
+
+Two clients on one backend (A lizardpeter 10.0.2.15, B guardian2 10.0.2.16) now see each
+other as PSN friends, publish presence game data, and B can start a join to A. Findings:
+
+- **Session lookup** (join manager state 2, 0x57AA70) reads the target's family 7 (session):
+  slot 0 0x8080192C {account id, slot-1 soid}, slot 1 0x80801899 {soid, {78-byte session
+  data, net version 0x5001}}. The 78 bytes are the presence game data (base64; the PUT body
+  is NUL-padded JSON, which the backend first failed to parse).
+- **Joinability** (0x955EF0 -> bits, highest bit's message from table 0x193F4C0, reported by
+  0x57B160) reads the target's family 2 status object 0x80801810 {u64, i16 @8, i16 @10,
+  i8, 0x808016F8 @16, 0x808018DB @36}: +0x24 max fireteam size, +0x25 max in a limited
+  activity, +0x26 privacy (0 open, 1 friends: 0x1000, 2 invite: 0x2000, 3 closed: 0x10000),
+  +0x27 flags (0x8/0x10/0x20/0x40/0x4000). Max 0 gave 0x4 (full); the backend now publishes
+  {3, 3, 0, 0}. Joiner-side bits: 0x40000 net version mismatch, 0x20000 already in that
+  session, 0x80000 / 0x100000 joiner's activity state (*0x26CA078 +0x1B0) 0x1C..0x23 /
+  >= 0x24 unless (*0x281D300)[0] or [1], 0x8000 the joiner's "no joining" flag.
+- **Two join paths.** The in-game roster's join (0x579EA0, sim element 0x24) is refused
+  from inside an activity (0x100000). The PS4 system UI's "Join" is the other path: system
+  service event 0x10000002 (session invitation; param 0x8C bytes: session id char[45] @0,
+  invitation id @0x30, flags @0x70 bit 0 = from an invitation) -> 0x295460 copies it to
+  0x26535D4 -> internal event 0x24 -> 0x2B4270 -> 0x2B4600 reads the PSN session
+  (`GET sessionInvitation/v1/sessions/<id>?fields=@default,members` and `.../sessionData`)
+  -> 0x2B4AF0 checks it -> event 0x25 -> join store 0x266D5E8 (pending, session data
+  @0x266D5EA, identities) -> join manager 0x57A260. That path sets the "joined from the
+  system" flag ((*0x281D300)[1], 0x774F50 on entering the world) so the activity-state bit
+  does not apply. d1-native now queues system events (sceSystemServiceGetStatus /
+  ReceiveEvent) and D1_JOIN_TEST joins this way (D1_JOIN_VIA=roster for the roster path).
+- **PSN session ids** must look like `XXX-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX` (hex, parsed
+  by 0x2E9B10, formatted by 0x2E9A70); the backend's UUID-style ids parsed as zero. Now
+  `D1B-<n>-0000-0000-0000-<n>`. The session-info parser (0x2BCC70) requires sessionPrivacy,
+  sessionMaxUser, sessionName, sessionStatus, sessionCreateTimestamp, sessionCreator and
+  members[{onlineId, platform}].
+- **Why B still cannot join A: the prologue.** The activity-selection component (*0x26BC068,
+  0x574C00) sets +300 "no joining" from progression state 2838 (0x546F20 -> 0x28CFB0:
+  state == 2), and both the system path (message 0x26BC320 in 0x57A260) and the joinability
+  check (0x8000) refuse while it is set. Flag 2838 is the new-character flag the prologue
+  needs true (backend: character flag slot 673). So a character in the opening mission can
+  neither join nor be joined, as in the original game (the session also advertises
+  sessionMaxUser 1). Co-op needs characters past the prologue, in a joinable activity.

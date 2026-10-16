@@ -721,8 +721,9 @@ pub fn session_baseline() -> FamilyUpdate {
 
 /// Family 2: the player's activity status (read by a friend's join manager, 0x580840 /
 /// 0x57A970). Slot 0 0x808018B7 {soid, id of the slot-1 object, ...}; slot 1 0x80801810
-/// {soid, i16 @8, i16 @10 (activity indices the join checks when both are set), i8, ...}.
-/// For now both indices are -1 (unknown), which the join manager skips.
+/// {u64, i16 @8, i16 @10 (activity indices the join checks when set), i8, 0x808016F8 @16,
+/// 0x808018DB @36 (fireteam limits and privacy)}. For now both indices are -1 (unknown), which
+/// the join check skips, and the fireteam is open with room for three.
 pub const FAMILY_STATUS: u32 = 2;
 
 pub fn status_baseline() -> FamilyUpdate {
@@ -730,7 +731,21 @@ pub fn status_baseline() -> FamilyUpdate {
     let status_soid = account_id() + 2;
     let objects = vec![
         Object { ty: "0x808018b7", soid: account_id(), value: Struct(vec![Some(Int(account_id())), Some(Int(status_soid))]) },
-        Object { ty: "0x80801810", soid: status_soid, value: Struct(vec![Some(Int(status_soid)), Some(Int(-1)), Some(Int(-1))]) },
+        // +36 0x808018DB.+0 0x808018E5 {max fireteam size, max size in an activity with a
+        // limit, privacy (0 open, 1 friends, 2 invite, 3 closed), flags}: what a friend's join
+        // check (0x955EF0) compares with its fireteam (bits 0x4/0x10000/0x1000/0x2000/0x8..).
+        Object {
+            ty: "0x80801810",
+            soid: status_soid,
+            value: Struct(vec![
+                Some(Int(status_soid)),
+                Some(Int(-1)),
+                Some(Int(-1)),
+                None,
+                None,
+                Some(Struct(vec![Some(Struct(vec![Some(Int(3)), Some(Int(3)), Some(Int(0)), Some(Int(0))])), None, None])),
+            ]),
+        },
     ];
     FamilyUpdate { family: FAMILY_STATUS, root: account_id(), version: crate::account::next_version(FAMILY_STATUS), flags: 1, objects }
 }

@@ -7,7 +7,10 @@
 //!   changeable-session-data) are kept per session; with a data directory they are also
 //!   written to `<data>/sessions/<id>/<part>` (research: what a joining player reads).
 //! - sessionInvitation `GET /v1/sessions/<id>/sessionData` and `.../changeableSessionData`:
-//!   the stored binary part.
+//!   the stored binary part; `GET /v1/sessions/<id>`: the session (request JSON + members);
+//!   `POST`/`DELETE /v1/sessions/<id>/members`: join/leave; `GET /v1/users/<id>/sessions`:
+//!   the sessions a player is in (what the system software reads to join a friend).
+//!   The caller is the online id in the PSN access token (`Authorization: Bearer ...`).
 //! - userProfile `PUT /v1/users/<id>/presence/gameData`: the player's presence game data
 //!   (base64 of the fireteam session data), kept per player.
 //! - userProfile `GET /v1/users/<id>/friendList`: every other player the backend knows, as an
@@ -15,7 +18,13 @@
 //!   join).
 //! - anything else: 200 with `{}` (logged, so new calls show up in backend.log)
 
-use axum::{body::Bytes, extract::Path, http::{HeaderMap, Method, StatusCode}, Json};
+use axum::{
+    body::Bytes,
+    extract::Path,
+    http::{header, HeaderMap, Method, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -132,25 +141,144 @@ fn store(id: &str, parts: Vec<(String, Vec<u8>)>) {
     }
 }
 
+/// The calling player, from the PSN access token libSceNpWebApi sends ("Bearer d1b-D1NATIVE-<id>").
+fn caller(headers: &HeaderMap) -> String {
+    headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|t| t.trim_start_matches("d1b-").trim_start_matches("D1NATIVE-").to_string())
+        .unwrap_or_default()
+}
+
+/// Session id -> {creator, members (online ids)}; online id -> sessions they are in.
+#[derive(Default)]
+struct Membership {
+    members: HashMap<String, Vec<String>>,
+}
+
+fn membership() -> &'static Mutex<Membership> {
+    static M: OnceLock<Mutex<Membership>> = OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+/// Sessions an online id is a member of (newest first).
+fn sessions_of(user: &str) -> Vec<String> {
+    let m = membership().lock().unwrap();
+    let mut v: Vec<String> = m.members.iter().filter(|(_, ms)| ms.iter().any(|u| u == user)).map(|(id, _)| id.clone()).collect();
+    v.sort();
+    v.reverse();
+    v
+}
+
+fn session_part(id: &str, part: &str) -> Option<Vec<u8>> {
+    sessions().lock().unwrap().get(id)?.get(part).cloned()
+}
+
+fn json_reply(status: StatusCode, v: Value) -> Response {
+    (status, Json(v)).into_response()
+}
+
 pub async fn request(method: Method, Path((group, path)): Path<(String, String)>, headers: HeaderMap, body: Bytes)
-    -> (StatusCode, Json<Value>) {
+    -> Response {
     let ctype = headers.get("content-type").and_then(|h| h.to_str().ok()).unwrap_or("");
+    let me = caller(&headers);
     let text = String::from_utf8_lossy(&body);
     let preview: String = text.chars().take(600).collect();
-    info!("npwebapi: {method} {group}/{path} ({} bytes, {ctype})\n{preview}", body.len());
+    info!("npwebapi: {me}: {method} {group}/{path} ({} bytes, {ctype})\n{preview}", body.len());
     let path = format!("/{path}");
+    fn session_path(p: &str) -> Option<Vec<&str>> {
+        p.strip_prefix("/v1/sessions/").map(|r| r.split('/').collect())
+    }
     match (group.as_str(), method.as_str(), path.as_str()) {
         ("sessionInvitation", "POST", "/v1/sessions") => {
             let n = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
-            let id = format!("00000000-0000-0000-0000-{n:012X}");
-            info!("npwebapi: session {id} created");
+            // PSN session id as the game parses it (0x2E9B10): hex groups 3-8-4-4-4-12.
+            let id = format!("D1B-{n:08X}-0000-0000-0000-{n:012X}");
+            info!("npwebapi: session {id} created by {me}");
             store(&id, multipart(ctype, &body));
-            (StatusCode::OK, Json(json!({ "sessionId": id })))
+            let mut m = membership().lock().unwrap();
+            // a player is in one session at a time
+            for ms in m.members.values_mut() {
+                ms.retain(|u| u != &me);
+            }
+            m.members.insert(id.clone(), vec![me.clone()]);
+            json_reply(StatusCode::OK, json!({ "sessionId": id }))
         }
-        ("sessionInvitation", "PUT", p) if p.starts_with("/v1/sessions/") && p.ends_with("/changeableSessionData") => {
-            let id = p.trim_start_matches("/v1/sessions/").trim_end_matches("/changeableSessionData").to_string();
-            store(&id, vec![("changeable-session-data".into(), body.to_vec())]);
-            (StatusCode::OK, Json(json!({})))
+        ("sessionInvitation", "GET", p) if p.starts_with("/v1/users/") && p.ends_with("/sessions") => {
+            // the sessions a user is in (what the system software reads to join a friend)
+            let user = p.trim_start_matches("/v1/users/").trim_end_matches("/sessions").to_string();
+            let user = if user == "me" { me.clone() } else { user };
+            let list: Vec<Value> = sessions_of(&user).into_iter().map(|id| json!({ "sessionId": id, "platform": "PS4" })).collect();
+            let n = list.len();
+            info!("npwebapi: sessions of {user}: {n}");
+            json_reply(StatusCode::OK, json!({ "start": 0, "size": n, "totalResults": n, "sessions": list }))
+        }
+        ("sessionInvitation", m, p) if session_path(p).is_some() => {
+            let parts = session_path(p).unwrap();
+            let id = parts[0].to_string();
+            match (m, parts.get(1).copied()) {
+                ("GET", Some(part @ ("sessionData" | "changeableSessionData"))) => {
+                    let name = if part == "sessionData" { "session-data" } else { "changeable-session-data" };
+                    match session_part(&id, name) {
+                        Some(d) => {
+                            info!("npwebapi: session {id} {part}: {} bytes", d.len());
+                            ([(header::CONTENT_TYPE, "application/octet-stream")], d).into_response()
+                        }
+                        None => json_reply(StatusCode::NOT_FOUND, json!({ "error": { "code": 2113794, "message": "Session not found" } })),
+                    }
+                }
+                ("PUT", Some("changeableSessionData")) => {
+                    store(&id, vec![("changeable-session-data".into(), body.to_vec())]);
+                    json_reply(StatusCode::OK, json!({}))
+                }
+                ("PUT", None) => {
+                    // session update (sessionMaxUser, sessionName, ...): merged into the request
+                    let end = body.iter().rposition(|&b| b != 0 && !b.is_ascii_whitespace()).map_or(0, |i| i + 1);
+                    let upd: Value = serde_json::from_slice(&body[..end]).unwrap_or_else(|_| json!({}));
+                    let mut v: Value = session_part(&id, "session-request")
+                        .and_then(|r| serde_json::from_slice(&r).ok())
+                        .unwrap_or_else(|| json!({}));
+                    if let (Some(o), Some(u)) = (v.as_object_mut(), upd.as_object()) {
+                        for (k, x) in u {
+                            o.insert(k.clone(), x.clone());
+                        }
+                    }
+                    store(&id, vec![("session-request".into(), serde_json::to_vec(&v).unwrap_or_default())]);
+                    json_reply(StatusCode::OK, json!({}))
+                }
+                ("POST", Some("members")) => {
+                    let mut m = membership().lock().unwrap();
+                    for ms in m.members.values_mut() {
+                        ms.retain(|u| u != &me);
+                    }
+                    m.members.entry(id.clone()).or_default().push(me.clone());
+                    info!("npwebapi: {me} joined session {id}");
+                    json_reply(StatusCode::OK, json!({}))
+                }
+                ("DELETE", Some("members")) => {
+                    let mut m = membership().lock().unwrap();
+                    if let Some(ms) = m.members.get_mut(&id) {
+                        ms.retain(|u| u != &me);
+                    }
+                    info!("npwebapi: {me} left session {id}");
+                    json_reply(StatusCode::OK, json!({}))
+                }
+                ("GET", None) => {
+                    let Some(req) = session_part(&id, "session-request") else {
+                        return json_reply(StatusCode::NOT_FOUND, json!({ "error": { "code": 2113794, "message": "Session not found" } }));
+                    };
+                    let mut v: Value = serde_json::from_slice(&req).unwrap_or_else(|_| json!({}));
+                    let members = membership().lock().unwrap().members.get(&id).cloned().unwrap_or_default();
+                    let creator = members.first().cloned().unwrap_or_default();
+                    v["sessionId"] = json!(id);
+                    v["sessionCreator"] = json!(creator);
+                    v["sessionCreateTimestamp"] = json!(1359691347652u64);
+                    v["members"] = json!(members.iter().map(|u| json!({ "onlineId": u, "platform": "PS4" })).collect::<Vec<_>>());
+                    json_reply(StatusCode::OK, v)
+                }
+                _ => json_reply(StatusCode::OK, json!({})),
+            }
         }
         ("userProfile", "PUT", p) if p.starts_with("/v1/users/") && p.ends_with("/presence/gameData") => {
             let user = p.trim_start_matches("/v1/users/").trim_end_matches("/presence/gameData").to_string();
@@ -163,14 +291,14 @@ pub async fn request(method: Method, Path((group, path)): Path<(String, String)>
                 }
                 None => warn!("npwebapi: unparsable presence game data for {user}"),
             }
-            (StatusCode::OK, Json(json!({})))
+            json_reply(StatusCode::OK, json!({}))
         }
         ("userProfile", "GET", p) if p.starts_with("/v1/users/") && p.contains("/friendList") => {
             let user = p.trim_start_matches("/v1/users/").split('/').next().unwrap_or("").to_string();
             let v = friend_list(&user);
             info!("npwebapi: friend list for {user}: {}", v["totalResults"]);
-            (StatusCode::OK, Json(v))
+            json_reply(StatusCode::OK, v)
         }
-        _ => (StatusCode::OK, Json(json!({}))),
+        _ => json_reply(StatusCode::OK, json!({})),
     }
 }

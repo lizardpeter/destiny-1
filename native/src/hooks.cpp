@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include <map>
+#include <mutex>
 #include "hle.h"
 #include "render_bridge.h"
 #include "runtime.h"
@@ -622,11 +624,42 @@ static void trace_references() {
     }
 }
 
+// "Join" on a friend, as the PS4 system software does it: read the sessions the friend is in
+// (PSN sessionInvitation GET /v1/users/<id>/sessions) and send the game a session invitation
+// event (0x10000002; parameter: session id char[45] @0, invitation id @0x30, flags @0x70 with
+// bit 0 = from an invitation, online id @0x78). The game (0x295460 -> event 0x24 -> 0x2B4270
+// -> 0x2B4600) then reads the session's data from PSN and joins through the join manager.
+static bool join_friend(const std::string& friend_id) {
+    BackendReply rep;
+    const std::vector<std::pair<std::string, std::string>> headers = {
+        {"Authorization", "Bearer d1b-D1NATIVE-" + settings().name}};
+    if (!backend_http("GET", "sessionInvitation.np.playstation.net",
+                      "/npwebapi/sessionInvitation/v1/users/" + friend_id + "/sessions", headers, nullptr, 0, rep) ||
+        rep.status != 200) {
+        log("join: cannot read %s's sessions (status %d)", friend_id.c_str(), rep.status);
+        return false;
+    }
+    const auto k = rep.body.find("\"sessionId\":\"");
+    if (k == std::string::npos) {
+        log("join: %s is not in a session", friend_id.c_str());
+        return false;
+    }
+    const auto v = k + 13;
+    const std::string sid = rep.body.substr(v, rep.body.find('"', v) - v);
+    uint8_t param[0x8C] = {};
+    std::memcpy(param, sid.data(), std::min<size_t>(sid.size(), 44));
+    std::memcpy(param + 0x78, friend_id.data(), std::min<size_t>(friend_id.size(), 16));
+    log("join: joining %s's session %s", friend_id.c_str(), sid.c_str());
+    push_system_event(0x10000002, param, sizeof param);
+    return true;
+}
+
 // Investment roster (*0x26BC448: count @+0x20, 0x68-byte records from +0x30; a record starts
 // with the player's 0x30-byte roster identity, compared by 0x2B82D0). D1_TRACE_ROSTER (research)
-// dumps it every 10 s in the world; D1_JOIN_TEST=<secs> issues the roster's "join" command
-// (0x579EA0(join manager 0x57A220(), identity, 1, 0, 0), as the contact widget's join action
-// 0xA2DC20 does) for the first record that is not the local player, <secs> after player control.
+// dumps it every 10 s in the world; D1_JOIN_TEST=<secs> joins the first record that is not the
+// local player, <secs> after player control: as the system software's "Join" (join_friend), or
+// with D1_JOIN_VIA=roster as the in-game roster's join command (0x579EA0, which the contact
+// widget's join action 0xA2DC20 uses).
 static void roster_tick() {
     static const bool trace = getenv("D1_TRACE_ROSTER") != nullptr;
     static const int join_after = getenv("D1_JOIN_TEST") ? atoi(getenv("D1_JOIN_TEST")) : -1;
@@ -645,6 +678,11 @@ static void roster_tick() {
         const uint32_t* jm = reinterpret_cast<const uint32_t*>(reinterpret_cast<JoinMgrFn>(b + 0x57A220)());
         if (jm) log("join manager: state %u flags %08x target soid %08x%08x | %08x %08x %08x %08x", jm[0], jm[1], jm[3], jm[2],
                     jm[0x24], jm[0x25], jm[0x26], jm[0x27]);
+        // platform join (*0x266D6A0: +0x27D done, +0x27E joinable, +0x27F busy, +0x312 request;
+        // join store 0x266D5E9 pending)
+        if (const uint8_t* ps = *reinterpret_cast<uint8_t* const*>(b + 0x266D6A0))
+            log("platform join: done %d joinable %d busy %d request %d | store pending %d", ps[0x27D], ps[0x27E], ps[0x27F],
+                ps[0x312], *reinterpret_cast<const uint8_t*>(b + 0x266D5E9));
         log("roster: %d records", n);
         for (int32_t i = 0; i < n && i < 16; ++i) {
             const uint32_t* q = reinterpret_cast<const uint32_t*>(r + 0x30 + 0x68 * i);
@@ -656,9 +694,6 @@ static void roster_tick() {
     }
     if (join_after >= 0 && !joined && now - start > std::chrono::seconds(join_after) && n > 1) {
         joined = true;
-        using JoinMgrFn = D1_SYSV uint64_t (*)();
-        using JoinFn = D1_SYSV void (*)(uint64_t, const void*, uint8_t, uint8_t, uint64_t);
-        const uint64_t mgr = reinterpret_cast<JoinMgrFn>(b + 0x57A220)();
         // the first record whose name (record +0, up to '@') is not ours
         const std::string me = settings().name;
         for (int32_t i = 0; i < n; ++i) {
@@ -666,20 +701,21 @@ static void roster_tick() {
             std::string nm(name, strnlen(name, 32));
             nm = nm.substr(0, nm.find('@'));
             if (nm == me) continue;
-            log("join test: joining roster record %d (%s), join manager %#llx", i, nm.c_str(), (unsigned long long)mgr);
-            // what 0x579EA0 does, with the insert's result: element 0x24 {identity[0x30], u8 1,
-            // u8 0, u64 0}, payload type *0x2918220
-            alignas(16) uint8_t el[0x40] = {};
-            std::memcpy(el, r + 0x30 + 0x68 * i, 0x30);
-            el[0x30] = 1;
-            using InsertFn = D1_SYSV bool (*)(int32_t, uint32_t, const void*);
-            const uint32_t ty = *reinterpret_cast<const uint32_t*>(b + 0x2918220);
-            using ValidFn = D1_SYSV bool (*)(const void*);
-            const bool valid = reinterpret_cast<ValidFn>(b + 0x2B8450)(el);
-            const bool ok = reinterpret_cast<InsertFn>(b + 0x300230)(0x24, ty, el);
-            log("join test: identity valid %d, queue insert (type %#x) -> %d", valid, ty, ok);
-            (void)mgr;
-            (void)sizeof(JoinFn);
+            if (const char* via = getenv("D1_JOIN_VIA"); via && !strcmp(via, "roster")) {
+                // the in-game roster's join (0x579EA0): element 0x24 {identity[0x30], u8 1,
+                // u8 0, u64 0}, payload type *0x2918220. From inside an activity the join
+                // check refuses it (bit 0x100000) unless the join came from the system.
+                log("join test: joining roster record %d (%s) via the roster", i, nm.c_str());
+                alignas(16) uint8_t el[0x40] = {};
+                std::memcpy(el, r + 0x30 + 0x68 * i, 0x30);
+                el[0x30] = 1;
+                using InsertFn = D1_SYSV bool (*)(int32_t, uint32_t, const void*);
+                const uint32_t ty = *reinterpret_cast<const uint32_t*>(b + 0x2918220);
+                const bool ok = reinterpret_cast<InsertFn>(b + 0x300230)(0x24, ty, el);
+                log("join test: queue insert (type %#x) -> %d", ty, ok);
+            } else {
+                join_friend(nm);
+            }
             break;
         }
     }
@@ -690,8 +726,36 @@ static void roster_tick() {
 using JoinReasonFn = D1_SYSV void (*)(void*, const uint32_t*);
 static JoinReasonFn g_join_reason_orig = nullptr;
 static D1_SYSV void join_reason_hook(void* mgr, const uint32_t* bits) {
-    log("join: target not joinable, reason bits %#x", bits ? *bits : 0);
+    const uint64_t b = rt().modules[0].base;
+    // Local inputs of the checks: 0x8000 = *(*0x26BC068 + 300); 0x80000/0x100000 =
+    // *(*0x26CA078 + 0x1B0) in 0x1C..0x23 / >= 0x24 unless (*0x281D300)[0] or [1].
+    const uint64_t jm = *reinterpret_cast<const uint64_t*>(b + 0x26BC068);
+    const uint64_t st = *reinterpret_cast<const uint64_t*>(b + 0x26CA078);
+    const uint64_t fl = *reinterpret_cast<const uint64_t*>(b + 0x281D300);
+    log("join: target not joinable, reason bits %#x (local: +300 %d, state %d, flags %d %d)", bits ? *bits : 0,
+        jm ? *reinterpret_cast<const uint8_t*>(jm + 300) : -1, st ? *reinterpret_cast<const int32_t*>(st + 0x1B0) : -1,
+        fl ? *reinterpret_cast<const uint8_t*>(fl) : -1, fl ? *reinterpret_cast<const uint8_t*>(fl + 1) : -1);
     g_join_reason_orig(mgr, bits);
+}
+
+// Character progression state check (0x28CFB0(component, index) = table[index] == 2, the
+// table from 0x2601F0); the activity-selection component's "no joining" flag (+300 of
+// *0x26BC068, from 0x546F20) uses the index at game globals +0x192. Logged per (index, result)
+// change with D1_JOIN_TEST.
+using ProgressFn = D1_SYSV bool (*)(void*, uint16_t);
+static ProgressFn g_progress_orig = nullptr;
+static D1_SYSV bool progress_hook(void* c, uint16_t idx) {
+    const bool r = g_progress_orig(c, idx);
+    static std::mutex m;
+    static std::map<uint16_t, int> seen;
+    std::lock_guard lk(m);
+    auto [it, fresh] = seen.try_emplace(idx, r);
+    if (fresh || it->second != int(r)) {
+        it->second = r;
+        log("progress: state[%u] == 2 -> %d (component %p) <- %s", idx, r, c,
+            describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str());
+    }
+    return r;
 }
 
 // UI error / notification (0x950620(ui, &message id, ?, ?)): the join manager reports
@@ -701,9 +765,10 @@ static UiNotifyFn g_ui_notify_orig = nullptr;
 static D1_SYSV void ui_notify_hook(void* ui, const uint32_t* msg, uint32_t a, uint32_t c) {
     const uint64_t b = rt().modules[0].base;
     int which = -1;
-    for (int i = 0; i <= 0x1C; i += 4)
+    for (int i = 0; i <= 0x3C; i += 4)
         if (msg && *msg == *reinterpret_cast<const uint32_t*>(b + 0x26BC300 + i)) which = 0x26BC300 + i;
-    log("ui notify: message %08x (%s%x) %u %u", msg ? *msg : 0, which >= 0 ? "join manager DAT_" : "", which >= 0 ? which : 0, a, c);
+    log("ui notify: message %08x (%s%x) %u %u <- %s", msg ? *msg : 0, which >= 0 ? "join manager DAT_" : "",
+        which >= 0 ? which : 0, a, c, describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str());
     g_ui_notify_orig(ui, msg, a, c);
 }
 
@@ -1024,6 +1089,8 @@ void install_game_hooks() {
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    if (getenv("D1_JOIN_TEST"))
+        g_progress_orig = reinterpret_cast<ProgressFn>(hook_function(exe.base + 0x28CFB0, reinterpret_cast<const void*>(&progress_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_join_reason_orig = reinterpret_cast<JoinReasonFn>(hook_function(exe.base + 0x57B160, reinterpret_cast<const void*>(&join_reason_hook)));
     if (getenv("D1_TRACE_CINE") || getenv("D1_ALLOW_LOADING_CINE"))
