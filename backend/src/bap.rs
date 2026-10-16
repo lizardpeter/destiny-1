@@ -101,10 +101,18 @@ fn name(kind: u16) -> &'static str {
     }
 }
 
+/// Players a public slice set (patrol area, social space) holds in the matchmaking
+/// configuration's default record.
+const PUBLIC_SLICE_SET_PLAYERS: u64 = 16;
+
 /// TCP port of the activity host (a second BAP endpoint).
 pub const AH_PORT: u16 = 7500;
 /// Identifier of our (single) activity host instance.
 pub const AH_HOST_ID: u64 = 0x4D31_4148_0000_0001;
+/// Next activity host instance id: every host startup (one per activity client: the private
+/// "current" instance, a public region's "target" instance, ...) gets its own, since the
+/// client routes host messages to its activity clients by this id.
+static NEXT_AH_INSTANCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub async fn serve(listener: TcpListener) {
     serve_role(listener, Role::Primary).await
@@ -266,6 +274,7 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
     let mut chan: Option<Channel> = None;
     let mut notify_seq: u32 = 0;
     let mut ah_state = ah::Host::default();
+    let mut ah_id = AH_HOST_ID;
     // Envelopes are read in their own task (read_exact is not cancel-safe) so the loop can
     // also wake for periodic host messages.
     let (mut rd, mut sock) = sock.into_split();
@@ -290,7 +299,7 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 if role == Role::ActivityHost && chan.is_some() {
                     for (ty, data) in ah_state.keepalive() {
                         notify_seq += 1;
-                        let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ty, &data));
+                        let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(ah_id, ty, &data));
                         send(&mut sock, &mut chan, &msg).await?;
                     }
                 }
@@ -382,11 +391,13 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 info!("bap[AH]: activity host manager request kind {k} (seq {sequence}, {} bytes): {}", payload.len(),
                       pb::hex(&payload[..payload.len().min(96)]));
                 if k == 3 {
+                    ah_id = AH_HOST_ID + NEXT_AH_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    info!("bap[AH]: host startup -> instance {ah_id:#x}");
                     ah_state.on_startup(&payload[1..]);
                 }
                 let mut body = vec![0u8; 0x89];
                 body[0] = 2;
-                body[1..9].copy_from_slice(&AH_HOST_ID.to_be_bytes());
+                body[1..9].copy_from_slice(&ah_id.to_be_bytes());
                 send(&mut sock, &mut chan, &response(7, sequence, STATUS_OK, &body)).await?;
             }
             8 if role == Role::ActivityHost => {
@@ -396,7 +407,7 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 };
                 for (ty, data) in ah_state.on_client(&m) {
                     notify_seq += 1;
-                    let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(AH_HOST_ID, ty, &data));
+                    let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(ah_id, ty, &data));
                     send(&mut sock, &mut chan, &msg).await?;
                     info!("bap[AH]: sent activity message type {ty} ({} bytes)", data.len());
                 }
@@ -409,7 +420,15 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 let f = pb::parse(payload).unwrap_or_default();
                 let get = |n: u32| f.iter().find_map(|(k, v)| match (k, v) { (k, pb::Val::Varint(x)) if *k == n => Some(*x), _ => None });
                 let nonce = get(3).unwrap_or(0);
-                let body = pb::Msg::new().uint(1, get(1).unwrap_or(0)).uint(2, nonce).msg(4, pb::Msg::new()).into_bytes();
+                // 4 configuration (schema 0x1942110): 1 general {11 ints}, 2 public slice sets
+                // {1 default record, 2 up to 16 records keyed by (f1, f2) hashes}; a record is
+                // {f1, f2, f3 public player count, f4, f5 (<= f3), f6, f7} (0x59B510 / 0x59A500
+                // copy them into the slice set's matchmaking settings). With no record every public
+                // region has 0 slots and matchmaking refuses ("too-many-parties").
+                let record = pb::Msg::new().uint(3, PUBLIC_SLICE_SET_PLAYERS).uint(4, PUBLIC_SLICE_SET_PLAYERS)
+                    .uint(5, PUBLIC_SLICE_SET_PLAYERS);
+                let config = pb::Msg::new().msg(2, pb::Msg::new().msg(1, record));
+                let body = pb::Msg::new().uint(1, get(1).unwrap_or(0)).uint(2, nonce).msg(4, config).into_bytes();
                 info!("bap: matchmaking configuration (seq {sequence}, nonce {nonce:#x})");
                 send(&mut sock, &mut chan, &response(43, sequence, STATUS_OK, &body)).await?;
             }

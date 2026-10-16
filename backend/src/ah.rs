@@ -88,7 +88,8 @@ const TYPE_MEMBERSHIP: &str = "0x808009ed";
 /// Host-tabulated region table (membership @0x2E48, 0x80800BD7): 40 entries of 0xD8
 /// (0x80800C6F), a -1 id ends the list (0x778D60):
 /// ```text
-/// @0 i32 region (slice-set slot: bubble * 8 + set), @4 i2, @8 {i8, i2 @9, i5 @0xA slot, bool},
+/// @0 i32 region (slice-set slot: bubble * 8 + set), @4 i2, @8 {i8, i2 @9 ambassador state,
+/// i5 @0xA ambassador slot, bool @0x19 matchmaking threshold reached},
 /// @0x20 u20, @0x28 {i8, u20, @0x38 i8[20] per-player transition token, string, i64}
 /// ```
 /// A region is ready for a player once its entry carries the player's current slice-set
@@ -102,7 +103,11 @@ fn region_table(regions: &[i64], players: usize) -> Value {
             Some(Struct(vec![
                 Some(Int(id)),
                 Some(Int(0)),
-                Some(Struct(vec![Some(Int(0)), Some(Int(1)), Some(Int(0)), Some(Bool(false))])),
+                // {u8, i2 ambassador state (1 assigned), i5 ambassador peer slot, bool @0x19
+                // "a player reached the matchmaking threshold": the ambassador stops searching
+                // for other public sessions and spins up a new one (0x77C3D0, +0x4A9)}. Nobody
+                // else is in the region, so there is nothing to find.
+                Some(Struct(vec![Some(Int(0)), Some(Int(1)), Some(Int(0)), Some(Bool(true))])),
                 Some(Int(0)),
                 Some(Struct(vec![Some(Int(0)), Some(Int(0)), Some(Array(tokens.clone()))])),
             ]))
@@ -188,25 +193,52 @@ fn world_globals() -> Option<(u32, Vec<u8>)> {
     info!("activity host: world globals state {{true, {v}}} (D1B_WORLD_GLOBAL)");
     Some((HOST_WORLD_GLOBALS, w.finish()))
 }
-/// Scenario to load for an activity index: the named tag (e.g. "act_cosmo_m0_highway") and
-/// its checksum, the u32 at +0xC of that tag's data, which the client compares with the
-/// instance's +0x5C after loading (0x299B00, "activity checksum mismatch"). Only the
-/// new-character prologue is known so far; the activity definitions in content hold the rest.
-/// `bubbles` is the bubble (zone) count at +0x48 of the tag data, which must match the
-/// instance's +0x10 (0x2A0D20, "invalid host activity state").
+/// Scenario to load for an activity index: the scenario name (the activity's named tag, e.g.
+/// "act_cosmo_m0_highway"), its checksum (u32 at +0xC of the `:scenario_client` tag, which the
+/// client compares with the instance's +0x5C after loading: 0x299B00, "activity checksum
+/// mismatch") and its bubble (zone) count (+0x48 of that tag, which must match the instance's
+/// +0x10: 0x2A0D20, "invalid host activity state").
+///
+/// From `data/activities.json` (tools/d1_activity_table.py): every activity definition of the
+/// client (index = the client's activity index, as in the host startup request) with the
+/// scenario data read from the packages.
 pub struct Scenario {
-    pub name: &'static str,
+    pub name: String,
     pub checksum: u32,
     pub bubbles: u32,
 }
 
-pub fn scenario_for(activity_index: i32) -> Option<Scenario> {
-    match activity_index {
-        // prologue, activity 0x6E0DAE89
-        164 => Some(Scenario { name: "act_cosmo_m0_highway", checksum: 0x8FE0_7299, bubbles: 22 }),
-        _ => None,
-    }
+#[derive(serde::Deserialize)]
+struct ActivityRow {
+    index: i32,
+    hash: String,
+    name: Option<String>,
+    checksum: Option<String>,
+    bubbles: Option<u32>,
 }
+
+fn activity_table() -> &'static std::collections::HashMap<i32, ActivityRow> {
+    static T: std::sync::OnceLock<std::collections::HashMap<i32, ActivityRow>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let rows: Vec<ActivityRow> = serde_json::from_str(include_str!("../data/activities.json")).expect("activities.json");
+        rows.into_iter().map(|r| (r.index, r)).collect()
+    })
+}
+
+fn hex_u32(s: &str) -> Option<u32> {
+    u32::from_str_radix(s.trim_start_matches("0x"), 16).ok()
+}
+
+pub fn scenario_for(activity_index: i32) -> Option<Scenario> {
+    let r = activity_table().get(&activity_index)?;
+    Some(Scenario { name: r.name.clone()?, checksum: hex_u32(r.checksum.as_deref()?)?, bubbles: r.bubbles? })
+}
+
+/// Activity hash of an activity index (the client's matchmaking key).
+pub fn activity_hash(activity_index: i32) -> Option<u32> {
+    hex_u32(&activity_table().get(&activity_index)?.hash)
+}
+
 const TYPE_INSTANCE: &str = "0x80800e76";
 
 /// Details (0x80800CC5 @0x60): ..., @0x628 char[40] activity (scenario) name: the named tag
@@ -288,7 +320,9 @@ impl Host {
         if p.len() >= 8 {
             let index = u16::from_be_bytes([p[4], p[5]]) as i32 - 0x8000;
             let insertion = u16::from_be_bytes([p[6], p[7]]) as i32 - 0x8000;
-            info!("activity host: startup for activity index {index}, insertion point {insertion}");
+            let name = scenario_for(index).map(|s| s.name).unwrap_or_default();
+            info!("activity host: startup for activity index {index} ({name}, hash {:#010x}), insertion point {insertion}",
+                  activity_hash(index).unwrap_or(0));
             self.activity = Some((index, insertion));
         }
     }
@@ -340,7 +374,7 @@ impl Host {
             insertion = n;
         }
         match scenario_for(index) {
-            Some(sc) => instance(sc.name, sc.checksum, sc.bubbles, index, insertion),
+            Some(sc) => instance(&sc.name, sc.checksum, sc.bubbles, index, insertion),
             None => {
                 warn!("activity host: no scenario known for activity index {index}");
                 instance("", 0, 0, index, insertion)

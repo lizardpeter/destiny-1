@@ -655,7 +655,101 @@ static bool join_friend(const std::string& friend_id) {
 
 // Called once per game frame (the game polls sceSystemServiceGetStatus every frame, in every
 // state: boot, orbit, world).
-void hooks_system_tick() { roster_tick(); }
+static void dump_activity_vtables() {
+    static const bool on = getenv("D1_DUMP_ACTIVITIES") != nullptr;
+    static bool done = false;
+    if (!on || done) return;
+    const uint64_t b = rt().modules[0].base;
+    const uint64_t g = *reinterpret_cast<const uint64_t*>(b + 0x26527E8);  // content globals
+    const uint64_t a = *reinterpret_cast<const uint64_t*>(b + 0x26527E0);
+    if (!g || !a) return;
+    done = true;
+    const uint64_t* gv = *reinterpret_cast<uint64_t* const*>(g);
+    const uint64_t* av = *reinterpret_cast<uint64_t* const*>(a);
+    log("activities: content globals %#llx vtable +0x320 %s +0x328 %s", (unsigned long long)g,
+        describe_addr(gv[0x320 / 8]).c_str(), describe_addr(gv[0x328 / 8]).c_str());
+    log("activities: 0x26527E0 %#llx vtable +0x28 %s +0x68 %s", (unsigned long long)a, describe_addr(av[0x28 / 8]).c_str(),
+        describe_addr(av[0x68 / 8]).c_str());
+    // activity definitions (0x25A6E0): block = vtable +0x38 (count @0, relptr @8 -> 16-byte
+    // entries, relptr @+8 -> definition)
+    using BlockFn = D1_SYSV const uint8_t* (*)(uint64_t);
+    const uint8_t* blk = reinterpret_cast<BlockFn>(gv[0x38 / 8])(g);
+    const int64_t count = *reinterpret_cast<const int64_t*>(blk);
+    log("activities: %lld definitions (block %p)", (long long)count, blk);
+    const char* want = getenv("D1_DUMP_ACTIVITIES");
+    const int dump_idx = atoi(want);
+    for (int64_t i = 0; i < count; ++i) {
+        const uint8_t* arr = blk + 0x18 + *reinterpret_cast<const int64_t*>(blk + 8);
+        const uint8_t* e = arr + i * 0x10;
+        const int64_t rel = *reinterpret_cast<const int64_t*>(e + 8);
+        if (!rel) continue;
+        const uint8_t* d = e + 8 + rel;
+        if (i == dump_idx) {
+            for (int o = 0; o < 0x200; o += 32) {
+                char line[200];
+                int k = std::snprintf(line, sizeof line, "activities: [%lld] +%03x", (long long)i, o);
+                for (int w = 0; w < 32; w += 4) k += std::snprintf(line + k, sizeof line - k, " %08x", *reinterpret_cast<const uint32_t*>(d + o + w));
+                log("%s", line);
+            }
+        }
+        // relative fields: string candidates
+        std::string names;
+        for (int o : {0x20, 0x28, 0x48, 0x50, 0x58, 0x98}) {
+            const int64_t r = *reinterpret_cast<const int64_t*>(d + o);
+            if (r <= 0 || r > 0x1000000) continue;
+            const char* str = reinterpret_cast<const char*>(d + o + r);
+            int n = 0;
+            while (n < 64 && str[n] >= 0x20 && str[n] < 0x7f) ++n;
+            if (n >= 3 && str[n] == 0) names += " +" + std::to_string(o) + "='" + std::string(str, n) + "'";
+        }
+        log("activities: [%lld] hash %08x tag %08x mm %08x%s", (long long)i, *reinterpret_cast<const uint32_t*>(d),
+            *reinterpret_cast<const uint32_t*>(d + 0x88), *reinterpret_cast<const uint32_t*>(d + 0xa4), names.c_str());
+    }
+}
+
+// D1_LAUNCH_ACTIVITY=<index>[:<secs>] (research): from orbit, launch an activity the way the
+// game's own handlers do (the prologue handler 0x7A1470 case 4): write the activity selection
+// {u8 1, i16 activity index @2, u8 tier @4 (0xFF), ...} into the activity-selection manager
+// (0x574DC0(*0x26BC068, &selection)) and request world-controller state 0x19 (cleanup,
+// 0x783ED0), which moves on to activity session creation. World-controller states are indices
+// into the name table at 0x165AA27 (0x1B setup:orbit, 0x24 activity:in_world); the current one
+// is *(*0x26CA078 + 0x1B0).
+static void launch_tick() {
+    static const char* spec = getenv("D1_LAUNCH_ACTIVITY");
+    static bool done = false;
+    static std::chrono::steady_clock::time_point since{};
+    if (!spec || done) return;
+    const uint64_t b = rt().modules[0].base;
+    const uint64_t st = *reinterpret_cast<const uint64_t*>(b + 0x26CA078);
+    if (!st || *reinterpret_cast<const int32_t*>(st + 0x1B0) != 0x1B) {
+        since = {};
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (since == std::chrono::steady_clock::time_point{}) since = now;
+    const char* colon = strchr(spec, ':');
+    const int wait = colon ? atoi(colon + 1) : 5;
+    if (now - since < std::chrono::seconds(wait)) return;
+    done = true;
+    const int index = atoi(spec);
+    alignas(8) uint8_t sel[0x8C] = {};
+    sel[0] = 1;
+    *reinterpret_cast<int16_t*>(sel + 2) = int16_t(index);
+    sel[4] = 0xFF;
+    using SelFn = D1_SYSV void (*)(void*, const void*);
+    using MgrFn = D1_SYSV void* (*)();
+    using StateFn = D1_SYSV void (*)(int32_t);
+    void* mgr = reinterpret_cast<MgrFn>(b + 0x574EF0)();
+    log("launch: activity index %d from orbit (selection manager %p)", index, mgr);
+    reinterpret_cast<SelFn>(b + 0x574DC0)(mgr, sel);
+    reinterpret_cast<StateFn>(b + 0x783ED0)(0x19);
+}
+
+void hooks_system_tick() {
+    roster_tick();
+    launch_tick();
+    dump_activity_vtables();
+}
 
 // Investment roster (*0x26BC448: count @+0x20, 0x68-byte records from +0x30; a record starts
 // with the player's 0x30-byte roster identity, compared by 0x2B82D0). D1_TRACE_ROSTER (research)

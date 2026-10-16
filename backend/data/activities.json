@@ -1,0 +1,6172 @@
+[
+ {
+  "index": 0,
+  "hash": "0x8ae8da69",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": null
+ },
+ {
+  "index": 1,
+  "hash": "0xdf283afb",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_default1",
+  "scenario_tag": "0x80c7a005",
+  "checksum": "0x24340499",
+  "bubbles": 5
+ },
+ {
+  "index": 2,
+  "hash": "0x5abb3f0a",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_queen",
+  "scenario_tag": "0x80c7a00b",
+  "checksum": "0x215f5d5d",
+  "bubbles": 5
+ },
+ {
+  "index": 3,
+  "hash": "0x85c9212f",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_harvest",
+  "scenario_tag": "0x80c7a013",
+  "checksum": "0x2c576158",
+  "bubbles": 5
+ },
+ {
+  "index": 4,
+  "hash": "0x803bf7e1",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_srl",
+  "scenario_tag": "0x80c7a0a2",
+  "checksum": "0x81c162e2",
+  "bubbles": 5
+ },
+ {
+  "index": 5,
+  "hash": "0x8308208f",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_fol",
+  "scenario_tag": "0x80c7a0a7",
+  "checksum": "0x89b4e9b0",
+  "bubbles": 5
+ },
+ {
+  "index": 6,
+  "hash": "0xf20c5ae3",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_crimson",
+  "scenario_tag": "0x80c7a0f2",
+  "checksum": "0x35c4bd4e",
+  "bubbles": 5
+ },
+ {
+  "index": 7,
+  "hash": "0x352ee663",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "city_tower_chalice",
+  "scenario_tag": "0x80c7a9e8",
+  "checksum": "0x46c5523b",
+  "bubbles": 5
+ },
+ {
+  "index": 8,
+  "hash": "0xd950510d",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "cosmo_patrols_1",
+  "scenario_tag": "0x80cb8036",
+  "checksum": "0x4db96993",
+  "bubbles": 22
+ },
+ {
+  "index": 9,
+  "hash": "0x08e75fe9",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "moon_patrols_1",
+  "scenario_tag": "0x80d4c098",
+  "checksum": "0x8845d095",
+  "bubbles": 15
+ },
+ {
+  "index": 10,
+  "hash": "0x937f5faf",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "venus_patrols_1",
+  "scenario_tag": "0x80fe001a",
+  "checksum": "0xe4e16974",
+  "bubbles": 29
+ },
+ {
+  "index": 11,
+  "hash": "0x198732a1",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "mars_patrols_1",
+  "scenario_tag": "0x80d00042",
+  "checksum": "0x3997675b",
+  "bubbles": 29
+ },
+ {
+  "index": 12,
+  "hash": "0x9e80e7c7",
+  "type_tag": "0x80a585c8",
+  "mm_hash": "0x79cbded5",
+  "name": "venus_raid_1",
+  "scenario_tag": "0x80fe0103",
+  "checksum": "0x9eef05c2",
+  "bubbles": 29
+ },
+ {
+  "index": 13,
+  "hash": "0x9e80e7c4",
+  "type_tag": "0x80a585c9",
+  "mm_hash": "0x79cbded5",
+  "name": "venus_raid_1",
+  "scenario_tag": "0x80fe0103",
+  "checksum": "0x9eef05c2",
+  "bubbles": 29
+ },
+ {
+  "index": 14,
+  "hash": "0x9e80e7c5",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0x79cbded5",
+  "name": "venus_raid_1",
+  "scenario_tag": "0x80fe0103",
+  "checksum": "0x9eef05c2",
+  "bubbles": 29
+ },
+ {
+  "index": 15,
+  "hash": "0x6d7cc3bc",
+  "type_tag": "0x80a585c8",
+  "mm_hash": "0x736dc439",
+  "name": "moon_raid_1",
+  "scenario_tag": "0x8108e004",
+  "checksum": "0x334523bb",
+  "bubbles": 15
+ },
+ {
+  "index": 16,
+  "hash": "0x6d7cc3bf",
+  "type_tag": "0x80a585c9",
+  "mm_hash": "0x736dc439",
+  "name": "moon_raid_1",
+  "scenario_tag": "0x8108e004",
+  "checksum": "0x334523bb",
+  "bubbles": 15
+ },
+ {
+  "index": 17,
+  "hash": "0x1d6fa90f",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 18,
+  "hash": "0xa0cfbe1a",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 19,
+  "hash": "0x76513961",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 20,
+  "hash": "0x221da7b4",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 21,
+  "hash": "0x4414f8ab",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 22,
+  "hash": "0xbf4ef996",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 23,
+  "hash": "0x709df3dd",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 24,
+  "hash": "0x11e95e40",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 25,
+  "hash": "0xde63ee77",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 26,
+  "hash": "0x115da802",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 27,
+  "hash": "0xca475a4c",
+  "type_tag": "0x80a5ea37",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 28,
+  "hash": "0x7ba82b47",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 29,
+  "hash": "0x7ba82b44",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 30,
+  "hash": "0xf32a659d",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 31,
+  "hash": "0xf32a659e",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 32,
+  "hash": "0x4801f56c",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 33,
+  "hash": "0x4801f56f",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 34,
+  "hash": "0xd119cfe9",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 35,
+  "hash": "0xd119cfea",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 36,
+  "hash": "0x55ea7c27",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 37,
+  "hash": "0x55ea7c24",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 38,
+  "hash": "0x8aa7cde7",
+  "type_tag": "0x80a5ea38",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 39,
+  "hash": "0x52dc2b59",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "social_landing",
+  "scenario_tag": "0x81194008",
+  "checksum": "0xeedb4844",
+  "bubbles": 2
+ },
+ {
+  "index": 40,
+  "hash": "0x334b32bc",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "mercury_social",
+  "scenario_tag": "0x8154e003",
+  "checksum": "0xf673f462",
+  "bubbles": 2
+ },
+ {
+  "index": 41,
+  "hash": "0x610c8e85",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 42,
+  "hash": "0x610c8e84",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 43,
+  "hash": "0x610c8e87",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 44,
+  "hash": "0xf8dc2f18",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 45,
+  "hash": "0xf8dc2f19",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 46,
+  "hash": "0xf8dc2f1a",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 47,
+  "hash": "0x5362af33",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 48,
+  "hash": "0x5362af32",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 49,
+  "hash": "0x5362af31",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 50,
+  "hash": "0x125d1bce",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 51,
+  "hash": "0x125d1bcf",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 52,
+  "hash": "0x125d1bcc",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 53,
+  "hash": "0xba44da49",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 54,
+  "hash": "0xba44da48",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 55,
+  "hash": "0xba44da4b",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 56,
+  "hash": "0x875c3a7c",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 57,
+  "hash": "0x875c3a7d",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 58,
+  "hash": "0x875c3a7e",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 59,
+  "hash": "0x3d7b1ba7",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 60,
+  "hash": "0x3d7b1ba6",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 61,
+  "hash": "0x3d7b1ba5",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 62,
+  "hash": "0x18106152",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 63,
+  "hash": "0x18106153",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 64,
+  "hash": "0x18106150",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 65,
+  "hash": "0x62c9f14d",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 66,
+  "hash": "0x62c9f14c",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 67,
+  "hash": "0x62c9f14f",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 68,
+  "hash": "0x2a1be880",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 69,
+  "hash": "0x2a1be881",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 70,
+  "hash": "0x2a1be882",
+  "type_tag": "0x80a585af",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 71,
+  "hash": "0x6841edf8",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": null
+ },
+ {
+  "index": 72,
+  "hash": "0xb70aca6c",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 73,
+  "hash": "0xab4b382b",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 74,
+  "hash": "0x152bedd1",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 75,
+  "hash": "0x494032b9",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 76,
+  "hash": "0x6e03eeee",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 77,
+  "hash": "0xb2367e7f",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 78,
+  "hash": "0xcc01ce00",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 79,
+  "hash": "0xcc01ce03",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 80,
+  "hash": "0x3b4a9696",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_1",
+  "scenario_tag": "0x80d000cb",
+  "checksum": "0x4abb0741",
+  "bubbles": 29
+ },
+ {
+  "index": 81,
+  "hash": "0x3b4a9695",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 82,
+  "hash": "0x3b4a9694",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_3",
+  "scenario_tag": "0x80d0013b",
+  "checksum": "0x75dc3980",
+  "bubbles": 29
+ },
+ {
+  "index": 83,
+  "hash": "0x670ac18a",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 84,
+  "hash": "0x81b74818",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 85,
+  "hash": "0xaca2e82a",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 86,
+  "hash": "0xaca2e829",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 87,
+  "hash": "0x75aaf5c8",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 88,
+  "hash": "0xaa934392",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 89,
+  "hash": "0xbc7afc7a",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 90,
+  "hash": "0x3148876e",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 91,
+  "hash": "0xe61f08e8",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 92,
+  "hash": "0xf648fc81",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 93,
+  "hash": "0x09fa9d74",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "patrol_deltas_com01",
+  "scenario_tag": "0x80cb87eb",
+  "checksum": "0x6a556a7f",
+  "bubbles": 22
+ },
+ {
+  "index": 94,
+  "hash": "0xbf5654df",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "hiveship_patrols_1",
+  "scenario_tag": "0x812700ce",
+  "checksum": "0x88065f34",
+  "bubbles": 20
+ },
+ {
+  "index": 95,
+  "hash": "0x8ef59712",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "patrol_plains_com01",
+  "scenario_tag": "0x80d00042",
+  "checksum": "0x3997675b",
+  "bubbles": 29
+ },
+ {
+  "index": 96,
+  "hash": "0x4990ddce",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "patrol_accel_com01",
+  "scenario_tag": "0x80d4c150",
+  "checksum": "0xbcddf0c2",
+  "bubbles": 15
+ },
+ {
+  "index": 97,
+  "hash": "0x79ea1946",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "patrol_shat_com01",
+  "scenario_tag": "0x80fe016c",
+  "checksum": "0x56d7363e",
+  "bubbles": 29
+ },
+ {
+  "index": 98,
+  "hash": "0x3e5612af",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xebb81a5f",
+  "name": null
+ },
+ {
+  "index": 99,
+  "hash": "0xb8e944bf",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x5acde7cf",
+  "name": null
+ },
+ {
+  "index": 100,
+  "hash": "0xd24492d4",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 101,
+  "hash": "0x0f88ab83",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": null
+ },
+ {
+  "index": 102,
+  "hash": "0xfcdc1633",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 103,
+  "hash": "0xf1c02b3d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x6fe59a81",
+  "name": null
+ },
+ {
+  "index": 104,
+  "hash": "0xdac3c217",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0261283f",
+  "name": null
+ },
+ {
+  "index": 105,
+  "hash": "0x052bb22d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x6b3b6c21",
+  "name": null
+ },
+ {
+  "index": 106,
+  "hash": "0xf872687d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x4d77bb35",
+  "name": null
+ },
+ {
+  "index": 107,
+  "hash": "0x0c9df333",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc17944a3",
+  "name": null
+ },
+ {
+  "index": 108,
+  "hash": "0x2a6d9af7",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0f43bbdf",
+  "name": null
+ },
+ {
+  "index": 109,
+  "hash": "0x6a4726bb",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe0bf9c73",
+  "name": null
+ },
+ {
+  "index": 110,
+  "hash": "0x7b03e425",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe7fa9249",
+  "name": null
+ },
+ {
+  "index": 111,
+  "hash": "0x6c3bd6e8",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x228526e4",
+  "name": null
+ },
+ {
+  "index": 112,
+  "hash": "0x86f15a8f",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0261283f",
+  "name": null
+ },
+ {
+  "index": 113,
+  "hash": "0xae6942c6",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x7a71f6d6",
+  "name": null
+ },
+ {
+  "index": 114,
+  "hash": "0xc1ddbdba",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x585d89b7",
+  "name": null
+ },
+ {
+  "index": 115,
+  "hash": "0x560693e9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe432e9b9",
+  "name": null
+ },
+ {
+  "index": 116,
+  "hash": "0xfa24ef1b",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x24ef05e3",
+  "name": null
+ },
+ {
+  "index": 117,
+  "hash": "0x2ea5b2fc",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x1e234868",
+  "name": null
+ },
+ {
+  "index": 118,
+  "hash": "0xf628f137",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x2654778f",
+  "name": null
+ },
+ {
+  "index": 119,
+  "hash": "0xafb2fb22",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x290195a7",
+  "name": null
+ },
+ {
+  "index": 120,
+  "hash": "0x1d5833ed",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc192d8d5",
+  "name": null
+ },
+ {
+  "index": 121,
+  "hash": "0x607f6122",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x1e234868",
+  "name": null
+ },
+ {
+  "index": 122,
+  "hash": "0x5e7291ce",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe0bf9c73",
+  "name": null
+ },
+ {
+  "index": 123,
+  "hash": "0x945055b3",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 124,
+  "hash": "0x965d24af",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 125,
+  "hash": "0x05bc76be",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 126,
+  "hash": "0x07c94592",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 127,
+  "hash": "0x14f61ce9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": null
+ },
+ {
+  "index": 128,
+  "hash": "0xfba9ca26",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x6e0cce9f",
+  "name": null
+ },
+ {
+  "index": 129,
+  "hash": "0x62673374",
+  "type_tag": "0x80a60060",
+  "mm_hash": "0x6e0cce9f",
+  "name": null
+ },
+ {
+  "index": 130,
+  "hash": "0x9d4b9e59",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_arena_fallen"
+ },
+ {
+  "index": 131,
+  "hash": "0x7c19dd6e",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_anomaly",
+  "scenario_tag": "0x80d8e003",
+  "checksum": "0x3e992d68",
+  "bubbles": 1
+ },
+ {
+  "index": 132,
+  "hash": "0xb8dcc150",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_cabal_camp",
+  "scenario_tag": "0x80dc4003",
+  "checksum": "0xe8b35377",
+  "bubbles": 1
+ },
+ {
+  "index": 133,
+  "hash": "0xe3852bef",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_city_defense",
+  "scenario_tag": "0x80dfa003",
+  "checksum": "0x929d89ed",
+  "bubbles": 1
+ },
+ {
+  "index": 134,
+  "hash": "0xff94b8d6",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_colony_ship",
+  "scenario_tag": "0x80e30003",
+  "checksum": "0xbb6e94e9",
+  "bubbles": 1
+ },
+ {
+  "index": 135,
+  "hash": "0xf4d09a37",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_factory",
+  "scenario_tag": "0x80e66003",
+  "checksum": "0x84ccda02",
+  "bubbles": 1
+ },
+ {
+  "index": 136,
+  "hash": "0xf8263a18",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_greenhouse",
+  "scenario_tag": "0x80e9c003",
+  "checksum": "0x9f0f6baa",
+  "bubbles": 1
+ },
+ {
+  "index": 137,
+  "hash": "0xfa5aeeae",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_marsbattle",
+  "scenario_tag": "0x80ed2003",
+  "checksum": "0x51a4b36d",
+  "bubbles": 1
+ },
+ {
+  "index": 138,
+  "hash": "0xe5df1e4f",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_moonbase",
+  "scenario_tag": "0x80f08003",
+  "checksum": "0x5966e491",
+  "bubbles": 1
+ },
+ {
+  "index": 139,
+  "hash": "0x90d80735",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_rooftops",
+  "scenario_tag": "0x80f3e003",
+  "checksum": "0x259594a9",
+  "bubbles": 1
+ },
+ {
+  "index": 140,
+  "hash": "0xc4421fe5",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_venus_hcc",
+  "scenario_tag": "0x80f74003",
+  "checksum": "0x51c597dc",
+  "bubbles": 1
+ },
+ {
+  "index": 141,
+  "hash": "0x10f73059",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_vex_tube",
+  "scenario_tag": "0x80faa003",
+  "checksum": "0xe0dc35c4",
+  "bubbles": 1
+ },
+ {
+  "index": 142,
+  "hash": "0x9fca17d9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_arena_hive",
+  "scenario_tag": "0x810c4003",
+  "checksum": "0xef5ee9b9",
+  "bubbles": 1
+ },
+ {
+  "index": 143,
+  "hash": "0x1a688612",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_cosmobattle",
+  "scenario_tag": "0x8112c003",
+  "checksum": "0xa1b031c1",
+  "bubbles": 1
+ },
+ {
+  "index": 144,
+  "hash": "0xfdec9059",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_longshot",
+  "scenario_tag": "0x810f8003",
+  "checksum": "0x958503b2",
+  "bubbles": 1
+ },
+ {
+  "index": 145,
+  "hash": "0x25f88ff4",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_den",
+  "scenario_tag": "0x8123c003",
+  "checksum": "0x48f05329",
+  "bubbles": 1
+ },
+ {
+  "index": 146,
+  "hash": "0xc35c8ad2",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_oasis",
+  "scenario_tag": "0x811d4003",
+  "checksum": "0x02969941",
+  "bubbles": 1
+ },
+ {
+  "index": 147,
+  "hash": "0xe565d0ff",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_refinery",
+  "scenario_tag": "0x81208003",
+  "checksum": "0xbd18d600",
+  "bubbles": 1
+ },
+ {
+  "index": 148,
+  "hash": "0x8b0012e2",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_wilderness_town",
+  "scenario_tag": "0x81160003",
+  "checksum": "0xd3a7be26",
+  "bubbles": 1
+ },
+ {
+  "index": 149,
+  "hash": "0xbc2264e0",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_breach",
+  "scenario_tag": "0x81302003",
+  "checksum": "0xe7e752a8",
+  "bubbles": 1
+ },
+ {
+  "index": 150,
+  "hash": "0x6e5a63a8",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_ketch",
+  "scenario_tag": "0x81406003",
+  "checksum": "0xad880b1b",
+  "bubbles": 1
+ },
+ {
+  "index": 151,
+  "hash": "0x667bd8b9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_eq",
+  "scenario_tag": "0x8144e003",
+  "checksum": "0x9e34527a",
+  "bubbles": 1
+ },
+ {
+  "index": 152,
+  "hash": "0x1bf87faf",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_dos",
+  "scenario_tag": "0x81482003",
+  "checksum": "0x67df392a",
+  "bubbles": 1
+ },
+ {
+  "index": 153,
+  "hash": "0xd6bd5d62",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_city_battleground",
+  "scenario_tag": "0x81336003",
+  "checksum": "0x3b2eb7cf",
+  "bubbles": 1
+ },
+ {
+  "index": 154,
+  "hash": "0x56502cf0",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_hive_cell",
+  "scenario_tag": "0x8139e003",
+  "checksum": "0x7f9f10f0",
+  "bubbles": 1
+ },
+ {
+  "index": 155,
+  "hash": "0x95715071",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_outskirts",
+  "scenario_tag": "0x813d2003",
+  "checksum": "0x10980d74",
+  "bubbles": 1
+ },
+ {
+  "index": 156,
+  "hash": "0x796a7ea5",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_vertigo",
+  "scenario_tag": "0x8136a003",
+  "checksum": "0x2b569342",
+  "bubbles": 1
+ },
+ {
+  "index": 157,
+  "hash": "0xcb6532d1",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_tomb",
+  "scenario_tag": "0x8172e003",
+  "checksum": "0xf2d6d2bb",
+  "bubbles": 1
+ },
+ {
+  "index": 158,
+  "hash": "0x581dcccc",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_srl_mars01",
+  "scenario_tag": "0x81964003",
+  "checksum": "0xadb73f8d",
+  "bubbles": 1
+ },
+ {
+  "index": 159,
+  "hash": "0x85b52306",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_srl_venus01",
+  "scenario_tag": "0x8192c003",
+  "checksum": "0x3d16842e",
+  "bubbles": 1
+ },
+ {
+  "index": 160,
+  "hash": "0x6753fa21",
+  "type_tag": "0x80a585c8",
+  "mm_hash": "0xacae59ea",
+  "name": "raid_epiphany",
+  "scenario_tag": "0x812700b9",
+  "checksum": "0xb07027c7",
+  "bubbles": 20
+ },
+ {
+  "index": 161,
+  "hash": "0xd2ad6ded",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0xacae59ea",
+  "name": "raid_epiphany",
+  "scenario_tag": "0x812700b9",
+  "checksum": "0xb07027c7",
+  "bubbles": 20
+ },
+ {
+  "index": 162,
+  "hash": "0xc77330e9",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "mercury_social",
+  "scenario_tag": "0x8154e003",
+  "checksum": "0xf673f462",
+  "bubbles": 2
+ },
+ {
+  "index": 163,
+  "hash": "0xd6375334",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 164,
+  "hash": "0x6e0dae89",
+  "type_tag": "0x80a585cb",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m0_highway",
+  "scenario_tag": "0x80cb800d",
+  "checksum": "0x8fe07299",
+  "bubbles": 22
+ },
+ {
+  "index": 165,
+  "hash": "0x6eaf0959",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "cine_reveal",
+  "scenario_tag": "0x80c3e00a",
+  "checksum": "0x14cda256",
+  "bubbles": 4
+ },
+ {
+  "index": 166,
+  "hash": "0xb9fccac3",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m0_5_hangar",
+  "scenario_tag": "0x80cb802b",
+  "checksum": "0x31429b32",
+  "bubbles": 22
+ },
+ {
+  "index": 167,
+  "hash": "0xd8b2ad53",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "cine_speaker",
+  "scenario_tag": "0x80c3e011",
+  "checksum": "0xa3198561",
+  "bubbles": 4
+ },
+ {
+  "index": 168,
+  "hash": "0xb9fccac2",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m1_dome_a",
+  "scenario_tag": "0x80cb804b",
+  "checksum": "0x42fe77a5",
+  "bubbles": 22
+ },
+ {
+  "index": 169,
+  "hash": "0x7eea7680",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m1_dome_a",
+  "scenario_tag": "0x80cb804b",
+  "checksum": "0x42fe77a5",
+  "bubbles": 22
+ },
+ {
+  "index": 170,
+  "hash": "0xb9fccac1",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m2_dome_c",
+  "scenario_tag": "0x80cb806a",
+  "checksum": "0xc7a70681",
+  "bubbles": 22
+ },
+ {
+  "index": 171,
+  "hash": "0x66b65b0d",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m2_dome_c",
+  "scenario_tag": "0x80cb806a",
+  "checksum": "0xc7a70681",
+  "bubbles": 22
+ },
+ {
+  "index": 172,
+  "hash": "0xb9fccac7",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m4_dome_c",
+  "scenario_tag": "0x80cb8089",
+  "checksum": "0xef2923b5",
+  "bubbles": 22
+ },
+ {
+  "index": 173,
+  "hash": "0x75a33bf7",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m4_dome_c",
+  "scenario_tag": "0x80cb8089",
+  "checksum": "0xef2923b5",
+  "bubbles": 22
+ },
+ {
+  "index": 174,
+  "hash": "0xdd37b124",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m1_launchtubes",
+  "scenario_tag": "0x80d4c00b",
+  "checksum": "0xde8eb9b4",
+  "bubbles": 15
+ },
+ {
+  "index": 175,
+  "hash": "0x7a4690ae",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m1_launchtubes",
+  "scenario_tag": "0x80d4c00b",
+  "checksum": "0xde8eb9b4",
+  "bubbles": 15
+ },
+ {
+  "index": 176,
+  "hash": "0xdd37b126",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m3_lowercitadel",
+  "scenario_tag": "0x80d4c023",
+  "checksum": "0x5ebccaa0",
+  "bubbles": 15
+ },
+ {
+  "index": 177,
+  "hash": "0x3a8cb074",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m3_lowercitadel",
+  "scenario_tag": "0x80d4c023",
+  "checksum": "0x5ebccaa0",
+  "bubbles": 15
+ },
+ {
+  "index": 178,
+  "hash": "0xdd37b121",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m4_uppercitadel",
+  "scenario_tag": "0x80d4c039",
+  "checksum": "0xaa6d440e",
+  "bubbles": 15
+ },
+ {
+  "index": 179,
+  "hash": "0x01b5daed",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m4_uppercitadel",
+  "scenario_tag": "0x80d4c039",
+  "checksum": "0xaa6d440e",
+  "bubbles": 15
+ },
+ {
+  "index": 180,
+  "hash": "0xdd37b120",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m5_strength",
+  "scenario_tag": "0x80d4c050",
+  "checksum": "0x281235cc",
+  "bubbles": 15
+ },
+ {
+  "index": 181,
+  "hash": "0x8ac1180a",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m5_strength",
+  "scenario_tag": "0x80d4c050",
+  "checksum": "0x281235cc",
+  "bubbles": 15
+ },
+ {
+  "index": 182,
+  "hash": "0xdd37b123",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m6_reactor",
+  "scenario_tag": "0x80d4c068",
+  "checksum": "0x170aa185",
+  "bubbles": 15
+ },
+ {
+  "index": 183,
+  "hash": "0xce7e8743",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m6_reactor",
+  "scenario_tag": "0x80d4c068",
+  "checksum": "0x170aa185",
+  "bubbles": 15
+ },
+ {
+  "index": 184,
+  "hash": "0xcaa57e48",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m01_engineering",
+  "scenario_tag": "0x80fe000d",
+  "checksum": "0x769a27d4",
+  "bubbles": 29
+ },
+ {
+  "index": 185,
+  "hash": "0x8a5b11a2",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m01_engineering",
+  "scenario_tag": "0x80fe000d",
+  "checksum": "0x769a27d4",
+  "bubbles": 29
+ },
+ {
+  "index": 186,
+  "hash": "0x9a7acc78",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "act_cinematic_queen_101",
+  "scenario_tag": "0x80c02004",
+  "checksum": "0x14cda256",
+  "bubbles": 3
+ },
+ {
+  "index": 187,
+  "hash": "0xcaa57e4b",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m02_southern_tides",
+  "scenario_tag": "0x80fe0032",
+  "checksum": "0x94120a42",
+  "bubbles": 29
+ },
+ {
+  "index": 188,
+  "hash": "0x83ea041b",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m02_southern_tides",
+  "scenario_tag": "0x80fe0032",
+  "checksum": "0x94120a42",
+  "bubbles": 29
+ },
+ {
+  "index": 189,
+  "hash": "0xcaa57e4c",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m05_vault",
+  "scenario_tag": "0x80fe0055",
+  "checksum": "0xdf35f1d0",
+  "bubbles": 29
+ },
+ {
+  "index": 190,
+  "hash": "0xe193f506",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m05_vault",
+  "scenario_tag": "0x80fe0055",
+  "checksum": "0xdf35f1d0",
+  "bubbles": 29
+ },
+ {
+  "index": 191,
+  "hash": "0xcaa57e4f",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m06_ketch",
+  "scenario_tag": "0x80fe0079",
+  "checksum": "0xb19a72ee",
+  "bubbles": 29
+ },
+ {
+  "index": 192,
+  "hash": "0x4062690f",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m06_ketch",
+  "scenario_tag": "0x80fe0079",
+  "checksum": "0xb19a72ee",
+  "bubbles": 29
+ },
+ {
+  "index": 193,
+  "hash": "0xcaa57e4e",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m07_northern_tides",
+  "scenario_tag": "0x80fe009c",
+  "checksum": "0x53ca60aa",
+  "bubbles": 29
+ },
+ {
+  "index": 194,
+  "hash": "0x3d676f6c",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m07_northern_tides",
+  "scenario_tag": "0x80fe009c",
+  "checksum": "0x53ca60aa",
+  "bubbles": 29
+ },
+ {
+  "index": 195,
+  "hash": "0xfcaa4806",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "act_cinematic_queen_102",
+  "scenario_tag": "0x80c0200a",
+  "checksum": "0xa3198561",
+  "bubbles": 3
+ },
+ {
+  "index": 196,
+  "hash": "0x53ad8484",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m01_valley",
+  "scenario_tag": "0x80d0000b",
+  "checksum": "0xfaed265c",
+  "bubbles": 29
+ },
+ {
+  "index": 197,
+  "hash": "0x73a8a50e",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m01_valley",
+  "scenario_tag": "0x80d0000b",
+  "checksum": "0xfaed265c",
+  "bubbles": 29
+ },
+ {
+  "index": 198,
+  "hash": "0x53ad8486",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m03_penthouse",
+  "scenario_tag": "0x80d00031",
+  "checksum": "0x8caab562",
+  "bubbles": 29
+ },
+ {
+  "index": 199,
+  "hash": "0x223dea54",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m03_penthouse",
+  "scenario_tag": "0x80d00031",
+  "checksum": "0x8caab562",
+  "bubbles": 29
+ },
+ {
+  "index": 200,
+  "hash": "0x53ad8480",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m05_warbase",
+  "scenario_tag": "0x80d00058",
+  "checksum": "0x128fc262",
+  "bubbles": 29
+ },
+ {
+  "index": 201,
+  "hash": "0x9d6fe26a",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m05_warbase",
+  "scenario_tag": "0x80d00058",
+  "checksum": "0x128fc262",
+  "bubbles": 29
+ },
+ {
+  "index": 202,
+  "hash": "0x53ad8483",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m06_subway",
+  "scenario_tag": "0x80d0007e",
+  "checksum": "0x744b1b35",
+  "bubbles": 29
+ },
+ {
+  "index": 203,
+  "hash": "0xb62fc123",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m06_subway",
+  "scenario_tag": "0x80d0007e",
+  "checksum": "0x744b1b35",
+  "bubbles": 29
+ },
+ {
+  "index": 204,
+  "hash": "0x53ad8482",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m07_lowergarden",
+  "scenario_tag": "0x80d000a4",
+  "checksum": "0x1208cc7b",
+  "bubbles": 29
+ },
+ {
+  "index": 205,
+  "hash": "0xaa18b4c0",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m07_lowergarden",
+  "scenario_tag": "0x80d000a4",
+  "checksum": "0x1208cc7b",
+  "bubbles": 29
+ },
+ {
+  "index": 206,
+  "hash": "0x55173a82",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "cine_end",
+  "scenario_tag": "0x80c3e004",
+  "checksum": "0xa3198561",
+  "bubbles": 4
+ },
+ {
+  "index": 207,
+  "hash": "0xcf0e39ac",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_bonzo_dlc01",
+  "scenario_tag": "0x80cb8036",
+  "checksum": "0x4db96993",
+  "bubbles": 22
+ },
+ {
+  "index": 208,
+  "hash": "0xa109b566",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_bonzo_dlc01",
+  "scenario_tag": "0x80cb8036",
+  "checksum": "0x4db96993",
+  "bubbles": 22
+ },
+ {
+  "index": 209,
+  "hash": "0xb9fccac5",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m6_rasputin",
+  "scenario_tag": "0x80cb8101",
+  "checksum": "0x1b9d23ef",
+  "bubbles": 22
+ },
+ {
+  "index": 210,
+  "hash": "0xd39684a1",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m6_rasputin",
+  "scenario_tag": "0x80cb8101",
+  "checksum": "0x1b9d23ef",
+  "bubbles": 22
+ },
+ {
+  "index": 211,
+  "hash": "0xdd37b122",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m7_selection",
+  "scenario_tag": "0x80d4c0a8",
+  "checksum": "0xf7aa543f",
+  "bubbles": 15
+ },
+ {
+  "index": 212,
+  "hash": "0x1b1fb7e0",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m7_selection",
+  "scenario_tag": "0x80d4c0a8",
+  "checksum": "0xf7aa543f",
+  "bubbles": 15
+ },
+ {
+  "index": 213,
+  "hash": "0x66365eb8",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_screw_dlc01",
+  "scenario_tag": "0x80d4c098",
+  "checksum": "0x8845d095",
+  "bubbles": 15
+ },
+ {
+  "index": 214,
+  "hash": "0xaec1f80e",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pursuit",
+  "scenario_tag": "0x80fe001a",
+  "checksum": "0xe4e16974",
+  "bubbles": 29
+ },
+ {
+  "index": 215,
+  "hash": "0x057b90ac",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pursuit",
+  "scenario_tag": "0x80fe001a",
+  "checksum": "0xe4e16974",
+  "bubbles": 29
+ },
+ {
+  "index": 216,
+  "hash": "0xa64dc3f8",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pact",
+  "scenario_tag": "0x80cb808d",
+  "checksum": "0xf4217952",
+  "bubbles": 22
+ },
+ {
+  "index": 217,
+  "hash": "0x6a4f0712",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pact",
+  "scenario_tag": "0x80cb808d",
+  "checksum": "0xf4217952",
+  "bubbles": 22
+ },
+ {
+  "index": 218,
+  "hash": "0x60391bdf",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_traitor",
+  "scenario_tag": "0x80fe006c",
+  "checksum": "0x6de91d58",
+  "bubbles": 29
+ },
+ {
+  "index": 219,
+  "hash": "0xd335e95f",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_traitor",
+  "scenario_tag": "0x80fe006c",
+  "checksum": "0x6de91d58",
+  "bubbles": 29
+ },
+ {
+  "index": 220,
+  "hash": "0x22915411",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_infidel",
+  "scenario_tag": "0x80cb80cf",
+  "checksum": "0x7e013513",
+  "bubbles": 22
+ },
+ {
+  "index": 221,
+  "hash": "0x9369a39d",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_infidel",
+  "scenario_tag": "0x80cb80cf",
+  "checksum": "0x7e013513",
+  "bubbles": 22
+ },
+ {
+  "index": 222,
+  "hash": "0xb4541f42",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_nightcrawler",
+  "scenario_tag": "0x80d4c0cb",
+  "checksum": "0xe99c7c1e",
+  "bubbles": 15
+ },
+ {
+  "index": 223,
+  "hash": "0xd5230014",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_safari",
+  "scenario_tag": "0x80fe00cd",
+  "checksum": "0x0c602a4c",
+  "bubbles": 29
+ },
+ {
+  "index": 224,
+  "hash": "0x4e0d9a1e",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_safari",
+  "scenario_tag": "0x80fe00cd",
+  "checksum": "0x0c602a4c",
+  "bubbles": 29
+ },
+ {
+  "index": 225,
+  "hash": "0x69ab63e9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_apollo",
+  "scenario_tag": "0x80d001b8",
+  "checksum": "0x430acd66",
+  "bubbles": 29
+ },
+ {
+  "index": 226,
+  "hash": "0x076413cb",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "pvp_city_defense_carbon",
+  "scenario_tag": "0x80dfa00f",
+  "checksum": "0xfdf37198",
+  "bubbles": 1
+ },
+ {
+  "index": 227,
+  "hash": "0xdd0fe691",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_catalyst",
+  "scenario_tag": "0x80fe01d4",
+  "checksum": "0x36547cd5",
+  "bubbles": 29
+ },
+ {
+  "index": 228,
+  "hash": "0x8ea9471d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_catalyst",
+  "scenario_tag": "0x80fe01d4",
+  "checksum": "0x36547cd5",
+  "bubbles": 29
+ },
+ {
+  "index": 229,
+  "hash": "0x0f0a84cb",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x648999f4",
+  "name": "cine_hangar",
+  "scenario_tag": "0x80c3e15f",
+  "checksum": "0xa3198561",
+  "bubbles": 4
+ },
+ {
+  "index": 230,
+  "hash": "0x05a9e8e1",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": null
+ },
+ {
+  "index": 231,
+  "hash": "0xdc8a12dd",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": null
+ },
+ {
+  "index": 232,
+  "hash": "0xd03ec63d",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 233,
+  "hash": "0x5a6705db",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x4d78882e",
+  "name": null
+ },
+ {
+  "index": 234,
+  "hash": "0x8d389a14",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": null
+ },
+ {
+  "index": 235,
+  "hash": "0x8c78c021",
+  "type_tag": "0x80a5ea68",
+  "mm_hash": "0x648999f4",
+  "name": "mission_darksnow",
+  "scenario_tag": "0x812a6004",
+  "checksum": "0xb187e0cc",
+  "bubbles": 4
+ },
+ {
+  "index": 236,
+  "hash": "0x32e38fed",
+  "type_tag": "0x80a5ea68",
+  "mm_hash": "0x648999f4",
+  "name": "mission_darksnow",
+  "scenario_tag": "0x812a6004",
+  "checksum": "0xb187e0cc",
+  "bubbles": 4
+ },
+ {
+  "index": 237,
+  "hash": "0x7c3c011b",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "quest_deadflower",
+  "scenario_tag": "0x812700e8",
+  "checksum": "0xe2458ca0",
+  "bubbles": 20
+ },
+ {
+  "index": 238,
+  "hash": "0x4f2ca5ee",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_deja",
+  "scenario_tag": "0x80d4c1f7",
+  "checksum": "0x350e092c",
+  "bubbles": 15
+ },
+ {
+  "index": 239,
+  "hash": "0x9b45060c",
+  "type_tag": "0x80a5ea67",
+  "mm_hash": "0x648999f4",
+  "name": "mission_deja",
+  "scenario_tag": "0x80d4c1f7",
+  "checksum": "0x350e092c",
+  "bubbles": 15
+ },
+ {
+  "index": 240,
+  "hash": "0xadfb06fb",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_destroyer",
+  "scenario_tag": "0x81270021",
+  "checksum": "0x006fd971",
+  "bubbles": 20
+ },
+ {
+  "index": 241,
+  "hash": "0xf3a68342",
+  "type_tag": "0x80a5ea68",
+  "mm_hash": "0x648999f4",
+  "name": "mission_elevator",
+  "scenario_tag": "0x80cb8104",
+  "checksum": "0x34fbf203",
+  "bubbles": 22
+ },
+ {
+  "index": 242,
+  "hash": "0x49205c00",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_elevator",
+  "scenario_tag": "0x80cb8104",
+  "checksum": "0x34fbf203",
+  "bubbles": 22
+ },
+ {
+  "index": 243,
+  "hash": "0xdd6fb356",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_helium",
+  "scenario_tag": "0x80cb847a",
+  "checksum": "0xf3747356",
+  "bubbles": 22
+ },
+ {
+  "index": 244,
+  "hash": "0xb8e934e8",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_hydrogen",
+  "scenario_tag": "0x80d00199",
+  "checksum": "0x3f167ff9",
+  "bubbles": 29
+ },
+ {
+  "index": 245,
+  "hash": "0x8cf11842",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_hydrogen",
+  "scenario_tag": "0x80d00199",
+  "checksum": "0x3f167ff9",
+  "bubbles": 29
+ },
+ {
+  "index": 246,
+  "hash": "0xd4897180",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_lithium",
+  "scenario_tag": "0x80d0017a",
+  "checksum": "0xc644647f",
+  "bubbles": 29
+ },
+ {
+  "index": 247,
+  "hash": "0xdcdb0713",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_marathon_hunter",
+  "scenario_tag": "0x815ba003",
+  "checksum": "0x1c039d49",
+  "bubbles": 1
+ },
+ {
+  "index": 248,
+  "hash": "0x3a82b685",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_marathon_titan",
+  "scenario_tag": "0x814b6003",
+  "checksum": "0x6e00d4fc",
+  "bubbles": 1
+ },
+ {
+  "index": 249,
+  "hash": "0x9eb5b770",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_marathon_warlock",
+  "scenario_tag": "0x815f2003",
+  "checksum": "0x8e6091d8",
+  "bubbles": 1
+ },
+ {
+  "index": 250,
+  "hash": "0x8b1a7813",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_microwave",
+  "scenario_tag": "0x812a600c",
+  "checksum": "0x920b2883",
+  "bubbles": 4
+ },
+ {
+  "index": 251,
+  "hash": "0x9bf38b3d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_microwave",
+  "scenario_tag": "0x812a600c",
+  "checksum": "0x920b2883",
+  "bubbles": 4
+ },
+ {
+  "index": 252,
+  "hash": "0xf12e5790",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_microwave",
+  "scenario_tag": "0x812a600c",
+  "checksum": "0x920b2883",
+  "bubbles": 4
+ },
+ {
+  "index": 253,
+  "hash": "0x3fac5eaa",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_nitrogen",
+  "scenario_tag": "0x80d001e0",
+  "checksum": "0xe0d42826",
+  "bubbles": 29
+ },
+ {
+  "index": 254,
+  "hash": "0xece80ead",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_omen",
+  "scenario_tag": "0x8127006e",
+  "checksum": "0xffe9828b",
+  "bubbles": 20
+ },
+ {
+  "index": 255,
+  "hash": "0xbec09a19",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_omen",
+  "scenario_tag": "0x8127006e",
+  "checksum": "0xffe9828b",
+  "bubbles": 20
+ },
+ {
+  "index": 256,
+  "hash": "0x64834dbc",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_oxygen",
+  "scenario_tag": "0x80d00131",
+  "checksum": "0xab7a3ca3",
+  "bubbles": 29
+ },
+ {
+  "index": 257,
+  "hash": "0x224a73f6",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_oxygen",
+  "scenario_tag": "0x80d00131",
+  "checksum": "0xab7a3ca3",
+  "bubbles": 29
+ },
+ {
+  "index": 258,
+  "hash": "0xc5994c42",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_paper",
+  "scenario_tag": "0x80d000f4",
+  "checksum": "0x6de31b2b",
+  "bubbles": 29
+ },
+ {
+  "index": 259,
+  "hash": "0x999ad287",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_paradox",
+  "scenario_tag": "0x80fe0125",
+  "checksum": "0x1518117b",
+  "bubbles": 29
+ },
+ {
+  "index": 260,
+  "hash": "0x884b2e37",
+  "type_tag": "0x80a5ea6c",
+  "mm_hash": "0x648999f4",
+  "name": "mission_paradox",
+  "scenario_tag": "0x80fe0125",
+  "checksum": "0x1518117b",
+  "bubbles": 29
+ },
+ {
+  "index": 261,
+  "hash": "0xcc05aeb6",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_peekaboo",
+  "scenario_tag": "0x80cb8159",
+  "checksum": "0x17929af5",
+  "bubbles": 22
+ },
+ {
+  "index": 262,
+  "hash": "0x9c71a784",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_peekaboo",
+  "scenario_tag": "0x80cb8159",
+  "checksum": "0x17929af5",
+  "bubbles": 22
+ },
+ {
+  "index": 263,
+  "hash": "0x3bf1dac0",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_radium",
+  "scenario_tag": "0x80cb8281",
+  "checksum": "0xc2c49547",
+  "bubbles": 22
+ },
+ {
+  "index": 264,
+  "hash": "0xa17126d7",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_rock",
+  "scenario_tag": "0x80fe019a",
+  "checksum": "0xdc809714",
+  "bubbles": 29
+ },
+ {
+  "index": 265,
+  "hash": "0x549b33c5",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_scissors",
+  "scenario_tag": "0x80fe01b7",
+  "checksum": "0x6325976b",
+  "bubbles": 29
+ },
+ {
+  "index": 266,
+  "hash": "0x77b7b95d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_sightline",
+  "scenario_tag": "0x80cb8385",
+  "checksum": "0x6d946ed2",
+  "bubbles": 22
+ },
+ {
+  "index": 267,
+  "hash": "0x82fdf349",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_sightline",
+  "scenario_tag": "0x80cb8385",
+  "checksum": "0x6d946ed2",
+  "bubbles": 22
+ },
+ {
+  "index": 268,
+  "hash": "0x953d15fb",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_souvenir",
+  "scenario_tag": "0x8108e00b",
+  "checksum": "0xc79daac1",
+  "bubbles": 15
+ },
+ {
+  "index": 269,
+  "hash": "0x3ca9164b",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_souvenir",
+  "scenario_tag": "0x8108e00b",
+  "checksum": "0xc79daac1",
+  "bubbles": 15
+ },
+ {
+  "index": 270,
+  "hash": "0xc74679d0",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_toaster",
+  "scenario_tag": "0x81270055",
+  "checksum": "0xc27a8ab8",
+  "bubbles": 20
+ },
+ {
+  "index": 271,
+  "hash": "0x9c8cdca0",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_toaster",
+  "scenario_tag": "0x81270055",
+  "checksum": "0xc27a8ab8",
+  "bubbles": 20
+ },
+ {
+  "index": 272,
+  "hash": "0x957806ba",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_toaster",
+  "scenario_tag": "0x81270055",
+  "checksum": "0xc27a8ab8",
+  "bubbles": 20
+ },
+ {
+  "index": 273,
+  "hash": "0xc280b997",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "mission_topknot",
+  "scenario_tag": "0x8127003a",
+  "checksum": "0x56d44fd2",
+  "bubbles": 20
+ },
+ {
+  "index": 274,
+  "hash": "0xdb0a4c07",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "mission_topknot",
+  "scenario_tag": "0x8127003a",
+  "checksum": "0x56d44fd2",
+  "bubbles": 20
+ },
+ {
+  "index": 275,
+  "hash": "0xbe2a2b4d",
+  "type_tag": "0x80a5ea6e",
+  "mm_hash": "0x648999f4",
+  "name": "mission_touchdown",
+  "scenario_tag": "0x8127000c",
+  "checksum": "0x8b4e0ac7",
+  "bubbles": 20
+ },
+ {
+  "index": 276,
+  "hash": "0xc7abb3b9",
+  "type_tag": "0x80a5ea6e",
+  "mm_hash": "0x648999f4",
+  "name": "mission_touchdown",
+  "scenario_tag": "0x8127000c",
+  "checksum": "0x8b4e0ac7",
+  "bubbles": 20
+ },
+ {
+  "index": 277,
+  "hash": "0xfcc4b6bb",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_turing",
+  "scenario_tag": "0x80cb813b",
+  "checksum": "0x5a09e677",
+  "bubbles": 22
+ },
+ {
+  "index": 278,
+  "hash": "0x66fceb8b",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_turing",
+  "scenario_tag": "0x80cb813b",
+  "checksum": "0x5a09e677",
+  "bubbles": 22
+ },
+ {
+  "index": 279,
+  "hash": "0x10179688",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_turing",
+  "scenario_tag": "0x80cb813b",
+  "checksum": "0x5a09e677",
+  "bubbles": 22
+ },
+ {
+  "index": 280,
+  "hash": "0xa80c8b92",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 281,
+  "hash": "0x8f271d8f",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": null
+ },
+ {
+  "index": 282,
+  "hash": "0xb8a7dd09",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 283,
+  "hash": "0xcc45a218",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 284,
+  "hash": "0x7c3a7eb1",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 285,
+  "hash": "0xf012232b",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 286,
+  "hash": "0x8bc019da",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 287,
+  "hash": "0x06f291fc",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 288,
+  "hash": "0x020bca3c",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 289,
+  "hash": "0x31a01db8",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 290,
+  "hash": "0x2d231990",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 291,
+  "hash": "0x920d685b",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 292,
+  "hash": "0x8529c59a",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 293,
+  "hash": "0x40a5ff3e",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 294,
+  "hash": "0xbdbb8a41",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 295,
+  "hash": "0xd51e1dca",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 296,
+  "hash": "0x60dabc09",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 297,
+  "hash": "0x4328fcca",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 298,
+  "hash": "0xa218af73",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 299,
+  "hash": "0xdadaa926",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 300,
+  "hash": "0xf9988d64",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 301,
+  "hash": "0x31b3e49d",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 302,
+  "hash": "0xfbfdf050",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 303,
+  "hash": "0xfbfdf053",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 304,
+  "hash": "0x030ef566",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_1",
+  "scenario_tag": "0x80d000cb",
+  "checksum": "0x4abb0741",
+  "bubbles": 29
+ },
+ {
+  "index": 305,
+  "hash": "0x030ef565",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 306,
+  "hash": "0x030ef564",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_3",
+  "scenario_tag": "0x80d0013b",
+  "checksum": "0x75dc3980",
+  "bubbles": 29
+ },
+ {
+  "index": 307,
+  "hash": "0x0ca436da",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 308,
+  "hash": "0xb89b6528",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 309,
+  "hash": "0xc43c973a",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 310,
+  "hash": "0xc43c9739",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 311,
+  "hash": "0xa12d4526",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 312,
+  "hash": "0xe9c3eb2f",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 313,
+  "hash": "0xa3807c94",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_1",
+  "scenario_tag": "0x80d000cb",
+  "checksum": "0x4abb0741",
+  "bubbles": 29
+ },
+ {
+  "index": 314,
+  "hash": "0xa57a92a9",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 315,
+  "hash": "0x8bba18da",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_3",
+  "scenario_tag": "0x80d0013b",
+  "checksum": "0x75dc3980",
+  "bubbles": 29
+ },
+ {
+  "index": 316,
+  "hash": "0x479021b8",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 317,
+  "hash": "0x0905872e",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 318,
+  "hash": "0x9eee8d58",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 319,
+  "hash": "0xfd87e5fd",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 320,
+  "hash": "0xcf3577bb",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": null
+ },
+ {
+  "index": 321,
+  "hash": "0x440b2150",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 322,
+  "hash": "0x96f423a5",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 323,
+  "hash": "0xa9a7de7a",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 324,
+  "hash": "0xb47b3ff6",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 325,
+  "hash": "0x9ce51d2b",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 326,
+  "hash": "0x0961959c",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 327,
+  "hash": "0x823334e3",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 328,
+  "hash": "0x13c299a2",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 329,
+  "hash": "0x8df84c41",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 330,
+  "hash": "0x7b8b5941",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 331,
+  "hash": "0x8258ae75",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 332,
+  "hash": "0x53b8cf38",
+  "type_tag": "0x80a60197",
+  "mm_hash": "0x3dee0e5e",
+  "name": null
+ },
+ {
+  "index": 333,
+  "hash": "0xf79034a8",
+  "type_tag": "0x80a5ea37",
+  "mm_hash": "0x3dee0e5e",
+  "name": null
+ },
+ {
+  "index": 334,
+  "hash": "0x63c62a1a",
+  "type_tag": "0x80a5ea37",
+  "mm_hash": "0x3dee0e5e",
+  "name": null
+ },
+ {
+  "index": 335,
+  "hash": "0x5c784b7b",
+  "type_tag": "0x80a60197",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_champion",
+  "scenario_tag": "0x81194004",
+  "checksum": "0x851e7b87",
+  "bubbles": 2
+ },
+ {
+  "index": 336,
+  "hash": "0x2400935f",
+  "type_tag": "0x80a60197",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_goldfish",
+  "scenario_tag": "0x81194800",
+  "checksum": "0x10a6d2a2",
+  "bubbles": 2
+ },
+ {
+  "index": 337,
+  "hash": "0x8d99aeef",
+  "type_tag": "0x80a5ea37",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_angelfish",
+  "scenario_tag": "0x81194a7d",
+  "checksum": "0xb4cd4832",
+  "bubbles": 2
+ },
+ {
+  "index": 338,
+  "hash": "0x833a166f",
+  "type_tag": "0x80a5ea37",
+  "mm_hash": "0x3dee0e5e",
+  "name": "arena_angelfish",
+  "scenario_tag": "0x81194a7d",
+  "checksum": "0xb4cd4832",
+  "bubbles": 2
+ },
+ {
+  "index": 339,
+  "hash": "0x25b75587",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_rook",
+  "scenario_tag": "0x812773c6",
+  "checksum": "0xfd2b415c",
+  "bubbles": 20
+ },
+ {
+  "index": 340,
+  "hash": "0x78882a7c",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 341,
+  "hash": "0xacb681d8",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 342,
+  "hash": "0xb9fa7e3e",
+  "type_tag": "0x80a585cf",
+  "mm_hash": "0xd2416364",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 343,
+  "hash": "0x40cb1b93",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xebb81a5f",
+  "name": null
+ },
+ {
+  "index": 344,
+  "hash": "0x8431e527",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 345,
+  "hash": "0x24a4f762",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x6eea53b6",
+  "name": null
+ },
+ {
+  "index": 346,
+  "hash": "0xa69f1ab0",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 347,
+  "hash": "0x05e233c7",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": null
+ },
+ {
+  "index": 348,
+  "hash": "0x8e631e45",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x6fe59a81",
+  "name": null
+ },
+ {
+  "index": 349,
+  "hash": "0x5459ec33",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0261283f",
+  "name": null
+ },
+ {
+  "index": 350,
+  "hash": "0xc0c6e343",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0261283f",
+  "name": null
+ },
+ {
+  "index": 351,
+  "hash": "0xc60ca719",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x6b3b6c21",
+  "name": null
+ },
+ {
+  "index": 352,
+  "hash": "0xfef612a9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x4d77bb35",
+  "name": null
+ },
+ {
+  "index": 353,
+  "hash": "0x560b24d7",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x61da309b",
+  "name": null
+ },
+ {
+  "index": 354,
+  "hash": "0x20a98900",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x1231bc10",
+  "name": null
+ },
+ {
+  "index": 355,
+  "hash": "0xe912436f",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc17944a3",
+  "name": null
+ },
+ {
+  "index": 356,
+  "hash": "0xd7d8887b",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x5acde7cf",
+  "name": null
+ },
+ {
+  "index": 357,
+  "hash": "0xd7bece61",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe7fa9249",
+  "name": null
+ },
+ {
+  "index": 358,
+  "hash": "0xe732d0e4",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x228526e4",
+  "name": null
+ },
+ {
+  "index": 359,
+  "hash": "0x5feed93e",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x585d89b7",
+  "name": null
+ },
+ {
+  "index": 360,
+  "hash": "0x3cc61baf",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x24ef05e3",
+  "name": null
+ },
+ {
+  "index": 361,
+  "hash": "0xab87eae9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc192d8d5",
+  "name": null
+ },
+ {
+  "index": 362,
+  "hash": "0xea9cedd6",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x1e234868",
+  "name": null
+ },
+ {
+  "index": 363,
+  "hash": "0xf8a55282",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe0bf9c73",
+  "name": null
+ },
+ {
+  "index": 364,
+  "hash": "0x9d97917f",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 365,
+  "hash": "0xaf90f1eb",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 366,
+  "hash": "0x1bea1631",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xdc674d4d",
+  "name": null
+ },
+ {
+  "index": 367,
+  "hash": "0x647253aa",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd36e7996",
+  "name": null
+ },
+ {
+  "index": 368,
+  "hash": "0xd72b1f06",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x078eaa0a",
+  "name": null
+ },
+ {
+  "index": 369,
+  "hash": "0x03d63cd2",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xe476e94e",
+  "name": null
+ },
+ {
+  "index": 370,
+  "hash": "0x1d93fa4a",
+  "type_tag": "0x80a653fc",
+  "mm_hash": "0x6e0cce9f",
+  "name": null
+ },
+ {
+  "index": 371,
+  "hash": "0x91c3011a",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 372,
+  "hash": "0xa3bc618e",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 373,
+  "hash": "0x82895b4d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": null
+ },
+ {
+  "index": 374,
+  "hash": "0xe98d6b2a",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_icarus",
+  "scenario_tag": "0x81766003",
+  "checksum": "0x5bf38bbc",
+  "bubbles": 1
+ },
+ {
+  "index": 375,
+  "hash": "0x65e8b686",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_rift",
+  "scenario_tag": "0x81712003",
+  "checksum": "0x9542b174",
+  "bubbles": 1
+ },
+ {
+  "index": 376,
+  "hash": "0xf4bb5760",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_subway",
+  "scenario_tag": "0x816f6003",
+  "checksum": "0xe631a5d1",
+  "bubbles": 1
+ },
+ {
+  "index": 377,
+  "hash": "0xb5fd7d07",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_well",
+  "scenario_tag": "0x81782003",
+  "checksum": "0xdbff7d6f",
+  "bubbles": 1
+ },
+ {
+  "index": 378,
+  "hash": "0x77cf07c4",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_srl_cosmo01",
+  "scenario_tag": "0x818a8003",
+  "checksum": "0xd2653c21",
+  "bubbles": 1
+ },
+ {
+  "index": 379,
+  "hash": "0xa896d162",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0xc3122b73",
+  "name": "pvp_srl_mercury01",
+  "scenario_tag": "0x81886003",
+  "checksum": "0xf0f31572",
+  "bubbles": 1
+ },
+ {
+  "index": 380,
+  "hash": "0x0f8af752",
+  "type_tag": "0x80a585c8",
+  "mm_hash": "0x2abaeb83",
+  "name": "raid_promise",
+  "scenario_tag": "0x8179e00b",
+  "checksum": "0xb298315e",
+  "bubbles": 25
+ },
+ {
+  "index": 381,
+  "hash": "0x52bb19d0",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0x2abaeb83",
+  "name": "raid_promise",
+  "scenario_tag": "0x8179e00b",
+  "checksum": "0xb298315e",
+  "bubbles": 25
+ },
+ {
+  "index": 382,
+  "hash": "0xa938696a",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "cinematic_peace",
+  "scenario_tag": "0x8180a01a",
+  "checksum": "0x62e70883",
+  "bubbles": 2
+ },
+ {
+  "index": 383,
+  "hash": "0xfa8621da",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x5ec025c8",
+  "name": "cinematic_efrideet",
+  "scenario_tag": "0x8180a012",
+  "checksum": "0x62e70883",
+  "bubbles": 2
+ },
+ {
+  "index": 384,
+  "hash": "0x29866189",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": "cinematic_fall",
+  "scenario_tag": "0x8180a016",
+  "checksum": "0x62e70883",
+  "bubbles": 2
+ },
+ {
+  "index": 385,
+  "hash": "0x6af5e479",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 386,
+  "hash": "0x011d9448",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x4d78882e",
+  "name": null
+ },
+ {
+  "index": 387,
+  "hash": "0x062b2eb8",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pug",
+  "scenario_tag": "0x8180a008",
+  "checksum": "0xa4029fc2",
+  "bubbles": 2
+ },
+ {
+  "index": 388,
+  "hash": "0x10a30d52",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pug",
+  "scenario_tag": "0x8180a008",
+  "checksum": "0xa4029fc2",
+  "bubbles": 2
+ },
+ {
+  "index": 389,
+  "hash": "0xbff1ca66",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_beagle",
+  "scenario_tag": "0x8179e0bf",
+  "checksum": "0x05a2621f",
+  "bubbles": 25
+ },
+ {
+  "index": 390,
+  "hash": "0x983a7534",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_beagle",
+  "scenario_tag": "0x8179e0bf",
+  "checksum": "0x05a2621f",
+  "bubbles": 25
+ },
+ {
+  "index": 391,
+  "hash": "0x91d27fae",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_hound",
+  "scenario_tag": "0x8179e0a4",
+  "checksum": "0x03ab28c1",
+  "bubbles": 25
+ },
+ {
+  "index": 392,
+  "hash": "0x0cfe824c",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_hound",
+  "scenario_tag": "0x8179e0a4",
+  "checksum": "0x03ab28c1",
+  "bubbles": 25
+ },
+ {
+  "index": 393,
+  "hash": "0x6a480e60",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pitbull",
+  "scenario_tag": "0x80d00214",
+  "checksum": "0x45bae8bc",
+  "bubbles": 29
+ },
+ {
+  "index": 394,
+  "hash": "0xe13119ca",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pitbull",
+  "scenario_tag": "0x80d00214",
+  "checksum": "0x45bae8bc",
+  "bubbles": 29
+ },
+ {
+  "index": 395,
+  "hash": "0x096a9722",
+  "type_tag": "0x80a601a0",
+  "mm_hash": "0x648999f4",
+  "name": "mission_mutt",
+  "scenario_tag": "0x8179e089",
+  "checksum": "0x864cad38",
+  "bubbles": 25
+ },
+ {
+  "index": 396,
+  "hash": "0x19af39e0",
+  "type_tag": "0x80a601a0",
+  "mm_hash": "0x648999f4",
+  "name": "mission_mutt",
+  "scenario_tag": "0x8179e089",
+  "checksum": "0x864cad38",
+  "bubbles": 25
+ },
+ {
+  "index": 397,
+  "hash": "0xd1290de0",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": null
+ },
+ {
+  "index": 398,
+  "hash": "0x8a43dba2",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "social_observatory",
+  "scenario_tag": "0x8180a010",
+  "checksum": "0x19d6751c",
+  "bubbles": 2
+ },
+ {
+  "index": 399,
+  "hash": "0x9509068e",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "social_observatory_iron_banner",
+  "scenario_tag": "0x8180a01e",
+  "checksum": "0x8e526e88",
+  "bubbles": 2
+ },
+ {
+  "index": 400,
+  "hash": "0x6488b18a",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xebb81a5f",
+  "name": null
+ },
+ {
+  "index": 401,
+  "hash": "0xd94c9686",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x0072d303",
+  "name": null
+ },
+ {
+  "index": 402,
+  "hash": "0xc6d0c7cd",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x6eea53b6",
+  "name": null
+ },
+ {
+  "index": 403,
+  "hash": "0x7addfb2f",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xd36e7996",
+  "name": null
+ },
+ {
+  "index": 404,
+  "hash": "0x0960c2c5",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x078eaa0a",
+  "name": null
+ },
+ {
+  "index": 405,
+  "hash": "0x4ccaa0f5",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xe476e94e",
+  "name": null
+ },
+ {
+  "index": 406,
+  "hash": "0x63478458",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xc3122b73",
+  "name": null
+ },
+ {
+  "index": 407,
+  "hash": "0x19bc2182",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x5acde7cf",
+  "name": null
+ },
+ {
+  "index": 408,
+  "hash": "0x537d69a0",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x6fe59a81",
+  "name": null
+ },
+ {
+  "index": 409,
+  "hash": "0x4ed83454",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xc0771719",
+  "name": null
+ },
+ {
+  "index": 410,
+  "hash": "0xfb5d13a3",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xd10020e4",
+  "name": null
+ },
+ {
+  "index": 411,
+  "hash": "0x699d170e",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x0f43bbdf",
+  "name": null
+ },
+ {
+  "index": 412,
+  "hash": "0x8d8334da",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0xe0bf9c73",
+  "name": null
+ },
+ {
+  "index": 413,
+  "hash": "0xcc58e77a",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xe7fa9249",
+  "name": null
+ },
+ {
+  "index": 414,
+  "hash": "0x5dbe3fc3",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x228526e4",
+  "name": null
+ },
+ {
+  "index": 415,
+  "hash": "0x3afb1e33",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x43830e68",
+  "name": null
+ },
+ {
+  "index": 416,
+  "hash": "0x6d714c3a",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x0261283f",
+  "name": null
+ },
+ {
+  "index": 417,
+  "hash": "0x34f0b50c",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x24ef05e3",
+  "name": null
+ },
+ {
+  "index": 418,
+  "hash": "0x4cf3758f",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x1e234868",
+  "name": null
+ },
+ {
+  "index": 419,
+  "hash": "0x473037de",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x2654778f",
+  "name": null
+ },
+ {
+  "index": 420,
+  "hash": "0x2c843eab",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x290195a7",
+  "name": null
+ },
+ {
+  "index": 421,
+  "hash": "0x9a2c02c8",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0xc192d8d5",
+  "name": null
+ },
+ {
+  "index": 422,
+  "hash": "0x5fa344cd",
+  "type_tag": "0x80a601a2",
+  "mm_hash": "0x6e0cce9f",
+  "name": null
+ },
+ {
+  "index": 423,
+  "hash": "0x52292e6e",
+  "type_tag": "0x80a601a3",
+  "mm_hash": "0x6114e6ff",
+  "name": null
+ },
+ {
+  "index": 424,
+  "hash": "0x15321d54",
+  "type_tag": "0x80a585b8",
+  "mm_hash": "0x71aec1dc",
+  "name": "plaguelands_patrol",
+  "scenario_tag": "0x8179e047",
+  "checksum": "0x3a4a9eb0",
+  "bubbles": 25
+ },
+ {
+  "index": 425,
+  "hash": "0x5a75f57d",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": null
+ },
+ {
+  "index": 426,
+  "hash": "0xb8e131b2",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 427,
+  "hash": "0x9ecc94c2",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 428,
+  "hash": "0xf47550b0",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 429,
+  "hash": "0xcb0da88c",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 430,
+  "hash": "0x1cbaff48",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 431,
+  "hash": "0x8e8461c6",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 432,
+  "hash": "0x1841e965",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 433,
+  "hash": "0x9fa911c7",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 434,
+  "hash": "0xca38a541",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 435,
+  "hash": "0x7ce8254d",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 436,
+  "hash": "0x64773cdf",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 437,
+  "hash": "0x5b011a54",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 438,
+  "hash": "0x1122fdca",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 439,
+  "hash": "0x97cf8f2d",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 440,
+  "hash": "0x14f2dbbf",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 441,
+  "hash": "0x637eeb07",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 442,
+  "hash": "0xa9545781",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 443,
+  "hash": "0x224b8c3e",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 444,
+  "hash": "0x075eca24",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 445,
+  "hash": "0x06f66688",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 446,
+  "hash": "0x8d8e1806",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 447,
+  "hash": "0x0b9487ff",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 448,
+  "hash": "0xca52b829",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 449,
+  "hash": "0x67b76e22",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 450,
+  "hash": "0xeaf62110",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 451,
+  "hash": "0x725eed89",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 452,
+  "hash": "0x09e2abb3",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 453,
+  "hash": "0xc749d1a8",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 454,
+  "hash": "0x85d13126",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 455,
+  "hash": "0xe842eb0e",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 456,
+  "hash": "0xca94d794",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 457,
+  "hash": "0x1e5d00f1",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_word",
+  "scenario_tag": "0x8179e100",
+  "checksum": "0x0a01fa71",
+  "bubbles": 25
+ },
+ {
+  "index": 458,
+  "hash": "0x85cf1f3c",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_memory",
+  "scenario_tag": "0x8179e0e1",
+  "checksum": "0x528ca92e",
+  "bubbles": 25
+ },
+ {
+  "index": 459,
+  "hash": "0xa350e5b6",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_research",
+  "scenario_tag": "0x8183a003",
+  "checksum": "0x3a018cb4",
+  "bubbles": 1
+ },
+ {
+  "index": 460,
+  "hash": "0xa32ec731",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_fireworks",
+  "scenario_tag": "0x8185e003",
+  "checksum": "0xbadb93f1",
+  "bubbles": 1
+ },
+ {
+  "index": 461,
+  "hash": "0xdc066134",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": null
+ },
+ {
+  "index": 462,
+  "hash": "0x22287890",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 463,
+  "hash": "0x643a5a4f",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 464,
+  "hash": "0x17044d35",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 465,
+  "hash": "0x9f1899ed",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 466,
+  "hash": "0xb544b582",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 467,
+  "hash": "0x3d0205c3",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 468,
+  "hash": "0x894a6b4c",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 469,
+  "hash": "0x894a6b4f",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 470,
+  "hash": "0xaf20211a",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_1",
+  "scenario_tag": "0x80d000cb",
+  "checksum": "0x4abb0741",
+  "bubbles": 29
+ },
+ {
+  "index": 471,
+  "hash": "0xaf202119",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 472,
+  "hash": "0xaf202118",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "mars_portal_3",
+  "scenario_tag": "0x80d0013b",
+  "checksum": "0x75dc3980",
+  "bubbles": 29
+ },
+ {
+  "index": 473,
+  "hash": "0x29da46c6",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 474,
+  "hash": "0xb371b47c",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 475,
+  "hash": "0x26f1ccbe",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 476,
+  "hash": "0x26f1ccbd",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 477,
+  "hash": "0xa0a761dc",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 478,
+  "hash": "0xdf091676",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 479,
+  "hash": "0x267ff846",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 480,
+  "hash": "0xd3e6bb02",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 481,
+  "hash": "0x3e47a9fc",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 482,
+  "hash": "0x62efe275",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xeef3eb23",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 483,
+  "hash": "0x4d11b2e4",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": null
+ },
+ {
+  "index": 484,
+  "hash": "0x0f7d7140",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 485,
+  "hash": "0x5b6aea9f",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 486,
+  "hash": "0x5d5c5b85",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 487,
+  "hash": "0x0c0cd45d",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 488,
+  "hash": "0x9c750d32",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 489,
+  "hash": "0x91475c73",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 490,
+  "hash": "0xb7746e3c",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 491,
+  "hash": "0xb7746e3f",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 492,
+  "hash": "0x0aff4e8a",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_1",
+  "scenario_tag": "0x80d000cb",
+  "checksum": "0x4abb0741",
+  "bubbles": 29
+ },
+ {
+  "index": 493,
+  "hash": "0x0aff4e89",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 494,
+  "hash": "0x0aff4e88",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_3",
+  "scenario_tag": "0x80d0013b",
+  "checksum": "0x75dc3980",
+  "bubbles": 29
+ },
+ {
+  "index": 495,
+  "hash": "0xa569f536",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 496,
+  "hash": "0x58ea8b2c",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 497,
+  "hash": "0x6184a42e",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 498,
+  "hash": "0x6184a42d",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 499,
+  "hash": "0xbab6abcc",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 500,
+  "hash": "0x0c7a54e6",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 501,
+  "hash": "0xcadc5836",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 502,
+  "hash": "0x4f43c012",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 503,
+  "hash": "0x846759ec",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 504,
+  "hash": "0x3ab23c85",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 505,
+  "hash": "0x33e4854f",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": null
+ },
+ {
+  "index": 506,
+  "hash": "0xf45afe84",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 507,
+  "hash": "0x59860e81",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 508,
+  "hash": "0xe50f2b06",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 509,
+  "hash": "0x14706342",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 510,
+  "hash": "0x62205d5f",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 511,
+  "hash": "0xfd7bdb98",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 512,
+  "hash": "0x8edb60df",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 513,
+  "hash": "0x3c90b5ce",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 514,
+  "hash": "0xd587e05d",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 515,
+  "hash": "0xc90c912d",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 516,
+  "hash": "0xdb245fb1",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 517,
+  "hash": "0x81e06b41",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 518,
+  "hash": "0x87331a7f",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 519,
+  "hash": "0x55527e02",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 520,
+  "hash": "0xa28a5f0a",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m4_dome_c",
+  "scenario_tag": "0x80cb8089",
+  "checksum": "0xef2923b5",
+  "bubbles": 22
+ },
+ {
+  "index": 521,
+  "hash": "0xeb58f18e",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m4_uppercitadel",
+  "scenario_tag": "0x80d4c039",
+  "checksum": "0xaa6d440e",
+  "bubbles": 15
+ },
+ {
+  "index": 522,
+  "hash": "0xccb2e361",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m5_strength",
+  "scenario_tag": "0x80d4c050",
+  "checksum": "0x281235cc",
+  "bubbles": 15
+ },
+ {
+  "index": 523,
+  "hash": "0x99ee36d4",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m6_reactor",
+  "scenario_tag": "0x80d4c068",
+  "checksum": "0x170aa185",
+  "bubbles": 15
+ },
+ {
+  "index": 524,
+  "hash": "0xfea6cf43",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m05_vault",
+  "scenario_tag": "0x80fe0055",
+  "checksum": "0xdf35f1d0",
+  "bubbles": 29
+ },
+ {
+  "index": 525,
+  "hash": "0xbae9600a",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m06_ketch",
+  "scenario_tag": "0x80fe0079",
+  "checksum": "0xb19a72ee",
+  "bubbles": 29
+ },
+ {
+  "index": 526,
+  "hash": "0x31de22ed",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m07_northern_tides",
+  "scenario_tag": "0x80fe009c",
+  "checksum": "0x53ca60aa",
+  "bubbles": 29
+ },
+ {
+  "index": 527,
+  "hash": "0x2d97b2bb",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m03_penthouse",
+  "scenario_tag": "0x80d00031",
+  "checksum": "0x8caab562",
+  "bubbles": 29
+ },
+ {
+  "index": 528,
+  "hash": "0xca8a1fd9",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m05_warbase",
+  "scenario_tag": "0x80d00058",
+  "checksum": "0x128fc262",
+  "bubbles": 29
+ },
+ {
+  "index": 529,
+  "hash": "0x13542e0c",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m06_subway",
+  "scenario_tag": "0x80d0007e",
+  "checksum": "0x744b1b35",
+  "bubbles": 29
+ },
+ {
+  "index": 530,
+  "hash": "0x55b91daf",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m07_lowergarden",
+  "scenario_tag": "0x80d000a4",
+  "checksum": "0x1208cc7b",
+  "bubbles": 29
+ },
+ {
+  "index": 531,
+  "hash": "0x32e8fee0",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m6_rasputin",
+  "scenario_tag": "0x80cb8101",
+  "checksum": "0x1b9d23ef",
+  "bubbles": 22
+ },
+ {
+  "index": 532,
+  "hash": "0x424800b7",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m7_selection",
+  "scenario_tag": "0x80d4c0a8",
+  "checksum": "0xf7aa543f",
+  "bubbles": 15
+ },
+ {
+  "index": 533,
+  "hash": "0x1a726e8f",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pact",
+  "scenario_tag": "0x80cb808d",
+  "checksum": "0xf4217952",
+  "bubbles": 22
+ },
+ {
+  "index": 534,
+  "hash": "0x4924bd0c",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_traitor",
+  "scenario_tag": "0x80fe006c",
+  "checksum": "0x6de91d58",
+  "bubbles": 29
+ },
+ {
+  "index": 535,
+  "hash": "0x09384a28",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_catalyst",
+  "scenario_tag": "0x80fe01d4",
+  "checksum": "0x36547cd5",
+  "bubbles": 29
+ },
+ {
+  "index": 536,
+  "hash": "0xd7516884",
+  "type_tag": "0x80a5ea68",
+  "mm_hash": "0x648999f4",
+  "name": "mission_darksnow",
+  "scenario_tag": "0x812a6004",
+  "checksum": "0xb187e0cc",
+  "bubbles": 4
+ },
+ {
+  "index": 537,
+  "hash": "0xa4c7dd65",
+  "type_tag": "0x80a5ea67",
+  "mm_hash": "0x648999f4",
+  "name": "mission_deja",
+  "scenario_tag": "0x80d4c1f7",
+  "checksum": "0x350e092c",
+  "bubbles": 15
+ },
+ {
+  "index": 538,
+  "hash": "0x228d88e9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_elevator",
+  "scenario_tag": "0x80cb8104",
+  "checksum": "0x34fbf203",
+  "bubbles": 22
+ },
+ {
+  "index": 539,
+  "hash": "0x45fff2f7",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_hydrogen",
+  "scenario_tag": "0x80d00199",
+  "checksum": "0x3f167ff9",
+  "bubbles": 29
+ },
+ {
+  "index": 540,
+  "hash": "0x1c473528",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_omen",
+  "scenario_tag": "0x8127006e",
+  "checksum": "0xffe9828b",
+  "bubbles": 20
+ },
+ {
+  "index": 541,
+  "hash": "0x3ab6180b",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_oxygen",
+  "scenario_tag": "0x80d00131",
+  "checksum": "0xab7a3ca3",
+  "bubbles": 29
+ },
+ {
+  "index": 542,
+  "hash": "0xa4c5cd3c",
+  "type_tag": "0x80a5ea6c",
+  "mm_hash": "0x648999f4",
+  "name": "mission_paradox",
+  "scenario_tag": "0x80fe0125",
+  "checksum": "0x1518117b",
+  "bubbles": 29
+ },
+ {
+  "index": 543,
+  "hash": "0x9e704fa5",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_peekaboo",
+  "scenario_tag": "0x80cb8159",
+  "checksum": "0x17929af5",
+  "bubbles": 22
+ },
+ {
+  "index": 544,
+  "hash": "0x90695286",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "quest_sightline",
+  "scenario_tag": "0x80cb8385",
+  "checksum": "0x6d946ed2",
+  "bubbles": 22
+ },
+ {
+  "index": 545,
+  "hash": "0xf955e946",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_souvenir",
+  "scenario_tag": "0x8108e00b",
+  "checksum": "0xc79daac1",
+  "bubbles": 15
+ },
+ {
+  "index": 546,
+  "hash": "0x55cc8db9",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_toaster",
+  "scenario_tag": "0x81270055",
+  "checksum": "0xc27a8ab8",
+  "bubbles": 20
+ },
+ {
+  "index": 547,
+  "hash": "0xd4ab968c",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "mission_topknot",
+  "scenario_tag": "0x8127003a",
+  "checksum": "0x56d44fd2",
+  "bubbles": 20
+ },
+ {
+  "index": 548,
+  "hash": "0x91fc4c36",
+  "type_tag": "0x80a5ea6e",
+  "mm_hash": "0x648999f4",
+  "name": "mission_touchdown",
+  "scenario_tag": "0x8127000c",
+  "checksum": "0x8b4e0ac7",
+  "bubbles": 20
+ },
+ {
+  "index": 549,
+  "hash": "0xb1b4ef12",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_turing",
+  "scenario_tag": "0x80cb813b",
+  "checksum": "0x5a09e677",
+  "bubbles": 22
+ },
+ {
+  "index": 550,
+  "hash": "0x1e124095",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": null
+ },
+ {
+  "index": 551,
+  "hash": "0x522592b4",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": null
+ },
+ {
+  "index": 552,
+  "hash": "0xeb28ee6c",
+  "type_tag": "0x80a63749",
+  "mm_hash": "0x5ec025c8",
+  "name": "fotl_observatory",
+  "scenario_tag": "0x818133b6",
+  "checksum": "0x91808715",
+  "bubbles": 2
+ },
+ {
+  "index": 553,
+  "hash": "0xd0265862",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "social_fotl",
+  "scenario_tag": "0x8119fee2",
+  "checksum": "0x701ad270",
+  "bubbles": 2
+ },
+ {
+  "index": 554,
+  "hash": "0x8a12be13",
+  "type_tag": "0x80a585a8",
+  "mm_hash": "0x5ec025c8",
+  "name": "fotl_mercury_social",
+  "scenario_tag": "0x81540006",
+  "checksum": "0x9cd88358",
+  "bubbles": 2
+ },
+ {
+  "index": 555,
+  "hash": "0x1583d946",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_oyster",
+  "scenario_tag": "0x80d580a3",
+  "checksum": "0x8669c3e0",
+  "bubbles": 15
+ },
+ {
+  "index": 556,
+  "hash": "0x87a5870e",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_oyster",
+  "scenario_tag": "0x80d580a3",
+  "checksum": "0x8669c3e0",
+  "bubbles": 15
+ },
+ {
+  "index": 557,
+  "hash": "0xb5771394",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_oyster",
+  "scenario_tag": "0x80d580a3",
+  "checksum": "0x8669c3e0",
+  "bubbles": 15
+ },
+ {
+  "index": 558,
+  "hash": "0xd5067d71",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_lobster",
+  "scenario_tag": "0x80feb214",
+  "checksum": "0x59e7a4d5",
+  "bubbles": 29
+ },
+ {
+  "index": 559,
+  "hash": "0x0e787bfb",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_lobster",
+  "scenario_tag": "0x80feb214",
+  "checksum": "0x59e7a4d5",
+  "bubbles": 29
+ },
+ {
+  "index": 560,
+  "hash": "0xcb9b417d",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_lobster",
+  "scenario_tag": "0x80feb214",
+  "checksum": "0x59e7a4d5",
+  "bubbles": 29
+ },
+ {
+  "index": 561,
+  "hash": "0xa1fe3482",
+  "type_tag": "0x80a585aa",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_dolphin_dlc03",
+  "scenario_tag": "0x80cc2219",
+  "checksum": "0x8bcf7252",
+  "bubbles": 22
+ },
+ {
+  "index": 562,
+  "hash": "0xfb3e5c72",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_dolphin_dlc03",
+  "scenario_tag": "0x80cc2219",
+  "checksum": "0x8bcf7252",
+  "bubbles": 22
+ },
+ {
+  "index": 563,
+  "hash": "0xe27544c0",
+  "type_tag": "0x80a601a4",
+  "mm_hash": "0xb9d966e7",
+  "name": "strike_dolphin_dlc03",
+  "scenario_tag": "0x80cc2219",
+  "checksum": "0x8bcf7252",
+  "bubbles": 22
+ },
+ {
+  "index": 564,
+  "hash": "0xfd912996",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_oyster",
+  "scenario_tag": "0x80d580a3",
+  "checksum": "0x8669c3e0",
+  "bubbles": 15
+ },
+ {
+  "index": 565,
+  "hash": "0x45b061c1",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_lobster",
+  "scenario_tag": "0x80feb214",
+  "checksum": "0x59e7a4d5",
+  "bubbles": 29
+ },
+ {
+  "index": 566,
+  "hash": "0x5abe52d2",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_dolphin_dlc03",
+  "scenario_tag": "0x80cc2219",
+  "checksum": "0x8bcf7252",
+  "bubbles": 22
+ },
+ {
+  "index": 567,
+  "hash": "0x6c4402c9",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_oyster",
+  "scenario_tag": "0x80d580a3",
+  "checksum": "0x8669c3e0",
+  "bubbles": 15
+ },
+ {
+  "index": 568,
+  "hash": "0xa6d7368c",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_lobster",
+  "scenario_tag": "0x80feb214",
+  "checksum": "0x59e7a4d5",
+  "bubbles": 29
+ },
+ {
+  "index": 569,
+  "hash": "0xdace87cf",
+  "type_tag": "0x80a653fd",
+  "mm_hash": "0x8d8d4498",
+  "name": "strike_dolphin_dlc03",
+  "scenario_tag": "0x80cc2219",
+  "checksum": "0x8bcf7252",
+  "bubbles": 22
+ },
+ {
+  "index": 570,
+  "hash": "0x22ae733b",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 571,
+  "hash": "0x401882b6",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 572,
+  "hash": "0xa0c368fa",
+  "type_tag": "0x80a585cc",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 573,
+  "hash": "0x0175695b",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 574,
+  "hash": "0x01756958",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 575,
+  "hash": "0x173ba7d1",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 576,
+  "hash": "0x4298416e",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 577,
+  "hash": "0x195e5ac9",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": null
+ },
+ {
+  "index": 578,
+  "hash": "0x080b9e45",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m4_dome_c",
+  "scenario_tag": "0x80cb8089",
+  "checksum": "0xef2923b5",
+  "bubbles": 22
+ },
+ {
+  "index": 579,
+  "hash": "0x5239ab83",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m4_uppercitadel",
+  "scenario_tag": "0x80d4c039",
+  "checksum": "0xaa6d440e",
+  "bubbles": 15
+ },
+ {
+  "index": 580,
+  "hash": "0x0096d920",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m5_strength",
+  "scenario_tag": "0x80d4c050",
+  "checksum": "0x281235cc",
+  "bubbles": 15
+ },
+ {
+  "index": 581,
+  "hash": "0xe9a7652d",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m6_reactor",
+  "scenario_tag": "0x80d4c068",
+  "checksum": "0x170aa185",
+  "bubbles": 15
+ },
+ {
+  "index": 582,
+  "hash": "0xbf28ce08",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m05_vault",
+  "scenario_tag": "0x80fe0055",
+  "checksum": "0xdf35f1d0",
+  "bubbles": 29
+ },
+ {
+  "index": 583,
+  "hash": "0x8d8c56b5",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m06_ketch",
+  "scenario_tag": "0x80fe0079",
+  "checksum": "0xb19a72ee",
+  "bubbles": 29
+ },
+ {
+  "index": 584,
+  "hash": "0x384e0bf2",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m07_northern_tides",
+  "scenario_tag": "0x80fe009c",
+  "checksum": "0x53ca60aa",
+  "bubbles": 29
+ },
+ {
+  "index": 585,
+  "hash": "0xf91111d2",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m03_penthouse",
+  "scenario_tag": "0x80d00031",
+  "checksum": "0x8caab562",
+  "bubbles": 29
+ },
+ {
+  "index": 586,
+  "hash": "0x35d0cadc",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m05_warbase",
+  "scenario_tag": "0x80d00058",
+  "checksum": "0x128fc262",
+  "bubbles": 29
+ },
+ {
+  "index": 587,
+  "hash": "0x9b46c729",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m06_subway",
+  "scenario_tag": "0x80d0007e",
+  "checksum": "0x744b1b35",
+  "bubbles": 29
+ },
+ {
+  "index": 588,
+  "hash": "0x942e1376",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m07_lowergarden",
+  "scenario_tag": "0x80d000a4",
+  "checksum": "0x1208cc7b",
+  "bubbles": 29
+ },
+ {
+  "index": 589,
+  "hash": "0x832b05bb",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m6_rasputin",
+  "scenario_tag": "0x80cb8101",
+  "checksum": "0x1b9d23ef",
+  "bubbles": 22
+ },
+ {
+  "index": 590,
+  "hash": "0x7039cd4a",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m7_selection",
+  "scenario_tag": "0x80d4c0a8",
+  "checksum": "0xf7aa543f",
+  "bubbles": 15
+ },
+ {
+  "index": 591,
+  "hash": "0x72b9ca2c",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pact",
+  "scenario_tag": "0x80cb808d",
+  "checksum": "0xf4217952",
+  "bubbles": 22
+ },
+ {
+  "index": 592,
+  "hash": "0x8759e735",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_traitor",
+  "scenario_tag": "0x80fe006c",
+  "checksum": "0x6de91d58",
+  "bubbles": 29
+ },
+ {
+  "index": 593,
+  "hash": "0xaf1fb473",
+  "type_tag": "0x80a5ea68",
+  "mm_hash": "0x648999f4",
+  "name": "mission_darksnow",
+  "scenario_tag": "0x812a6004",
+  "checksum": "0xb187e0cc",
+  "bubbles": 4
+ },
+ {
+  "index": 594,
+  "hash": "0xe5de777e",
+  "type_tag": "0x80a5ea67",
+  "mm_hash": "0x648999f4",
+  "name": "mission_deja",
+  "scenario_tag": "0x80d4c1f7",
+  "checksum": "0x350e092c",
+  "bubbles": 15
+ },
+ {
+  "index": 595,
+  "hash": "0x379859fa",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_elevator",
+  "scenario_tag": "0x80cb8104",
+  "checksum": "0x34fbf203",
+  "bubbles": 22
+ },
+ {
+  "index": 596,
+  "hash": "0xdacce5d7",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_omen",
+  "scenario_tag": "0x8127006e",
+  "checksum": "0xffe9828b",
+  "bubbles": 20
+ },
+ {
+  "index": 597,
+  "hash": "0xad808ddd",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_souvenir",
+  "scenario_tag": "0x8108e00b",
+  "checksum": "0xc79daac1",
+  "bubbles": 15
+ },
+ {
+  "index": 598,
+  "hash": "0x42871811",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "mission_topknot",
+  "scenario_tag": "0x8127003a",
+  "checksum": "0x56d44fd2",
+  "bubbles": 20
+ },
+ {
+  "index": 599,
+  "hash": "0x8de700af",
+  "type_tag": "0x80a5ea6e",
+  "mm_hash": "0x648999f4",
+  "name": "mission_touchdown",
+  "scenario_tag": "0x8127000c",
+  "checksum": "0x8b4e0ac7",
+  "bubbles": 20
+ },
+ {
+  "index": 600,
+  "hash": "0xb3240d9d",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": "mission_turing",
+  "scenario_tag": "0x80cb813b",
+  "checksum": "0x5a09e677",
+  "bubbles": 22
+ },
+ {
+  "index": 601,
+  "hash": "0x00a10294",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pug",
+  "scenario_tag": "0x8180a008",
+  "checksum": "0xa4029fc2",
+  "bubbles": 2
+ },
+ {
+  "index": 602,
+  "hash": "0x007aeaf6",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_beagle",
+  "scenario_tag": "0x8179e0bf",
+  "checksum": "0x05a2621f",
+  "bubbles": 25
+ },
+ {
+  "index": 603,
+  "hash": "0x4d411d52",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_hound",
+  "scenario_tag": "0x8179e0a4",
+  "checksum": "0x03ab28c1",
+  "bubbles": 25
+ },
+ {
+  "index": 604,
+  "hash": "0xb386c864",
+  "type_tag": "0x80a5ea66",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pitbull",
+  "scenario_tag": "0x80d00214",
+  "checksum": "0x45bae8bc",
+  "bubbles": 29
+ },
+ {
+  "index": 605,
+  "hash": "0x42ec4fd2",
+  "type_tag": "0x80a601a0",
+  "mm_hash": "0x648999f4",
+  "name": "mission_mutt",
+  "scenario_tag": "0x8179e089",
+  "checksum": "0x864cad38",
+  "bubbles": 25
+ },
+ {
+  "index": 606,
+  "hash": "0x720526ed",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m0_5_hangar",
+  "scenario_tag": "0x80cb802b",
+  "checksum": "0x31429b32",
+  "bubbles": 22
+ },
+ {
+  "index": 607,
+  "hash": "0x38100426",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m1_dome_a",
+  "scenario_tag": "0x80cb804b",
+  "checksum": "0x42fe77a5",
+  "bubbles": 22
+ },
+ {
+  "index": 608,
+  "hash": "0xab4c70af",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_cosmo_m2_dome_c",
+  "scenario_tag": "0x80cb806a",
+  "checksum": "0xc7a70681",
+  "bubbles": 22
+ },
+ {
+  "index": 609,
+  "hash": "0xbe47d4b4",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m1_launchtubes",
+  "scenario_tag": "0x80d4c00b",
+  "checksum": "0xde8eb9b4",
+  "bubbles": 15
+ },
+ {
+  "index": 610,
+  "hash": "0xe4b693ee",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_moon_m3_lowercitadel",
+  "scenario_tag": "0x80d4c023",
+  "checksum": "0x5ebccaa0",
+  "bubbles": 15
+ },
+ {
+  "index": 611,
+  "hash": "0xdf88df28",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_bonzo_dlc01",
+  "scenario_tag": "0x80cb8036",
+  "checksum": "0x4db96993",
+  "bubbles": 22
+ },
+ {
+  "index": 612,
+  "hash": "0xc7660915",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_screw_dlc01",
+  "scenario_tag": "0x80d4c098",
+  "checksum": "0x8845d095",
+  "bubbles": 15
+ },
+ {
+  "index": 613,
+  "hash": "0x20cb2e43",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "mission_pursuit",
+  "scenario_tag": "0x80fe001a",
+  "checksum": "0xe4e16974",
+  "bubbles": 29
+ },
+ {
+  "index": 614,
+  "hash": "0xd589cc70",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_infidel",
+  "scenario_tag": "0x80cb80cf",
+  "checksum": "0x7e013513",
+  "bubbles": 22
+ },
+ {
+  "index": 615,
+  "hash": "0xd996e8f7",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "quest_safari",
+  "scenario_tag": "0x80fe00cd",
+  "checksum": "0x0c602a4c",
+  "bubbles": 29
+ },
+ {
+  "index": 616,
+  "hash": "0x4b0d28f2",
+  "type_tag": "0x80a585ce",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m01_engineering",
+  "scenario_tag": "0x80fe000d",
+  "checksum": "0x769a27d4",
+  "bubbles": 29
+ },
+ {
+  "index": 617,
+  "hash": "0x32dee4e9",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_venus_m02_southern_tides",
+  "scenario_tag": "0x80fe0032",
+  "checksum": "0x94120a42",
+  "bubbles": 29
+ },
+ {
+  "index": 618,
+  "hash": "0xac92c9b6",
+  "type_tag": "0x80a585c5",
+  "mm_hash": "0x648999f4",
+  "name": "act_mars_m01_valley",
+  "scenario_tag": "0x80d0000b",
+  "checksum": "0xfaed265c",
+  "bubbles": 29
+ },
+ {
+  "index": 619,
+  "hash": "0xf0b9a0dd",
+  "type_tag": "0x80a585c9",
+  "mm_hash": "0x79cbded5",
+  "name": "venus_raid_1",
+  "scenario_tag": "0x80fe0103",
+  "checksum": "0x9eef05c2",
+  "bubbles": 29
+ },
+ {
+  "index": 620,
+  "hash": "0x8a903625",
+  "type_tag": "0x80a585c9",
+  "mm_hash": "0x736dc439",
+  "name": "moon_raid_1",
+  "scenario_tag": "0x8108e004",
+  "checksum": "0x334523bb",
+  "bubbles": 15
+ },
+ {
+  "index": 621,
+  "hash": "0x3c98ff0b",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0xacae59ea",
+  "name": "raid_epiphany",
+  "scenario_tag": "0x812700b9",
+  "checksum": "0xb07027c7",
+  "bubbles": 20
+ },
+ {
+  "index": 622,
+  "hash": "0x19a3bc56",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0x2abaeb83",
+  "name": "raid_promise",
+  "scenario_tag": "0x8179e00b",
+  "checksum": "0xb298315e",
+  "bubbles": 25
+ },
+ {
+  "index": 623,
+  "hash": "0x33133b22",
+  "type_tag": "0x80a585c9",
+  "mm_hash": "0x79cbded5",
+  "name": "venus_raid_1",
+  "scenario_tag": "0x80fe0103",
+  "checksum": "0x9eef05c2",
+  "bubbles": 29
+ },
+ {
+  "index": 624,
+  "hash": "0xee787c8a",
+  "type_tag": "0x80a585c9",
+  "mm_hash": "0x736dc439",
+  "name": "moon_raid_1",
+  "scenario_tag": "0x8108e004",
+  "checksum": "0x334523bb",
+  "bubbles": 15
+ },
+ {
+  "index": 625,
+  "hash": "0xed28f628",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0xacae59ea",
+  "name": "raid_epiphany",
+  "scenario_tag": "0x812700b9",
+  "checksum": "0xb07027c7",
+  "bubbles": 20
+ },
+ {
+  "index": 626,
+  "hash": "0xc80c4bbf",
+  "type_tag": "0x80a585ca",
+  "mm_hash": "0x2abaeb83",
+  "name": "raid_promise",
+  "scenario_tag": "0x8179e00b",
+  "checksum": "0xb298315e",
+  "bubbles": 25
+ },
+ {
+  "index": 627,
+  "hash": "0xa08518f5",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": null
+ },
+ {
+  "index": 628,
+  "hash": "0xf9392a87",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_reliquary",
+  "scenario_tag": "0x80cb84fa",
+  "checksum": "0x963e7f9d",
+  "bubbles": 22
+ },
+ {
+  "index": 629,
+  "hash": "0xb5e29f18",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_pandora",
+  "scenario_tag": "0x81270086",
+  "checksum": "0xcb7b1491",
+  "bubbles": 20
+ },
+ {
+  "index": 630,
+  "hash": "0xc3613d78",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_overlord",
+  "scenario_tag": "0x8127009f",
+  "checksum": "0xc670a10f",
+  "bubbles": 20
+ },
+ {
+  "index": 631,
+  "hash": "0x109d97c6",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_1_com01",
+  "scenario_tag": "0x80d0020a",
+  "checksum": "0xb8dfcb9c",
+  "bubbles": 29
+ },
+ {
+  "index": 632,
+  "hash": "0x23ffd531",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_2_com01",
+  "scenario_tag": "0x80d00228",
+  "checksum": "0x7881ffd6",
+  "bubbles": 29
+ },
+ {
+  "index": 633,
+  "hash": "0xbdff06b0",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_3_com01",
+  "scenario_tag": "0x80d00248",
+  "checksum": "0x0bf10250",
+  "bubbles": 29
+ },
+ {
+  "index": 634,
+  "hash": "0x5356fa31",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "cosmo_portal_1",
+  "scenario_tag": "0x80cb80a8",
+  "checksum": "0x7bafa9d6",
+  "bubbles": 22
+ },
+ {
+  "index": 635,
+  "hash": "0x5356fa32",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "cosmo_portal_2",
+  "scenario_tag": "0x80cb8120",
+  "checksum": "0x5a15bea9",
+  "bubbles": 22
+ },
+ {
+  "index": 636,
+  "hash": "0xb5a98fcd",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_1",
+  "scenario_tag": "0x80d000cb",
+  "checksum": "0x4abb0741",
+  "bubbles": 29
+ },
+ {
+  "index": 637,
+  "hash": "0xb5a98fce",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_2",
+  "scenario_tag": "0x80d000f1",
+  "checksum": "0xaacbb696",
+  "bubbles": 29
+ },
+ {
+  "index": 638,
+  "hash": "0xb5a98fcf",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "mars_portal_3",
+  "scenario_tag": "0x80d0013b",
+  "checksum": "0x75dc3980",
+  "bubbles": 29
+ },
+ {
+  "index": 639,
+  "hash": "0x360f901d",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "moon_portal_2",
+  "scenario_tag": "0x80d4c07f",
+  "checksum": "0xc5eccdec",
+  "bubbles": 15
+ },
+ {
+  "index": 640,
+  "hash": "0xf6d39d23",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_vampire",
+  "scenario_tag": "0x80d4c0bc",
+  "checksum": "0x5361a7e2",
+  "bubbles": 15
+ },
+ {
+  "index": 641,
+  "hash": "0x2ade06cb",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "venus_portal_1",
+  "scenario_tag": "0x80fe00bf",
+  "checksum": "0x003ba328",
+  "bubbles": 29
+ },
+ {
+  "index": 642,
+  "hash": "0x2ade06c8",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "venus_portal_2",
+  "scenario_tag": "0x80fe00e1",
+  "checksum": "0x87451447",
+  "bubbles": 29
+ },
+ {
+  "index": 643,
+  "hash": "0xc9b5f003",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_kingpin",
+  "scenario_tag": "0x80d4c0c6",
+  "checksum": "0x860eae76",
+  "bubbles": 15
+ },
+ {
+  "index": 644,
+  "hash": "0x724e51b3",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "venus_portal_2_redux",
+  "scenario_tag": "0x80fe0165",
+  "checksum": "0x7125101f",
+  "bubbles": 29
+ },
+ {
+  "index": 645,
+  "hash": "0x7d782e65",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_tracker",
+  "scenario_tag": "0x80fe014b",
+  "checksum": "0x25dae95d",
+  "bubbles": 29
+ },
+ {
+  "index": 646,
+  "hash": "0xb4a78e87",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_oath",
+  "scenario_tag": "0x8179e026",
+  "checksum": "0x3c49f5d2",
+  "bubbles": 25
+ },
+ {
+  "index": 647,
+  "hash": "0x30eab551",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_starfish",
+  "scenario_tag": "0x8179e06e",
+  "checksum": "0x51c14d95",
+  "bubbles": 25
+ },
+ {
+  "index": 648,
+  "hash": "0xbe8d466c",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_turtle_dlc03",
+  "scenario_tag": "0x80d54705",
+  "checksum": "0x6df4aaab",
+  "bubbles": 15
+ },
+ {
+  "index": 649,
+  "hash": "0x187567f3",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_oyster",
+  "scenario_tag": "0x80d580a3",
+  "checksum": "0x8669c3e0",
+  "bubbles": 15
+ },
+ {
+  "index": 650,
+  "hash": "0x0209ee76",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_lobster",
+  "scenario_tag": "0x80feb214",
+  "checksum": "0x59e7a4d5",
+  "bubbles": 29
+ },
+ {
+  "index": 651,
+  "hash": "0xc144c4a1",
+  "type_tag": "0x80a653fe",
+  "mm_hash": "0x148adb33",
+  "name": "strike_dolphin_dlc03",
+  "scenario_tag": "0x80cc2219",
+  "checksum": "0x8bcf7252",
+  "bubbles": 22
+ },
+ {
+  "index": 652,
+  "hash": "0xf1c5af6f",
+  "type_tag": "0xffffffff",
+  "mm_hash": "0x648999f4",
+  "name": null
+ }
+]
