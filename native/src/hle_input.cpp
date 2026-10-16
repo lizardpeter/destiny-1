@@ -43,7 +43,8 @@ static constexpr int32_t kPadHandle = 1;
 
 // D1_AUTOPRESS=<seconds>[:<buttons>]: hold a button for a third of every N-second period
 // (headless testing; long enough to be seen at the low frame rates of software rendering).
-// Buttons cycle through the letters given (x Cross, o Circle, t Triangle, s Square); the
+// Buttons cycle through the letters given (x Cross, o Circle, t Triangle, s Square, p touch
+// pad); the
 // default is Cross only.
 static uint32_t scripted_buttons(uint64_t now_us) {
     static const char* env = getenv("D1_AUTOPRESS");
@@ -63,6 +64,7 @@ static uint32_t scripted_buttons(uint64_t now_us) {
         case 'o': return 0x2000u;
         case 't': return 0x1000u;
         case 's': return 0x8000u;
+        case 'p': return 0x100000u;  // touch pad (the director)
         default: return 0x4000u;
     }
 }
