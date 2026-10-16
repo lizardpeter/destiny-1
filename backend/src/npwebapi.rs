@@ -8,6 +8,11 @@
 //!   written to `<data>/sessions/<id>/<part>` (research: what a joining player reads).
 //! - sessionInvitation `GET /v1/sessions/<id>/sessionData` and `.../changeableSessionData`:
 //!   the stored binary part.
+//! - userProfile `PUT /v1/users/<id>/presence/gameData`: the player's presence game data
+//!   (base64 of the fireteam session data), kept per player.
+//! - userProfile `GET /v1/users/<id>/friendList`: every other player the backend knows, as an
+//!   online friend in Destiny with their presence game data (how a player finds a fireteam to
+//!   join).
 //! - anything else: 200 with `{}` (logged, so new calls show up in backend.log)
 
 use axum::{body::Bytes, extract::Path, http::{HeaderMap, Method, StatusCode}, Json};
@@ -15,7 +20,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
-use tracing::info;
+use tracing::{info, warn};
 
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
@@ -26,6 +31,53 @@ fn sessions() -> &'static Mutex<HashMap<String, HashMap<String, Vec<u8>>>> {
 }
 
 static DATA_DIR: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+
+/// Online id -> presence game data (base64 string as the game sent it).
+fn presence() -> &'static Mutex<HashMap<String, String>> {
+    static P: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    P.get_or_init(Default::default)
+}
+
+/// A player's fireteam session data (78 bytes: host address, id, security key), from the
+/// presence game data they published.
+pub fn session_data(name: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let p = presence().lock().unwrap();
+    base64::engine::general_purpose::STANDARD.decode(p.get(name)?).ok()
+}
+
+fn friend_list(me: &str) -> Value {
+    let p = presence().lock().unwrap();
+    let mut names = crate::account::players();
+    for id in p.keys() {
+        if !names.contains(id) {
+            names.push(id.clone());
+        }
+    }
+    let empty = String::new();
+    let friends: Vec<Value> = names
+        .iter()
+        .filter(|id| id.as_str() != me)
+        .map(|id| (id, p.get(id).unwrap_or(&empty)))
+        .map(|(id, game_data)| {
+            json!({
+                "onlineId": id,
+                "npId": format!("{id}@d1.us"),
+                "region": "us",
+                "avatarUrl": "",
+                "presence": { "primaryInfo": {
+                    "onlineStatus": "online",
+                    "platformInfoList": [{ "platform": "PS4", "onlineStatus": "online" }],
+                    "gameTitleInfo": { "npTitleId": "CUSA00219_00", "titleName": "Destiny" },
+                    "gameStatus": "",
+                    "gameData": game_data,
+                }},
+            })
+        })
+        .collect();
+    let n = friends.len();
+    json!({ "friendList": friends, "start": 0, "size": n, "totalResults": n })
+}
 pub fn init(data_dir: Option<std::path::PathBuf>) {
     let _ = DATA_DIR.set(data_dir);
 }
@@ -99,6 +151,25 @@ pub async fn request(method: Method, Path((group, path)): Path<(String, String)>
             let id = p.trim_start_matches("/v1/sessions/").trim_end_matches("/changeableSessionData").to_string();
             store(&id, vec![("changeable-session-data".into(), body.to_vec())]);
             (StatusCode::OK, Json(json!({})))
+        }
+        ("userProfile", "PUT", p) if p.starts_with("/v1/users/") && p.ends_with("/presence/gameData") => {
+            let user = p.trim_start_matches("/v1/users/").trim_end_matches("/presence/gameData").to_string();
+            // The game sends the JSON padded with NULs/whitespace to its buffer size.
+            let end = body.iter().rposition(|&b| b != 0 && !b.is_ascii_whitespace()).map_or(0, |i| i + 1);
+            match serde_json::from_slice::<Value>(&body[..end]).ok().and_then(|v| v["gameData"].as_str().map(str::to_string)) {
+                Some(gd) => {
+                    info!("npwebapi: presence game data for {user} ({} chars)", gd.len());
+                    presence().lock().unwrap().insert(user, gd);
+                }
+                None => warn!("npwebapi: unparsable presence game data for {user}"),
+            }
+            (StatusCode::OK, Json(json!({})))
+        }
+        ("userProfile", "GET", p) if p.starts_with("/v1/users/") && p.contains("/friendList") => {
+            let user = p.trim_start_matches("/v1/users/").split('/').next().unwrap_or("").to_string();
+            let v = friend_list(&user);
+            info!("npwebapi: friend list for {user}: {}", v["totalResults"]);
+            (StatusCode::OK, Json(v))
         }
         _ => (StatusCode::OK, Json(json!({}))),
     }

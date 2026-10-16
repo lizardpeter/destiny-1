@@ -676,7 +676,69 @@ pub fn peer_baseline() -> FamilyUpdate {
 /// objects for get an empty baseline (the client logs "object-count of zero" but marks the
 /// family live, which is what the peer-subscription check waits for).
 pub fn family_baseline(family: u32, root: i64) -> Option<FamilyUpdate> {
+    // Another player's account root (a friend subscribing): build it as that player.
+    let off = root.wrapping_sub(ACCOUNT_ID_BASE);
+    if off != crate::account::id_offset() && off & 0xFFFF_FFFF == 0 && off >= 0 {
+        let players = crate::account::players();
+        if let Some(name) = players.get((off >> 32) as usize) {
+            let name = name.clone();
+            return crate::account::as_player(&name, || own_family_baseline(family, root));
+        }
+    }
+    own_family_baseline(family, root)
+}
+
+/// Family 7: the player's network session (what a friend's join manager reads after the
+/// roster's "join"). Slot 0 0x8080192C {soid, id of the slot-1 object}; slot 1 0x80801899 {soid, 0x808018FE
+/// {bytes[<=128] (0x808043BC: u8 length, bytes) = the 0x4E-byte fireteam session data (the
+/// PSN session-data / presence blob: host address, id, security key), u64 network
+/// compatibility value (0x5001; the joiner compares it with its own, 0x78C210)}}.
+pub const FAMILY_SESSION: u32 = 7;
+
+pub fn session_baseline() -> FamilyUpdate {
+    use Value::*;
+    // the 0x4E-byte session data (0x2E94F0 copies it only at exactly that length)
+    let sid = crate::npwebapi::session_data(&crate::account::current()).filter(|d| d.len() == 0x4E);
+    let net_version = crate::account::with(|a| a.net_version).unwrap_or(0x5001) as i64;
+    // slot 0 {soid, id of the slot-1 session object} (0x57AA70 follows it; 0 = no session)
+    let session_soid = account_id() + 7;
+    let mut objects = vec![Object {
+        ty: "0x8080192c",
+        soid: account_id(),
+        value: Struct(vec![Some(Int(account_id())), Some(Int(if sid.is_some() { session_soid } else { 0 }))]),
+    }];
+    if let Some(sid) = sid {
+        let bytes: Vec<Option<Value>> = sid.iter().map(|&b| Some(Int(b as i64))).collect();
+        let text = Struct(vec![Some(Int(bytes.len() as i64)), Some(Array(bytes))]);
+        objects.push(Object {
+            ty: "0x80801899",
+            soid: session_soid,
+            value: Struct(vec![Some(Int(session_soid)), Some(Struct(vec![Some(text), Some(Int(net_version))]))]),
+        });
+    }
+    FamilyUpdate { family: FAMILY_SESSION, root: account_id(), version: crate::account::next_version(FAMILY_SESSION), flags: 1, objects }
+}
+
+/// Family 2: the player's activity status (read by a friend's join manager, 0x580840 /
+/// 0x57A970). Slot 0 0x808018B7 {soid, id of the slot-1 object, ...}; slot 1 0x80801810
+/// {soid, i16 @8, i16 @10 (activity indices the join checks when both are set), i8, ...}.
+/// For now both indices are -1 (unknown), which the join manager skips.
+pub const FAMILY_STATUS: u32 = 2;
+
+pub fn status_baseline() -> FamilyUpdate {
+    use Value::*;
+    let status_soid = account_id() + 2;
+    let objects = vec![
+        Object { ty: "0x808018b7", soid: account_id(), value: Struct(vec![Some(Int(account_id())), Some(Int(status_soid))]) },
+        Object { ty: "0x80801810", soid: status_soid, value: Struct(vec![Some(Int(status_soid)), Some(Int(-1)), Some(Int(-1))]) },
+    ];
+    FamilyUpdate { family: FAMILY_STATUS, root: account_id(), version: crate::account::next_version(FAMILY_STATUS), flags: 1, objects }
+}
+
+fn own_family_baseline(family: u32, root: i64) -> Option<FamilyUpdate> {
     Some(match family {
+        FAMILY_STATUS if root == account_id() => status_baseline(),
+        FAMILY_SESSION if root == account_id() => session_baseline(),
         FAMILY_ACCOUNT if root == account_id() => account_baseline(),
         FAMILY_PROFILE if root == account_id() => profile_baseline(),
         FAMILY_PEER if root == account_id() => peer_baseline(),

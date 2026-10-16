@@ -30,6 +30,15 @@ pub struct Account {
     /// last version sent per family type (queuez versions must keep increasing)
     #[serde(default)]
     pub versions: HashMap<u32, i32>,
+    /// The player's current network session id as reported to Xetrov (request kind 6,
+    /// field 43.1, e.g. "FAK_..._000001@orb@<name>@02D100000001"); served to friends in
+    /// family 7 so they can join.
+    #[serde(default, skip_serializing)]
+    pub session_id: Option<String>,
+    /// Network compatibility value from the same report (field 43.7; 0x5001 in 01.33), which a
+    /// joining friend compares with its own (0x78C210): family 7 slot 1 +0x90.
+    #[serde(default, skip_serializing)]
+    pub net_version: Option<u64>,
 }
 
 struct Store {
@@ -79,7 +88,23 @@ fn load(s: &Store, slot: usize) -> Account {
 
 /// The current player's online id ("" when unknown).
 pub fn current() -> String {
+    if let Some(n) = OVERRIDE.with(|o| o.borrow().clone()) {
+        return n;
+    }
     PLAYER.try_with(|p| p.borrow().clone()).ok().flatten().unwrap_or_else(|| DEFAULT_PLAYER.to_string())
+}
+
+thread_local! {
+    static OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Run `f` as another player (synchronous code only): e.g. building that player's families
+/// for a friend who subscribed to them.
+pub fn as_player<R>(name: &str, f: impl FnOnce() -> R) -> R {
+    let prev = OVERRIDE.with(|o| o.replace(Some(name.to_string())));
+    let r = f();
+    OVERRIDE.with(|o| *o.borrow_mut() = prev);
+    r
 }
 
 /// Name the player of the current BAP connection.
@@ -106,6 +131,12 @@ pub fn slot_of(name: &str) -> usize {
     }
     info!("account: new player {name:?} -> slot {i}");
     i
+}
+
+/// Every player the backend knows (slot order).
+pub fn players() -> Vec<String> {
+    let g = STORE.lock().unwrap();
+    g.as_ref().map(|s| s.slots.clone()).unwrap_or_default()
 }
 
 /// Id offset of the current player's slot.

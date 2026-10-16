@@ -146,6 +146,7 @@ using ZoomAxesFn = D1_SYSV void (*)(int32_t unit, float* yaw, float* pitch);
 static PlayerControlFn g_pc_orig = nullptr;
 static void trace_cameras();
 static void trace_references();
+static void roster_tick();
 static std::atomic<int32_t> g_spawn_entity{-1};
 static int client_references(uint64_t b, int type, uint8_t** out, int max);
 static int32_t g_mouse_test_dx = 0, g_mouse_test_dy = 0;  // D1_MOUSE_TEST=dx,dy (headless)
@@ -155,6 +156,7 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     if (player != 0 || !action) return;
     trace_cameras();
     trace_references();
+    roster_tick();
     if (getenv("D1_TRACE_SPAWN")) {  // research: why the local player gets no unit
         static auto next = std::chrono::steady_clock::now();
         if (std::chrono::steady_clock::now() >= next) {
@@ -620,6 +622,91 @@ static void trace_references() {
     }
 }
 
+// Investment roster (*0x26BC448: count @+0x20, 0x68-byte records from +0x30; a record starts
+// with the player's 0x30-byte roster identity, compared by 0x2B82D0). D1_TRACE_ROSTER (research)
+// dumps it every 10 s in the world; D1_JOIN_TEST=<secs> issues the roster's "join" command
+// (0x579EA0(join manager 0x57A220(), identity, 1, 0, 0), as the contact widget's join action
+// 0xA2DC20 does) for the first record that is not the local player, <secs> after player control.
+static void roster_tick() {
+    static const bool trace = getenv("D1_TRACE_ROSTER") != nullptr;
+    static const int join_after = getenv("D1_JOIN_TEST") ? atoi(getenv("D1_JOIN_TEST")) : -1;
+    if (!trace && join_after < 0) return;
+    static const auto start = std::chrono::steady_clock::now();
+    static auto next = start;
+    static bool joined = false;
+    const auto now = std::chrono::steady_clock::now();
+    const uint64_t b = rt().modules[0].base;
+    const uint8_t* r = *reinterpret_cast<uint8_t* const*>(b + 0x26BC448);
+    if (!r) return;
+    const int32_t n = *reinterpret_cast<const int32_t*>(r + 0x20);
+    if (trace && now >= next) {
+        next = now + std::chrono::seconds(10);
+        using JoinMgrFn = D1_SYSV uint64_t (*)();
+        const uint32_t* jm = reinterpret_cast<const uint32_t*>(reinterpret_cast<JoinMgrFn>(b + 0x57A220)());
+        if (jm) log("join manager: state %u flags %08x target soid %08x%08x | %08x %08x %08x %08x", jm[0], jm[1], jm[3], jm[2],
+                    jm[0x24], jm[0x25], jm[0x26], jm[0x27]);
+        log("roster: %d records", n);
+        for (int32_t i = 0; i < n && i < 16; ++i) {
+            const uint32_t* q = reinterpret_cast<const uint32_t*>(r + 0x30 + 0x68 * i);
+            char line[400];
+            int k = std::snprintf(line, sizeof line, "roster: [%d]", i);
+            for (int w = 0; w < 26 && k < 380; ++w) k += std::snprintf(line + k, sizeof line - k, " %08x", q[w]);
+            log("%s", line);
+        }
+    }
+    if (join_after >= 0 && !joined && now - start > std::chrono::seconds(join_after) && n > 1) {
+        joined = true;
+        using JoinMgrFn = D1_SYSV uint64_t (*)();
+        using JoinFn = D1_SYSV void (*)(uint64_t, const void*, uint8_t, uint8_t, uint64_t);
+        const uint64_t mgr = reinterpret_cast<JoinMgrFn>(b + 0x57A220)();
+        // the first record whose name (record +0, up to '@') is not ours
+        const std::string me = settings().name;
+        for (int32_t i = 0; i < n; ++i) {
+            const char* name = reinterpret_cast<const char*>(r + 0x30 + 0x68 * i);
+            std::string nm(name, strnlen(name, 32));
+            nm = nm.substr(0, nm.find('@'));
+            if (nm == me) continue;
+            log("join test: joining roster record %d (%s), join manager %#llx", i, nm.c_str(), (unsigned long long)mgr);
+            // what 0x579EA0 does, with the insert's result: element 0x24 {identity[0x30], u8 1,
+            // u8 0, u64 0}, payload type *0x2918220
+            alignas(16) uint8_t el[0x40] = {};
+            std::memcpy(el, r + 0x30 + 0x68 * i, 0x30);
+            el[0x30] = 1;
+            using InsertFn = D1_SYSV bool (*)(int32_t, uint32_t, const void*);
+            const uint32_t ty = *reinterpret_cast<const uint32_t*>(b + 0x2918220);
+            using ValidFn = D1_SYSV bool (*)(const void*);
+            const bool valid = reinterpret_cast<ValidFn>(b + 0x2B8450)(el);
+            const bool ok = reinterpret_cast<InsertFn>(b + 0x300230)(0x24, ty, el);
+            log("join test: identity valid %d, queue insert (type %#x) -> %d", valid, ty, ok);
+            (void)mgr;
+            (void)sizeof(JoinFn);
+            break;
+        }
+    }
+}
+
+// Join manager "target not joinable" report (0x57B160(manager, &reason bits)): log the bits
+// the joinability check (0x955EF0) returned (research, with D1_JOIN_TEST).
+using JoinReasonFn = D1_SYSV void (*)(void*, const uint32_t*);
+static JoinReasonFn g_join_reason_orig = nullptr;
+static D1_SYSV void join_reason_hook(void* mgr, const uint32_t* bits) {
+    log("join: target not joinable, reason bits %#x", bits ? *bits : 0);
+    g_join_reason_orig(mgr, bits);
+}
+
+// UI error / notification (0x950620(ui, &message id, ?, ?)): the join manager reports
+// failures this way (message ids DAT_026BC300..0x26BC31C). Logged with D1_JOIN_TEST.
+using UiNotifyFn = D1_SYSV void (*)(void*, const uint32_t*, uint32_t, uint32_t);
+static UiNotifyFn g_ui_notify_orig = nullptr;
+static D1_SYSV void ui_notify_hook(void* ui, const uint32_t* msg, uint32_t a, uint32_t c) {
+    const uint64_t b = rt().modules[0].base;
+    int which = -1;
+    for (int i = 0; i <= 0x1C; i += 4)
+        if (msg && *msg == *reinterpret_cast<const uint32_t*>(b + 0x26BC300 + i)) which = 0x26BC300 + i;
+    log("ui notify: message %08x (%s%x) %u %u", msg ? *msg : 0, which >= 0 ? "join manager DAT_" : "", which >= 0 ? which : 0, a, c);
+    g_ui_notify_orig(ui, msg, a, c);
+}
+
 static void publish_fireteam(int32_t entity) {
     const uint64_t b = rt().modules[0].base;
     const uint64_t arr = *reinterpret_cast<uint64_t*>(b + 0x2689588);
@@ -935,6 +1022,10 @@ void install_game_hooks() {
     }
     if (getenv("D1_TRACE_CAMERA"))
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
+    if (getenv("D1_JOIN_TEST"))
+        g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    if (getenv("D1_JOIN_TEST"))
+        g_join_reason_orig = reinterpret_cast<JoinReasonFn>(hook_function(exe.base + 0x57B160, reinterpret_cast<const void*>(&join_reason_hook)));
     if (getenv("D1_TRACE_CINE") || getenv("D1_ALLOW_LOADING_CINE"))
         g_cine_orig = reinterpret_cast<CineFn>(hook_function(exe.base + 0x766750, reinterpret_cast<const void*>(&cine_suppressed_hook)));
     if (const char* b = getenv("D1_BYPASS"); b && std::strstr(b, "transport")) {

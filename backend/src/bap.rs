@@ -460,9 +460,23 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 let count = if payload.len() >= 4 { u16::from_be_bytes([payload[0], payload[1]]) } else { 0 };
                 let to = payload.get(3).copied().unwrap_or(0);
                 info!("bap: account id translation ({count} ids, {:#x} -> {to:#x})", payload.get(2).copied().unwrap_or(0));
+                info!("bap: translation request {}", pb::hex(payload));
                 if to == 0xff {
-                    for _ in 0..count {
-                        out.extend_from_slice(&invest::account_id().to_be_bytes());
+                    // Each platform id record names a PSN online id: map it to that player's
+                    // account (slot n: base + n << 32), in the order the names appear.
+                    let mut found: Vec<(usize, i64)> = crate::account::players()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(slot, name)| {
+                            payload.windows(name.len()).position(|w| w == name.as_bytes())
+                                .map(|at| (at, invest::ACCOUNT_ID_BASE + ((slot as i64) << 32)))
+                        })
+                        .collect();
+                    found.sort();
+                    for i in 0..count as usize {
+                        let id = found.get(i).map(|f| f.1).unwrap_or_else(invest::account_id);
+                        info!("bap: translation {i} -> {id:#x}");
+                        out.extend_from_slice(&id.to_be_bytes());
                     }
                 }
                 send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &out)).await?;
@@ -508,8 +522,29 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                     info!("bap: pushed family {} baseline ({} bytes)", invest::FAMILY_PROFILE, n.len());
                 }
             }
-            _ => warn!("bap[{role:?}]: {enc}message {} ({kind}) seq {sequence} ({} bytes, unhandled): {}\n{}", name(kind), payload.len(),
-                       pb::hex(&payload[..payload.len().min(256)]), pb::dump(payload, 2)),
+            _ => {
+                // xetrov request kind 6 (field 4: {1 kind, 2 report}): report field 43 =
+                // {1 session id, 2 BAP address, 4 account, 5 character, ...}
+                if kind == 171 {
+                    let report = pb::first_bytes(payload, 4)
+                        .and_then(|r| pb::first_bytes(&r, 2))
+                        .and_then(|r| pb::first_bytes(&r, 43));
+                    if let Some(r) = report {
+                        let sid = pb::first_bytes(&r, 1).and_then(|b| String::from_utf8(b).ok());
+                        let ver = pb::parse(&r).and_then(|f| f.into_iter().find_map(|(n, v)| match v {
+                            pb::Val::Varint(x) if n == 7 => Some(x),
+                            _ => None,
+                        }));
+                        info!("bap: xetrov: {} is in session {sid:?} (net version {ver:?})", crate::account::current());
+                        crate::account::with(|a| {
+                            a.session_id = sid;
+                            a.net_version = ver;
+                        });
+                    }
+                }
+                warn!("bap[{role:?}]: {enc}message {} ({kind}) seq {sequence} ({} bytes, unhandled): {}\n{}", name(kind), payload.len(),
+                      pb::hex(&payload[..payload.len().min(256)]), pb::dump(payload, 2))
+            }
         }
     }
 }
