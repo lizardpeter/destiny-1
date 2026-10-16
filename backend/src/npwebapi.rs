@@ -295,6 +295,9 @@ pub async fn request(method: Method, Path((group, path)): Path<(String, String)>
         }
         ("userProfile", "GET", p) if p.starts_with("/v1/users/") && p.contains("/friendList") => {
             let user = p.trim_start_matches("/v1/users/").split('/').next().unwrap_or("").to_string();
+            // the asking player becomes known right away (not only once its BAP connection
+            // comes up), so a friend who signs in a moment later already lists it
+            crate::account::slot_of(&user);
             let v = friend_list(&user);
             info!("npwebapi: friend list for {user}: {}", v["totalResults"]);
             json_reply(StatusCode::OK, v)

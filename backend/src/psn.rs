@@ -27,6 +27,10 @@ pub async fn oauth_token(headers: HeaderMap, body: Bytes) -> Json<Value> {
         code,
         headers.get("host").and_then(|h| h.to_str().ok()).unwrap_or("?")
     );
+    // a player is known (a friend of every other) from its sign-in on
+    if let Some(name) = code.strip_prefix("D1NATIVE-").filter(|n| *n != "PLACEHOLDER" && !n.is_empty()) {
+        crate::account::slot_of(name);
+    }
     // A JWT-shaped id_token ("header.payload.signature"); nothing verifies the signature.
     let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let header = b64.encode(br#"{"alg":"none","typ":"JWT"}"#);
