@@ -72,8 +72,8 @@ static uint32_t scripted_buttons(uint64_t now_us) {
 }
 
 // D1_STATE_PRESS=<state>:<letter>@<secs>,<letter>@<secs>,... (headless testing): once
-// the game reaches that state, press each button (letters as for D1_AUTOPRESS) for half a
-// second at the given time, once. E.g. setup:orbit:o@5,p@10 dismisses a screen in orbit, then
+// the game reaches that state, press each button (letters as for D1_AUTOPRESS) for two
+// seconds (several frames even with software rendering) at the given time, once. E.g. setup:orbit:o@5,p@10 dismisses a screen in orbit, then
 // opens the director.
 static uint32_t state_buttons(uint64_t now_us) {
     static const char* env = getenv("D1_STATE_PRESS");
@@ -102,9 +102,14 @@ static uint32_t state_buttons(uint64_t now_us) {
         return 0;
     }
     uint32_t b = 0;
-    for (auto& [c, at] : presses)
-        if (now_us - since >= at && now_us - since < at + 500000)
+    static size_t announced = 0;
+    for (size_t i = 0; i < presses.size(); ++i) {
+        auto& [c, at] = presses[i];
+        if (now_us - since >= at && now_us - since < at + 2000000) {
             b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u : 0x4000u;
+            if (announced <= i) announced = i + 1, log("input: state press '%c' at %.0f s", c, at / 1e6);
+        }
+    }
     return b;
 }
 
