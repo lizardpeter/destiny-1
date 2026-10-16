@@ -1258,3 +1258,16 @@ channel fallback, not an activity host transport.
 
 Next lead: what the client does with a host incident (element 0x19 apply) - incidents have
 cinematic, sequence, resurrection and insertion-point metadata kinds.
+
+- Host incidents (element 0x19, apply 0xBB26A0 -> 0x2A20C0) go to the incident game system
+  (vtable +0x98): announcements / heat / rewards, not cinematics.
+- The client has no phase, script-object or encounter-script classes (RTTI): the mission
+  logic and the host-spawned objects' code existed only in the activity host.
+- Membership (0x808009ED) does not serialize the host id (+0x5020); "the AH has not
+  acknowledged this" is not fixable through membership.
+
+Where this leaves the activity host: its inputs are known (sensors, incidents); the client
+systems a mission drives are present and reachable through the simulation queue (cinematic
+object/start-stop 0x37/0x39, player resurrection 0x52, ghost dialog / transmat 0x40,
+objectives, slice-set transitions); the original transport for host-spawned entities is not
+found (no UDP to the host; possibly the NAT relay channel + replication protocol).
