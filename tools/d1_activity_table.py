@@ -11,8 +11,9 @@ Inputs:
 
 For each scenario name the activity tag (class 0x808008BA, 72 bytes) has its
 `:scenario_client` child (class 0x80800616) at +0x40. The scenario tag holds the activity
-checksum at +0xC and the bubble (zone) count at +0x48; the host's instance state must carry
-both (0x80800E76 +0x5C / +0x10). The child link is used rather than the named entry
+checksums at +0xC (private instance) and +0x10 (public instance) and the bubble (zone) count
+at +0x48; the host's instance state must carry both (0x80800E76 +0x5C / +0x10). The client
+compares +0x5C with the checksum of its activity client's kind (0x299B00: +0xC + kind * 4). The child link is used rather than the named entry
 `<name>:scenario_client`, which in later package generations can name a reused entry.
 
 Usage: d1_activity_table.py <activities.log> <named.json> <packages dir> <oodle runtime> <out.json>
@@ -77,6 +78,7 @@ def main() -> None:
                 child = struct.unpack_from("<I", act, 0x40)[0]
                 sc = read_tag(child)
                 row.update(scenario_tag=f"0x{child:08x}", checksum=f"0x{struct.unpack_from('<I', sc, 0xC)[0]:08x}",
+                           checksum_public=f"0x{struct.unpack_from('<I', sc, 0x10)[0]:08x}",
                            bubbles=struct.unpack_from("<I", sc, 0x48)[0])
             except Exception as e:  # missing package generation, unreadable block, ...
                 row["error"] = str(e)

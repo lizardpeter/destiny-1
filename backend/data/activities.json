@@ -14,6 +14,7 @@
   "name": "city_tower_default1",
   "scenario_tag": "0x80c7a005",
   "checksum": "0x24340499",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -24,6 +25,7 @@
   "name": "city_tower_queen",
   "scenario_tag": "0x80c7a00b",
   "checksum": "0x215f5d5d",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -34,6 +36,7 @@
   "name": "city_tower_harvest",
   "scenario_tag": "0x80c7a013",
   "checksum": "0x2c576158",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -44,6 +47,7 @@
   "name": "city_tower_srl",
   "scenario_tag": "0x80c7a0a2",
   "checksum": "0x81c162e2",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -54,6 +58,7 @@
   "name": "city_tower_fol",
   "scenario_tag": "0x80c7a0a7",
   "checksum": "0x89b4e9b0",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -64,6 +69,7 @@
   "name": "city_tower_crimson",
   "scenario_tag": "0x80c7a0f2",
   "checksum": "0x35c4bd4e",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -74,6 +80,7 @@
   "name": "city_tower_chalice",
   "scenario_tag": "0x80c7a9e8",
   "checksum": "0x46c5523b",
+  "checksum_public": "0xd067231d",
   "bubbles": 5
  },
  {
@@ -84,6 +91,7 @@
   "name": "cosmo_patrols_1",
   "scenario_tag": "0x80cb8036",
   "checksum": "0x4db96993",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -94,6 +102,7 @@
   "name": "moon_patrols_1",
   "scenario_tag": "0x80d4c098",
   "checksum": "0x8845d095",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -104,6 +113,7 @@
   "name": "venus_patrols_1",
   "scenario_tag": "0x80fe001a",
   "checksum": "0xe4e16974",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -114,6 +124,7 @@
   "name": "mars_patrols_1",
   "scenario_tag": "0x80d00042",
   "checksum": "0x3997675b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -124,6 +135,7 @@
   "name": "venus_raid_1",
   "scenario_tag": "0x80fe0103",
   "checksum": "0x9eef05c2",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -134,6 +146,7 @@
   "name": "venus_raid_1",
   "scenario_tag": "0x80fe0103",
   "checksum": "0x9eef05c2",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -144,6 +157,7 @@
   "name": "venus_raid_1",
   "scenario_tag": "0x80fe0103",
   "checksum": "0x9eef05c2",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -154,6 +168,7 @@
   "name": "moon_raid_1",
   "scenario_tag": "0x8108e004",
   "checksum": "0x334523bb",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -164,6 +179,7 @@
   "name": "moon_raid_1",
   "scenario_tag": "0x8108e004",
   "checksum": "0x334523bb",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -174,6 +190,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -184,6 +201,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -194,6 +212,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -204,6 +223,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -214,6 +234,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -224,6 +245,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -234,6 +256,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -244,6 +267,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -254,6 +278,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -264,6 +289,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -274,6 +300,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -284,6 +311,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -294,6 +322,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -304,6 +333,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -314,6 +344,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -324,6 +355,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -334,6 +366,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -344,6 +377,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -354,6 +388,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -364,6 +399,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -374,6 +410,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -384,6 +421,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -394,6 +432,7 @@
   "name": "social_landing",
   "scenario_tag": "0x81194008",
   "checksum": "0xeedb4844",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -404,6 +443,7 @@
   "name": "mercury_social",
   "scenario_tag": "0x8154e003",
   "checksum": "0xf673f462",
+  "checksum_public": "0x72730527",
   "bubbles": 2
  },
  {
@@ -414,6 +454,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -424,6 +465,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -434,6 +476,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -444,6 +487,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -454,6 +498,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -464,6 +509,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -474,6 +520,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -484,6 +531,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -494,6 +542,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -504,6 +553,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -514,6 +564,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -524,6 +575,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -534,6 +586,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -544,6 +597,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -554,6 +608,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -564,6 +619,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -574,6 +630,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -584,6 +641,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -594,6 +652,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -604,6 +663,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -614,6 +674,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -624,6 +685,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -634,6 +696,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -644,6 +707,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -654,6 +718,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -664,6 +729,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -674,6 +740,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -684,6 +751,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -694,6 +762,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -704,6 +773,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -721,6 +791,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -731,6 +802,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -741,6 +813,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -751,6 +824,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -761,6 +835,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -771,6 +846,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -781,6 +857,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -791,6 +868,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -801,6 +879,7 @@
   "name": "mars_portal_1",
   "scenario_tag": "0x80d000cb",
   "checksum": "0x4abb0741",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -811,6 +890,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -821,6 +901,7 @@
   "name": "mars_portal_3",
   "scenario_tag": "0x80d0013b",
   "checksum": "0x75dc3980",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -831,6 +912,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -841,6 +923,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -851,6 +934,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -861,6 +945,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -871,6 +956,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -881,6 +967,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -891,6 +978,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -901,6 +989,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -911,6 +1000,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -921,6 +1011,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -931,6 +1022,7 @@
   "name": "patrol_deltas_com01",
   "scenario_tag": "0x80cb87eb",
   "checksum": "0x6a556a7f",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -941,6 +1033,7 @@
   "name": "hiveship_patrols_1",
   "scenario_tag": "0x812700ce",
   "checksum": "0x88065f34",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -951,6 +1044,7 @@
   "name": "patrol_plains_com01",
   "scenario_tag": "0x80d00042",
   "checksum": "0x3997675b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -961,6 +1055,7 @@
   "name": "patrol_accel_com01",
   "scenario_tag": "0x80d4c150",
   "checksum": "0xbcddf0c2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -971,6 +1066,7 @@
   "name": "patrol_shat_com01",
   "scenario_tag": "0x80fe016c",
   "checksum": "0x56d7363e",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1212,6 +1308,7 @@
   "name": "pvp_anomaly",
   "scenario_tag": "0x80d8e003",
   "checksum": "0x3e992d68",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1222,6 +1319,7 @@
   "name": "pvp_cabal_camp",
   "scenario_tag": "0x80dc4003",
   "checksum": "0xe8b35377",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1232,6 +1330,7 @@
   "name": "pvp_city_defense",
   "scenario_tag": "0x80dfa003",
   "checksum": "0x929d89ed",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1242,6 +1341,7 @@
   "name": "pvp_colony_ship",
   "scenario_tag": "0x80e30003",
   "checksum": "0xbb6e94e9",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1252,6 +1352,7 @@
   "name": "pvp_factory",
   "scenario_tag": "0x80e66003",
   "checksum": "0x84ccda02",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1262,6 +1363,7 @@
   "name": "pvp_greenhouse",
   "scenario_tag": "0x80e9c003",
   "checksum": "0x9f0f6baa",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1272,6 +1374,7 @@
   "name": "pvp_marsbattle",
   "scenario_tag": "0x80ed2003",
   "checksum": "0x51a4b36d",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1282,6 +1385,7 @@
   "name": "pvp_moonbase",
   "scenario_tag": "0x80f08003",
   "checksum": "0x5966e491",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1292,6 +1396,7 @@
   "name": "pvp_rooftops",
   "scenario_tag": "0x80f3e003",
   "checksum": "0x259594a9",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1302,6 +1407,7 @@
   "name": "pvp_venus_hcc",
   "scenario_tag": "0x80f74003",
   "checksum": "0x51c597dc",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1312,6 +1418,7 @@
   "name": "pvp_vex_tube",
   "scenario_tag": "0x80faa003",
   "checksum": "0xe0dc35c4",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1322,6 +1429,7 @@
   "name": "pvp_arena_hive",
   "scenario_tag": "0x810c4003",
   "checksum": "0xef5ee9b9",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1332,6 +1440,7 @@
   "name": "pvp_cosmobattle",
   "scenario_tag": "0x8112c003",
   "checksum": "0xa1b031c1",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1342,6 +1451,7 @@
   "name": "pvp_longshot",
   "scenario_tag": "0x810f8003",
   "checksum": "0x958503b2",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1352,6 +1462,7 @@
   "name": "pvp_den",
   "scenario_tag": "0x8123c003",
   "checksum": "0x48f05329",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1362,6 +1473,7 @@
   "name": "pvp_oasis",
   "scenario_tag": "0x811d4003",
   "checksum": "0x02969941",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1372,6 +1484,7 @@
   "name": "pvp_refinery",
   "scenario_tag": "0x81208003",
   "checksum": "0xbd18d600",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1382,6 +1495,7 @@
   "name": "pvp_wilderness_town",
   "scenario_tag": "0x81160003",
   "checksum": "0xd3a7be26",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1392,6 +1506,7 @@
   "name": "pvp_breach",
   "scenario_tag": "0x81302003",
   "checksum": "0xe7e752a8",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1402,6 +1517,7 @@
   "name": "pvp_ketch",
   "scenario_tag": "0x81406003",
   "checksum": "0xad880b1b",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1412,6 +1528,7 @@
   "name": "pvp_eq",
   "scenario_tag": "0x8144e003",
   "checksum": "0x9e34527a",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1422,6 +1539,7 @@
   "name": "pvp_dos",
   "scenario_tag": "0x81482003",
   "checksum": "0x67df392a",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1432,6 +1550,7 @@
   "name": "pvp_city_battleground",
   "scenario_tag": "0x81336003",
   "checksum": "0x3b2eb7cf",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1442,6 +1561,7 @@
   "name": "pvp_hive_cell",
   "scenario_tag": "0x8139e003",
   "checksum": "0x7f9f10f0",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1452,6 +1572,7 @@
   "name": "pvp_outskirts",
   "scenario_tag": "0x813d2003",
   "checksum": "0x10980d74",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1462,6 +1583,7 @@
   "name": "pvp_vertigo",
   "scenario_tag": "0x8136a003",
   "checksum": "0x2b569342",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1472,6 +1594,7 @@
   "name": "pvp_tomb",
   "scenario_tag": "0x8172e003",
   "checksum": "0xf2d6d2bb",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1482,6 +1605,7 @@
   "name": "pvp_srl_mars01",
   "scenario_tag": "0x81964003",
   "checksum": "0xadb73f8d",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1492,6 +1616,7 @@
   "name": "pvp_srl_venus01",
   "scenario_tag": "0x8192c003",
   "checksum": "0x3d16842e",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -1502,6 +1627,7 @@
   "name": "raid_epiphany",
   "scenario_tag": "0x812700b9",
   "checksum": "0xb07027c7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -1512,6 +1638,7 @@
   "name": "raid_epiphany",
   "scenario_tag": "0x812700b9",
   "checksum": "0xb07027c7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -1522,6 +1649,7 @@
   "name": "mercury_social",
   "scenario_tag": "0x8154e003",
   "checksum": "0xf673f462",
+  "checksum_public": "0x72730527",
   "bubbles": 2
  },
  {
@@ -1539,6 +1667,7 @@
   "name": "act_cosmo_m0_highway",
   "scenario_tag": "0x80cb800d",
   "checksum": "0x8fe07299",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1549,6 +1678,7 @@
   "name": "cine_reveal",
   "scenario_tag": "0x80c3e00a",
   "checksum": "0x14cda256",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -1559,6 +1689,7 @@
   "name": "act_cosmo_m0_5_hangar",
   "scenario_tag": "0x80cb802b",
   "checksum": "0x31429b32",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1569,6 +1700,7 @@
   "name": "cine_speaker",
   "scenario_tag": "0x80c3e011",
   "checksum": "0xa3198561",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -1579,6 +1711,7 @@
   "name": "act_cosmo_m1_dome_a",
   "scenario_tag": "0x80cb804b",
   "checksum": "0x42fe77a5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1589,6 +1722,7 @@
   "name": "act_cosmo_m1_dome_a",
   "scenario_tag": "0x80cb804b",
   "checksum": "0x42fe77a5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1599,6 +1733,7 @@
   "name": "act_cosmo_m2_dome_c",
   "scenario_tag": "0x80cb806a",
   "checksum": "0xc7a70681",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1609,6 +1744,7 @@
   "name": "act_cosmo_m2_dome_c",
   "scenario_tag": "0x80cb806a",
   "checksum": "0xc7a70681",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1619,6 +1755,7 @@
   "name": "act_cosmo_m4_dome_c",
   "scenario_tag": "0x80cb8089",
   "checksum": "0xef2923b5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1629,6 +1766,7 @@
   "name": "act_cosmo_m4_dome_c",
   "scenario_tag": "0x80cb8089",
   "checksum": "0xef2923b5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1639,6 +1777,7 @@
   "name": "act_moon_m1_launchtubes",
   "scenario_tag": "0x80d4c00b",
   "checksum": "0xde8eb9b4",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1649,6 +1788,7 @@
   "name": "act_moon_m1_launchtubes",
   "scenario_tag": "0x80d4c00b",
   "checksum": "0xde8eb9b4",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1659,6 +1799,7 @@
   "name": "act_moon_m3_lowercitadel",
   "scenario_tag": "0x80d4c023",
   "checksum": "0x5ebccaa0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1669,6 +1810,7 @@
   "name": "act_moon_m3_lowercitadel",
   "scenario_tag": "0x80d4c023",
   "checksum": "0x5ebccaa0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1679,6 +1821,7 @@
   "name": "act_moon_m4_uppercitadel",
   "scenario_tag": "0x80d4c039",
   "checksum": "0xaa6d440e",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1689,6 +1832,7 @@
   "name": "act_moon_m4_uppercitadel",
   "scenario_tag": "0x80d4c039",
   "checksum": "0xaa6d440e",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1699,6 +1843,7 @@
   "name": "act_moon_m5_strength",
   "scenario_tag": "0x80d4c050",
   "checksum": "0x281235cc",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1709,6 +1854,7 @@
   "name": "act_moon_m5_strength",
   "scenario_tag": "0x80d4c050",
   "checksum": "0x281235cc",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1719,6 +1865,7 @@
   "name": "act_moon_m6_reactor",
   "scenario_tag": "0x80d4c068",
   "checksum": "0x170aa185",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1729,6 +1876,7 @@
   "name": "act_moon_m6_reactor",
   "scenario_tag": "0x80d4c068",
   "checksum": "0x170aa185",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -1739,6 +1887,7 @@
   "name": "act_venus_m01_engineering",
   "scenario_tag": "0x80fe000d",
   "checksum": "0x769a27d4",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1749,6 +1898,7 @@
   "name": "act_venus_m01_engineering",
   "scenario_tag": "0x80fe000d",
   "checksum": "0x769a27d4",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1759,6 +1909,7 @@
   "name": "act_cinematic_queen_101",
   "scenario_tag": "0x80c02004",
   "checksum": "0x14cda256",
+  "checksum_public": "0x8a286828",
   "bubbles": 3
  },
  {
@@ -1769,6 +1920,7 @@
   "name": "act_venus_m02_southern_tides",
   "scenario_tag": "0x80fe0032",
   "checksum": "0x94120a42",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1779,6 +1931,7 @@
   "name": "act_venus_m02_southern_tides",
   "scenario_tag": "0x80fe0032",
   "checksum": "0x94120a42",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1789,6 +1942,7 @@
   "name": "act_venus_m05_vault",
   "scenario_tag": "0x80fe0055",
   "checksum": "0xdf35f1d0",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1799,6 +1953,7 @@
   "name": "act_venus_m05_vault",
   "scenario_tag": "0x80fe0055",
   "checksum": "0xdf35f1d0",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1809,6 +1964,7 @@
   "name": "act_venus_m06_ketch",
   "scenario_tag": "0x80fe0079",
   "checksum": "0xb19a72ee",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1819,6 +1975,7 @@
   "name": "act_venus_m06_ketch",
   "scenario_tag": "0x80fe0079",
   "checksum": "0xb19a72ee",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1829,6 +1986,7 @@
   "name": "act_venus_m07_northern_tides",
   "scenario_tag": "0x80fe009c",
   "checksum": "0x53ca60aa",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1839,6 +1997,7 @@
   "name": "act_venus_m07_northern_tides",
   "scenario_tag": "0x80fe009c",
   "checksum": "0x53ca60aa",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -1849,6 +2008,7 @@
   "name": "act_cinematic_queen_102",
   "scenario_tag": "0x80c0200a",
   "checksum": "0xa3198561",
+  "checksum_public": "0x8a286828",
   "bubbles": 3
  },
  {
@@ -1859,6 +2019,7 @@
   "name": "act_mars_m01_valley",
   "scenario_tag": "0x80d0000b",
   "checksum": "0xfaed265c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1869,6 +2030,7 @@
   "name": "act_mars_m01_valley",
   "scenario_tag": "0x80d0000b",
   "checksum": "0xfaed265c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1879,6 +2041,7 @@
   "name": "act_mars_m03_penthouse",
   "scenario_tag": "0x80d00031",
   "checksum": "0x8caab562",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1889,6 +2052,7 @@
   "name": "act_mars_m03_penthouse",
   "scenario_tag": "0x80d00031",
   "checksum": "0x8caab562",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1899,6 +2063,7 @@
   "name": "act_mars_m05_warbase",
   "scenario_tag": "0x80d00058",
   "checksum": "0x128fc262",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1909,6 +2074,7 @@
   "name": "act_mars_m05_warbase",
   "scenario_tag": "0x80d00058",
   "checksum": "0x128fc262",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1919,6 +2085,7 @@
   "name": "act_mars_m06_subway",
   "scenario_tag": "0x80d0007e",
   "checksum": "0x744b1b35",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1929,6 +2096,7 @@
   "name": "act_mars_m06_subway",
   "scenario_tag": "0x80d0007e",
   "checksum": "0x744b1b35",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1939,6 +2107,7 @@
   "name": "act_mars_m07_lowergarden",
   "scenario_tag": "0x80d000a4",
   "checksum": "0x1208cc7b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1949,6 +2118,7 @@
   "name": "act_mars_m07_lowergarden",
   "scenario_tag": "0x80d000a4",
   "checksum": "0x1208cc7b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -1959,6 +2129,7 @@
   "name": "cine_end",
   "scenario_tag": "0x80c3e004",
   "checksum": "0xa3198561",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -1969,6 +2140,7 @@
   "name": "quest_bonzo_dlc01",
   "scenario_tag": "0x80cb8036",
   "checksum": "0x4db96993",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1979,6 +2151,7 @@
   "name": "quest_bonzo_dlc01",
   "scenario_tag": "0x80cb8036",
   "checksum": "0x4db96993",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1989,6 +2162,7 @@
   "name": "act_cosmo_m6_rasputin",
   "scenario_tag": "0x80cb8101",
   "checksum": "0x1b9d23ef",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -1999,6 +2173,7 @@
   "name": "act_cosmo_m6_rasputin",
   "scenario_tag": "0x80cb8101",
   "checksum": "0x1b9d23ef",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2009,6 +2184,7 @@
   "name": "act_moon_m7_selection",
   "scenario_tag": "0x80d4c0a8",
   "checksum": "0xf7aa543f",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2019,6 +2195,7 @@
   "name": "act_moon_m7_selection",
   "scenario_tag": "0x80d4c0a8",
   "checksum": "0xf7aa543f",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2029,6 +2206,7 @@
   "name": "quest_screw_dlc01",
   "scenario_tag": "0x80d4c098",
   "checksum": "0x8845d095",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2039,6 +2217,7 @@
   "name": "mission_pursuit",
   "scenario_tag": "0x80fe001a",
   "checksum": "0xe4e16974",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2049,6 +2228,7 @@
   "name": "mission_pursuit",
   "scenario_tag": "0x80fe001a",
   "checksum": "0xe4e16974",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2059,6 +2239,7 @@
   "name": "mission_pact",
   "scenario_tag": "0x80cb808d",
   "checksum": "0xf4217952",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2069,6 +2250,7 @@
   "name": "mission_pact",
   "scenario_tag": "0x80cb808d",
   "checksum": "0xf4217952",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2079,6 +2261,7 @@
   "name": "mission_traitor",
   "scenario_tag": "0x80fe006c",
   "checksum": "0x6de91d58",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2089,6 +2272,7 @@
   "name": "mission_traitor",
   "scenario_tag": "0x80fe006c",
   "checksum": "0x6de91d58",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2099,6 +2283,7 @@
   "name": "quest_infidel",
   "scenario_tag": "0x80cb80cf",
   "checksum": "0x7e013513",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2109,6 +2294,7 @@
   "name": "quest_infidel",
   "scenario_tag": "0x80cb80cf",
   "checksum": "0x7e013513",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2119,6 +2305,7 @@
   "name": "quest_nightcrawler",
   "scenario_tag": "0x80d4c0cb",
   "checksum": "0xe99c7c1e",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2129,6 +2316,7 @@
   "name": "quest_safari",
   "scenario_tag": "0x80fe00cd",
   "checksum": "0x0c602a4c",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2139,6 +2327,7 @@
   "name": "quest_safari",
   "scenario_tag": "0x80fe00cd",
   "checksum": "0x0c602a4c",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2149,6 +2338,7 @@
   "name": "quest_apollo",
   "scenario_tag": "0x80d001b8",
   "checksum": "0x430acd66",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2159,6 +2349,7 @@
   "name": "pvp_city_defense_carbon",
   "scenario_tag": "0x80dfa00f",
   "checksum": "0xfdf37198",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -2169,6 +2360,7 @@
   "name": "quest_catalyst",
   "scenario_tag": "0x80fe01d4",
   "checksum": "0x36547cd5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2179,6 +2371,7 @@
   "name": "quest_catalyst",
   "scenario_tag": "0x80fe01d4",
   "checksum": "0x36547cd5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2189,6 +2382,7 @@
   "name": "cine_hangar",
   "scenario_tag": "0x80c3e15f",
   "checksum": "0xa3198561",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -2234,6 +2428,7 @@
   "name": "mission_darksnow",
   "scenario_tag": "0x812a6004",
   "checksum": "0xb187e0cc",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -2244,6 +2439,7 @@
   "name": "mission_darksnow",
   "scenario_tag": "0x812a6004",
   "checksum": "0xb187e0cc",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -2254,6 +2450,7 @@
   "name": "quest_deadflower",
   "scenario_tag": "0x812700e8",
   "checksum": "0xe2458ca0",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2264,6 +2461,7 @@
   "name": "mission_deja",
   "scenario_tag": "0x80d4c1f7",
   "checksum": "0x350e092c",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2274,6 +2472,7 @@
   "name": "mission_deja",
   "scenario_tag": "0x80d4c1f7",
   "checksum": "0x350e092c",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2284,6 +2483,7 @@
   "name": "mission_destroyer",
   "scenario_tag": "0x81270021",
   "checksum": "0x006fd971",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2294,6 +2494,7 @@
   "name": "mission_elevator",
   "scenario_tag": "0x80cb8104",
   "checksum": "0x34fbf203",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2304,6 +2505,7 @@
   "name": "mission_elevator",
   "scenario_tag": "0x80cb8104",
   "checksum": "0x34fbf203",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2314,6 +2516,7 @@
   "name": "quest_helium",
   "scenario_tag": "0x80cb847a",
   "checksum": "0xf3747356",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2324,6 +2527,7 @@
   "name": "quest_hydrogen",
   "scenario_tag": "0x80d00199",
   "checksum": "0x3f167ff9",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2334,6 +2538,7 @@
   "name": "quest_hydrogen",
   "scenario_tag": "0x80d00199",
   "checksum": "0x3f167ff9",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2344,6 +2549,7 @@
   "name": "quest_lithium",
   "scenario_tag": "0x80d0017a",
   "checksum": "0xc644647f",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2354,6 +2560,7 @@
   "name": "mission_marathon_hunter",
   "scenario_tag": "0x815ba003",
   "checksum": "0x1c039d49",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -2364,6 +2571,7 @@
   "name": "mission_marathon_titan",
   "scenario_tag": "0x814b6003",
   "checksum": "0x6e00d4fc",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -2374,6 +2582,7 @@
   "name": "mission_marathon_warlock",
   "scenario_tag": "0x815f2003",
   "checksum": "0x8e6091d8",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -2384,6 +2593,7 @@
   "name": "mission_microwave",
   "scenario_tag": "0x812a600c",
   "checksum": "0x920b2883",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -2394,6 +2604,7 @@
   "name": "mission_microwave",
   "scenario_tag": "0x812a600c",
   "checksum": "0x920b2883",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -2404,6 +2615,7 @@
   "name": "mission_microwave",
   "scenario_tag": "0x812a600c",
   "checksum": "0x920b2883",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -2414,6 +2626,7 @@
   "name": "quest_nitrogen",
   "scenario_tag": "0x80d001e0",
   "checksum": "0xe0d42826",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2424,6 +2637,7 @@
   "name": "mission_omen",
   "scenario_tag": "0x8127006e",
   "checksum": "0xffe9828b",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2434,6 +2648,7 @@
   "name": "mission_omen",
   "scenario_tag": "0x8127006e",
   "checksum": "0xffe9828b",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2444,6 +2659,7 @@
   "name": "quest_oxygen",
   "scenario_tag": "0x80d00131",
   "checksum": "0xab7a3ca3",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2454,6 +2670,7 @@
   "name": "quest_oxygen",
   "scenario_tag": "0x80d00131",
   "checksum": "0xab7a3ca3",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2464,6 +2681,7 @@
   "name": "quest_paper",
   "scenario_tag": "0x80d000f4",
   "checksum": "0x6de31b2b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2474,6 +2692,7 @@
   "name": "mission_paradox",
   "scenario_tag": "0x80fe0125",
   "checksum": "0x1518117b",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2484,6 +2703,7 @@
   "name": "mission_paradox",
   "scenario_tag": "0x80fe0125",
   "checksum": "0x1518117b",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2494,6 +2714,7 @@
   "name": "quest_peekaboo",
   "scenario_tag": "0x80cb8159",
   "checksum": "0x17929af5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2504,6 +2725,7 @@
   "name": "quest_peekaboo",
   "scenario_tag": "0x80cb8159",
   "checksum": "0x17929af5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2514,6 +2736,7 @@
   "name": "quest_radium",
   "scenario_tag": "0x80cb8281",
   "checksum": "0xc2c49547",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2524,6 +2747,7 @@
   "name": "quest_rock",
   "scenario_tag": "0x80fe019a",
   "checksum": "0xdc809714",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2534,6 +2758,7 @@
   "name": "quest_scissors",
   "scenario_tag": "0x80fe01b7",
   "checksum": "0x6325976b",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2544,6 +2769,7 @@
   "name": "quest_sightline",
   "scenario_tag": "0x80cb8385",
   "checksum": "0x6d946ed2",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2554,6 +2780,7 @@
   "name": "quest_sightline",
   "scenario_tag": "0x80cb8385",
   "checksum": "0x6d946ed2",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2564,6 +2791,7 @@
   "name": "mission_souvenir",
   "scenario_tag": "0x8108e00b",
   "checksum": "0xc79daac1",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -2574,6 +2802,7 @@
   "name": "mission_souvenir",
   "scenario_tag": "0x8108e00b",
   "checksum": "0xc79daac1",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -2584,6 +2813,7 @@
   "name": "mission_toaster",
   "scenario_tag": "0x81270055",
   "checksum": "0xc27a8ab8",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2594,6 +2824,7 @@
   "name": "mission_toaster",
   "scenario_tag": "0x81270055",
   "checksum": "0xc27a8ab8",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2604,6 +2835,7 @@
   "name": "mission_toaster",
   "scenario_tag": "0x81270055",
   "checksum": "0xc27a8ab8",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2614,6 +2846,7 @@
   "name": "mission_topknot",
   "scenario_tag": "0x8127003a",
   "checksum": "0x56d44fd2",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2624,6 +2857,7 @@
   "name": "mission_topknot",
   "scenario_tag": "0x8127003a",
   "checksum": "0x56d44fd2",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2634,6 +2868,7 @@
   "name": "mission_touchdown",
   "scenario_tag": "0x8127000c",
   "checksum": "0x8b4e0ac7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2644,6 +2879,7 @@
   "name": "mission_touchdown",
   "scenario_tag": "0x8127000c",
   "checksum": "0x8b4e0ac7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2654,6 +2890,7 @@
   "name": "mission_turing",
   "scenario_tag": "0x80cb813b",
   "checksum": "0x5a09e677",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2664,6 +2901,7 @@
   "name": "mission_turing",
   "scenario_tag": "0x80cb813b",
   "checksum": "0x5a09e677",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2674,6 +2912,7 @@
   "name": "mission_turing",
   "scenario_tag": "0x80cb813b",
   "checksum": "0x5a09e677",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2684,6 +2923,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2701,6 +2941,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2711,6 +2952,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2721,6 +2963,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2731,6 +2974,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2741,6 +2985,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2751,6 +2996,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2761,6 +3007,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2771,6 +3018,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2781,6 +3029,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2791,6 +3040,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2801,6 +3051,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2811,6 +3062,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2821,6 +3073,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2831,6 +3084,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2841,6 +3095,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -2851,6 +3106,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2861,6 +3117,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2871,6 +3128,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2881,6 +3139,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2891,6 +3150,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2901,6 +3161,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2911,6 +3172,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -2921,6 +3183,7 @@
   "name": "mars_portal_1",
   "scenario_tag": "0x80d000cb",
   "checksum": "0x4abb0741",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2931,6 +3194,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2941,6 +3205,7 @@
   "name": "mars_portal_3",
   "scenario_tag": "0x80d0013b",
   "checksum": "0x75dc3980",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -2951,6 +3216,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2961,6 +3227,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -2971,6 +3238,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2981,6 +3249,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -2991,6 +3260,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -3001,6 +3271,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -3011,6 +3282,7 @@
   "name": "mars_portal_1",
   "scenario_tag": "0x80d000cb",
   "checksum": "0x4abb0741",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3021,6 +3293,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3031,6 +3304,7 @@
   "name": "mars_portal_3",
   "scenario_tag": "0x80d0013b",
   "checksum": "0x75dc3980",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3041,6 +3315,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -3051,6 +3326,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -3061,6 +3337,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -3071,6 +3348,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -3088,6 +3366,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -3098,6 +3377,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -3108,6 +3388,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -3118,6 +3399,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -3128,6 +3410,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -3138,6 +3421,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3148,6 +3432,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3158,6 +3443,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3168,6 +3454,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -3178,6 +3465,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -3188,6 +3476,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -3219,6 +3508,7 @@
   "name": "arena_champion",
   "scenario_tag": "0x81194004",
   "checksum": "0x851e7b87",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -3229,6 +3519,7 @@
   "name": "arena_goldfish",
   "scenario_tag": "0x81194800",
   "checksum": "0x10a6d2a2",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -3239,6 +3530,7 @@
   "name": "arena_angelfish",
   "scenario_tag": "0x81194a7d",
   "checksum": "0xb4cd4832",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -3249,6 +3541,7 @@
   "name": "arena_angelfish",
   "scenario_tag": "0x81194a7d",
   "checksum": "0xb4cd4832",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -3259,6 +3552,7 @@
   "name": "mission_rook",
   "scenario_tag": "0x812773c6",
   "checksum": "0xfd2b415c",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -3269,6 +3563,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -3279,6 +3574,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -3289,6 +3585,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -3516,6 +3813,7 @@
   "name": "pvp_icarus",
   "scenario_tag": "0x81766003",
   "checksum": "0x5bf38bbc",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -3526,6 +3824,7 @@
   "name": "pvp_rift",
   "scenario_tag": "0x81712003",
   "checksum": "0x9542b174",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -3536,6 +3835,7 @@
   "name": "pvp_subway",
   "scenario_tag": "0x816f6003",
   "checksum": "0xe631a5d1",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -3546,6 +3846,7 @@
   "name": "pvp_well",
   "scenario_tag": "0x81782003",
   "checksum": "0xdbff7d6f",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -3556,6 +3857,7 @@
   "name": "pvp_srl_cosmo01",
   "scenario_tag": "0x818a8003",
   "checksum": "0xd2653c21",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -3566,6 +3868,7 @@
   "name": "pvp_srl_mercury01",
   "scenario_tag": "0x81886003",
   "checksum": "0xf0f31572",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -3576,6 +3879,7 @@
   "name": "raid_promise",
   "scenario_tag": "0x8179e00b",
   "checksum": "0xb298315e",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3586,6 +3890,7 @@
   "name": "raid_promise",
   "scenario_tag": "0x8179e00b",
   "checksum": "0xb298315e",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3596,6 +3901,7 @@
   "name": "cinematic_peace",
   "scenario_tag": "0x8180a01a",
   "checksum": "0x62e70883",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3606,6 +3912,7 @@
   "name": "cinematic_efrideet",
   "scenario_tag": "0x8180a012",
   "checksum": "0x62e70883",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3616,6 +3923,7 @@
   "name": "cinematic_fall",
   "scenario_tag": "0x8180a016",
   "checksum": "0x62e70883",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3640,6 +3948,7 @@
   "name": "mission_pug",
   "scenario_tag": "0x8180a008",
   "checksum": "0xa4029fc2",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3650,6 +3959,7 @@
   "name": "mission_pug",
   "scenario_tag": "0x8180a008",
   "checksum": "0xa4029fc2",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3660,6 +3970,7 @@
   "name": "mission_beagle",
   "scenario_tag": "0x8179e0bf",
   "checksum": "0x05a2621f",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3670,6 +3981,7 @@
   "name": "mission_beagle",
   "scenario_tag": "0x8179e0bf",
   "checksum": "0x05a2621f",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3680,6 +3992,7 @@
   "name": "mission_hound",
   "scenario_tag": "0x8179e0a4",
   "checksum": "0x03ab28c1",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3690,6 +4003,7 @@
   "name": "mission_hound",
   "scenario_tag": "0x8179e0a4",
   "checksum": "0x03ab28c1",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3700,6 +4014,7 @@
   "name": "mission_pitbull",
   "scenario_tag": "0x80d00214",
   "checksum": "0x45bae8bc",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3710,6 +4025,7 @@
   "name": "mission_pitbull",
   "scenario_tag": "0x80d00214",
   "checksum": "0x45bae8bc",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -3720,6 +4036,7 @@
   "name": "mission_mutt",
   "scenario_tag": "0x8179e089",
   "checksum": "0x864cad38",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3730,6 +4047,7 @@
   "name": "mission_mutt",
   "scenario_tag": "0x8179e089",
   "checksum": "0x864cad38",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3747,6 +4065,7 @@
   "name": "social_observatory",
   "scenario_tag": "0x8180a010",
   "checksum": "0x19d6751c",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3757,6 +4076,7 @@
   "name": "social_observatory_iron_banner",
   "scenario_tag": "0x8180a01e",
   "checksum": "0x8e526e88",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -3935,6 +4255,7 @@
   "name": "plaguelands_patrol",
   "scenario_tag": "0x8179e047",
   "checksum": "0x3a4a9eb0",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3952,6 +4273,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3962,6 +4284,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3972,6 +4295,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3982,6 +4306,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -3992,6 +4317,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4002,6 +4328,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4012,6 +4339,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4022,6 +4350,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4032,6 +4361,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4042,6 +4372,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4052,6 +4383,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4062,6 +4394,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4072,6 +4405,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4082,6 +4416,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4092,6 +4427,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4102,6 +4438,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4112,6 +4449,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4122,6 +4460,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4132,6 +4471,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4142,6 +4482,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4152,6 +4493,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4162,6 +4504,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4172,6 +4515,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4182,6 +4526,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4192,6 +4537,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4202,6 +4548,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4212,6 +4559,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4222,6 +4570,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4232,6 +4581,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4242,6 +4592,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4252,6 +4603,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4262,6 +4614,7 @@
   "name": "mission_word",
   "scenario_tag": "0x8179e100",
   "checksum": "0x0a01fa71",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4272,6 +4625,7 @@
   "name": "mission_memory",
   "scenario_tag": "0x8179e0e1",
   "checksum": "0x528ca92e",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4282,6 +4636,7 @@
   "name": "mission_research",
   "scenario_tag": "0x8183a003",
   "checksum": "0x3a018cb4",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -4292,6 +4647,7 @@
   "name": "mission_fireworks",
   "scenario_tag": "0x8185e003",
   "checksum": "0xbadb93f1",
+  "checksum_public": "0xc4647343",
   "bubbles": 1
  },
  {
@@ -4309,6 +4665,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4319,6 +4676,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4329,6 +4687,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4339,6 +4698,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4349,6 +4709,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4359,6 +4720,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4369,6 +4731,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4379,6 +4742,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4389,6 +4753,7 @@
   "name": "mars_portal_1",
   "scenario_tag": "0x80d000cb",
   "checksum": "0x4abb0741",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4399,6 +4764,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4409,6 +4775,7 @@
   "name": "mars_portal_3",
   "scenario_tag": "0x80d0013b",
   "checksum": "0x75dc3980",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4419,6 +4786,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4429,6 +4797,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4439,6 +4808,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4449,6 +4819,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4459,6 +4830,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4469,6 +4841,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4479,6 +4852,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4489,6 +4863,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4499,6 +4874,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4509,6 +4885,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4526,6 +4903,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4536,6 +4914,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4546,6 +4925,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4556,6 +4936,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4566,6 +4947,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4576,6 +4958,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4586,6 +4969,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4596,6 +4980,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4606,6 +4991,7 @@
   "name": "mars_portal_1",
   "scenario_tag": "0x80d000cb",
   "checksum": "0x4abb0741",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4616,6 +5002,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4626,6 +5013,7 @@
   "name": "mars_portal_3",
   "scenario_tag": "0x80d0013b",
   "checksum": "0x75dc3980",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4636,6 +5024,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4646,6 +5035,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4656,6 +5046,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4666,6 +5057,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4676,6 +5068,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4686,6 +5079,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4696,6 +5090,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4706,6 +5101,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4716,6 +5112,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4726,6 +5123,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4743,6 +5141,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4753,6 +5152,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4763,6 +5163,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4773,6 +5174,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -4783,6 +5185,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4793,6 +5196,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4803,6 +5207,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4813,6 +5218,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4823,6 +5229,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4833,6 +5240,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4843,6 +5251,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4853,6 +5262,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4863,6 +5273,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -4873,6 +5284,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4883,6 +5295,7 @@
   "name": "act_cosmo_m4_dome_c",
   "scenario_tag": "0x80cb8089",
   "checksum": "0xef2923b5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -4893,6 +5306,7 @@
   "name": "act_moon_m4_uppercitadel",
   "scenario_tag": "0x80d4c039",
   "checksum": "0xaa6d440e",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4903,6 +5317,7 @@
   "name": "act_moon_m5_strength",
   "scenario_tag": "0x80d4c050",
   "checksum": "0x281235cc",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4913,6 +5328,7 @@
   "name": "act_moon_m6_reactor",
   "scenario_tag": "0x80d4c068",
   "checksum": "0x170aa185",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -4923,6 +5339,7 @@
   "name": "act_venus_m05_vault",
   "scenario_tag": "0x80fe0055",
   "checksum": "0xdf35f1d0",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4933,6 +5350,7 @@
   "name": "act_venus_m06_ketch",
   "scenario_tag": "0x80fe0079",
   "checksum": "0xb19a72ee",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4943,6 +5361,7 @@
   "name": "act_venus_m07_northern_tides",
   "scenario_tag": "0x80fe009c",
   "checksum": "0x53ca60aa",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -4953,6 +5372,7 @@
   "name": "act_mars_m03_penthouse",
   "scenario_tag": "0x80d00031",
   "checksum": "0x8caab562",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4963,6 +5383,7 @@
   "name": "act_mars_m05_warbase",
   "scenario_tag": "0x80d00058",
   "checksum": "0x128fc262",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4973,6 +5394,7 @@
   "name": "act_mars_m06_subway",
   "scenario_tag": "0x80d0007e",
   "checksum": "0x744b1b35",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4983,6 +5405,7 @@
   "name": "act_mars_m07_lowergarden",
   "scenario_tag": "0x80d000a4",
   "checksum": "0x1208cc7b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -4993,6 +5416,7 @@
   "name": "act_cosmo_m6_rasputin",
   "scenario_tag": "0x80cb8101",
   "checksum": "0x1b9d23ef",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5003,6 +5427,7 @@
   "name": "act_moon_m7_selection",
   "scenario_tag": "0x80d4c0a8",
   "checksum": "0xf7aa543f",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5013,6 +5438,7 @@
   "name": "mission_pact",
   "scenario_tag": "0x80cb808d",
   "checksum": "0xf4217952",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5023,6 +5449,7 @@
   "name": "mission_traitor",
   "scenario_tag": "0x80fe006c",
   "checksum": "0x6de91d58",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5033,6 +5460,7 @@
   "name": "quest_catalyst",
   "scenario_tag": "0x80fe01d4",
   "checksum": "0x36547cd5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5043,6 +5471,7 @@
   "name": "mission_darksnow",
   "scenario_tag": "0x812a6004",
   "checksum": "0xb187e0cc",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -5053,6 +5482,7 @@
   "name": "mission_deja",
   "scenario_tag": "0x80d4c1f7",
   "checksum": "0x350e092c",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5063,6 +5493,7 @@
   "name": "mission_elevator",
   "scenario_tag": "0x80cb8104",
   "checksum": "0x34fbf203",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5073,6 +5504,7 @@
   "name": "quest_hydrogen",
   "scenario_tag": "0x80d00199",
   "checksum": "0x3f167ff9",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5083,6 +5515,7 @@
   "name": "mission_omen",
   "scenario_tag": "0x8127006e",
   "checksum": "0xffe9828b",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5093,6 +5526,7 @@
   "name": "quest_oxygen",
   "scenario_tag": "0x80d00131",
   "checksum": "0xab7a3ca3",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5103,6 +5537,7 @@
   "name": "mission_paradox",
   "scenario_tag": "0x80fe0125",
   "checksum": "0x1518117b",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5113,6 +5548,7 @@
   "name": "quest_peekaboo",
   "scenario_tag": "0x80cb8159",
   "checksum": "0x17929af5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5123,6 +5559,7 @@
   "name": "quest_sightline",
   "scenario_tag": "0x80cb8385",
   "checksum": "0x6d946ed2",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5133,6 +5570,7 @@
   "name": "mission_souvenir",
   "scenario_tag": "0x8108e00b",
   "checksum": "0xc79daac1",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -5143,6 +5581,7 @@
   "name": "mission_toaster",
   "scenario_tag": "0x81270055",
   "checksum": "0xc27a8ab8",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5153,6 +5592,7 @@
   "name": "mission_topknot",
   "scenario_tag": "0x8127003a",
   "checksum": "0x56d44fd2",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5163,6 +5603,7 @@
   "name": "mission_touchdown",
   "scenario_tag": "0x8127000c",
   "checksum": "0x8b4e0ac7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5173,6 +5614,7 @@
   "name": "mission_turing",
   "scenario_tag": "0x80cb813b",
   "checksum": "0x5a09e677",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5197,6 +5639,7 @@
   "name": "fotl_observatory",
   "scenario_tag": "0x818133b6",
   "checksum": "0x91808715",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -5207,6 +5650,7 @@
   "name": "social_fotl",
   "scenario_tag": "0x8119fee2",
   "checksum": "0x701ad270",
+  "checksum_public": "0x462d39c3",
   "bubbles": 2
  },
  {
@@ -5217,6 +5661,7 @@
   "name": "fotl_mercury_social",
   "scenario_tag": "0x81540006",
   "checksum": "0x9cd88358",
+  "checksum_public": "0x72730527",
   "bubbles": 2
  },
  {
@@ -5227,6 +5672,7 @@
   "name": "strike_oyster",
   "scenario_tag": "0x80d580a3",
   "checksum": "0x8669c3e0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5237,6 +5683,7 @@
   "name": "strike_oyster",
   "scenario_tag": "0x80d580a3",
   "checksum": "0x8669c3e0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5247,6 +5694,7 @@
   "name": "strike_oyster",
   "scenario_tag": "0x80d580a3",
   "checksum": "0x8669c3e0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5257,6 +5705,7 @@
   "name": "strike_lobster",
   "scenario_tag": "0x80feb214",
   "checksum": "0x59e7a4d5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5267,6 +5716,7 @@
   "name": "strike_lobster",
   "scenario_tag": "0x80feb214",
   "checksum": "0x59e7a4d5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5277,6 +5727,7 @@
   "name": "strike_lobster",
   "scenario_tag": "0x80feb214",
   "checksum": "0x59e7a4d5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5287,6 +5738,7 @@
   "name": "strike_dolphin_dlc03",
   "scenario_tag": "0x80cc2219",
   "checksum": "0x8bcf7252",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5297,6 +5749,7 @@
   "name": "strike_dolphin_dlc03",
   "scenario_tag": "0x80cc2219",
   "checksum": "0x8bcf7252",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5307,6 +5760,7 @@
   "name": "strike_dolphin_dlc03",
   "scenario_tag": "0x80cc2219",
   "checksum": "0x8bcf7252",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5317,6 +5771,7 @@
   "name": "strike_oyster",
   "scenario_tag": "0x80d580a3",
   "checksum": "0x8669c3e0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5327,6 +5782,7 @@
   "name": "strike_lobster",
   "scenario_tag": "0x80feb214",
   "checksum": "0x59e7a4d5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5337,6 +5793,7 @@
   "name": "strike_dolphin_dlc03",
   "scenario_tag": "0x80cc2219",
   "checksum": "0x8bcf7252",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5347,6 +5804,7 @@
   "name": "strike_oyster",
   "scenario_tag": "0x80d580a3",
   "checksum": "0x8669c3e0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5357,6 +5815,7 @@
   "name": "strike_lobster",
   "scenario_tag": "0x80feb214",
   "checksum": "0x59e7a4d5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5367,6 +5826,7 @@
   "name": "strike_dolphin_dlc03",
   "scenario_tag": "0x80cc2219",
   "checksum": "0x8bcf7252",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5433,6 +5893,7 @@
   "name": "act_cosmo_m4_dome_c",
   "scenario_tag": "0x80cb8089",
   "checksum": "0xef2923b5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5443,6 +5904,7 @@
   "name": "act_moon_m4_uppercitadel",
   "scenario_tag": "0x80d4c039",
   "checksum": "0xaa6d440e",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5453,6 +5915,7 @@
   "name": "act_moon_m5_strength",
   "scenario_tag": "0x80d4c050",
   "checksum": "0x281235cc",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5463,6 +5926,7 @@
   "name": "act_moon_m6_reactor",
   "scenario_tag": "0x80d4c068",
   "checksum": "0x170aa185",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5473,6 +5937,7 @@
   "name": "act_venus_m05_vault",
   "scenario_tag": "0x80fe0055",
   "checksum": "0xdf35f1d0",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5483,6 +5948,7 @@
   "name": "act_venus_m06_ketch",
   "scenario_tag": "0x80fe0079",
   "checksum": "0xb19a72ee",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5493,6 +5959,7 @@
   "name": "act_venus_m07_northern_tides",
   "scenario_tag": "0x80fe009c",
   "checksum": "0x53ca60aa",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5503,6 +5970,7 @@
   "name": "act_mars_m03_penthouse",
   "scenario_tag": "0x80d00031",
   "checksum": "0x8caab562",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5513,6 +5981,7 @@
   "name": "act_mars_m05_warbase",
   "scenario_tag": "0x80d00058",
   "checksum": "0x128fc262",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5523,6 +5992,7 @@
   "name": "act_mars_m06_subway",
   "scenario_tag": "0x80d0007e",
   "checksum": "0x744b1b35",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5533,6 +6003,7 @@
   "name": "act_mars_m07_lowergarden",
   "scenario_tag": "0x80d000a4",
   "checksum": "0x1208cc7b",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5543,6 +6014,7 @@
   "name": "act_cosmo_m6_rasputin",
   "scenario_tag": "0x80cb8101",
   "checksum": "0x1b9d23ef",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5553,6 +6025,7 @@
   "name": "act_moon_m7_selection",
   "scenario_tag": "0x80d4c0a8",
   "checksum": "0xf7aa543f",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5563,6 +6036,7 @@
   "name": "mission_pact",
   "scenario_tag": "0x80cb808d",
   "checksum": "0xf4217952",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5573,6 +6047,7 @@
   "name": "mission_traitor",
   "scenario_tag": "0x80fe006c",
   "checksum": "0x6de91d58",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5583,6 +6058,7 @@
   "name": "mission_darksnow",
   "scenario_tag": "0x812a6004",
   "checksum": "0xb187e0cc",
+  "checksum_public": "0xd56dca6e",
   "bubbles": 4
  },
  {
@@ -5593,6 +6069,7 @@
   "name": "mission_deja",
   "scenario_tag": "0x80d4c1f7",
   "checksum": "0x350e092c",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5603,6 +6080,7 @@
   "name": "mission_elevator",
   "scenario_tag": "0x80cb8104",
   "checksum": "0x34fbf203",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5613,6 +6091,7 @@
   "name": "mission_omen",
   "scenario_tag": "0x8127006e",
   "checksum": "0xffe9828b",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5623,6 +6102,7 @@
   "name": "mission_souvenir",
   "scenario_tag": "0x8108e00b",
   "checksum": "0xc79daac1",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -5633,6 +6113,7 @@
   "name": "mission_topknot",
   "scenario_tag": "0x8127003a",
   "checksum": "0x56d44fd2",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5643,6 +6124,7 @@
   "name": "mission_touchdown",
   "scenario_tag": "0x8127000c",
   "checksum": "0x8b4e0ac7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5653,6 +6135,7 @@
   "name": "mission_turing",
   "scenario_tag": "0x80cb813b",
   "checksum": "0x5a09e677",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5663,6 +6146,7 @@
   "name": "mission_pug",
   "scenario_tag": "0x8180a008",
   "checksum": "0xa4029fc2",
+  "checksum_public": "0xf656dbb7",
   "bubbles": 2
  },
  {
@@ -5673,6 +6157,7 @@
   "name": "mission_beagle",
   "scenario_tag": "0x8179e0bf",
   "checksum": "0x05a2621f",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -5683,6 +6168,7 @@
   "name": "mission_hound",
   "scenario_tag": "0x8179e0a4",
   "checksum": "0x03ab28c1",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -5693,6 +6179,7 @@
   "name": "mission_pitbull",
   "scenario_tag": "0x80d00214",
   "checksum": "0x45bae8bc",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5703,6 +6190,7 @@
   "name": "mission_mutt",
   "scenario_tag": "0x8179e089",
   "checksum": "0x864cad38",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -5713,6 +6201,7 @@
   "name": "act_cosmo_m0_5_hangar",
   "scenario_tag": "0x80cb802b",
   "checksum": "0x31429b32",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5723,6 +6212,7 @@
   "name": "act_cosmo_m1_dome_a",
   "scenario_tag": "0x80cb804b",
   "checksum": "0x42fe77a5",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5733,6 +6223,7 @@
   "name": "act_cosmo_m2_dome_c",
   "scenario_tag": "0x80cb806a",
   "checksum": "0xc7a70681",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5743,6 +6234,7 @@
   "name": "act_moon_m1_launchtubes",
   "scenario_tag": "0x80d4c00b",
   "checksum": "0xde8eb9b4",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5753,6 +6245,7 @@
   "name": "act_moon_m3_lowercitadel",
   "scenario_tag": "0x80d4c023",
   "checksum": "0x5ebccaa0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5763,6 +6256,7 @@
   "name": "quest_bonzo_dlc01",
   "scenario_tag": "0x80cb8036",
   "checksum": "0x4db96993",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5773,6 +6267,7 @@
   "name": "quest_screw_dlc01",
   "scenario_tag": "0x80d4c098",
   "checksum": "0x8845d095",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -5783,6 +6278,7 @@
   "name": "mission_pursuit",
   "scenario_tag": "0x80fe001a",
   "checksum": "0xe4e16974",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5793,6 +6289,7 @@
   "name": "quest_infidel",
   "scenario_tag": "0x80cb80cf",
   "checksum": "0x7e013513",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5803,6 +6300,7 @@
   "name": "quest_safari",
   "scenario_tag": "0x80fe00cd",
   "checksum": "0x0c602a4c",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5813,6 +6311,7 @@
   "name": "act_venus_m01_engineering",
   "scenario_tag": "0x80fe000d",
   "checksum": "0x769a27d4",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5823,6 +6322,7 @@
   "name": "act_venus_m02_southern_tides",
   "scenario_tag": "0x80fe0032",
   "checksum": "0x94120a42",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5833,6 +6333,7 @@
   "name": "act_mars_m01_valley",
   "scenario_tag": "0x80d0000b",
   "checksum": "0xfaed265c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5843,6 +6344,7 @@
   "name": "venus_raid_1",
   "scenario_tag": "0x80fe0103",
   "checksum": "0x9eef05c2",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5853,6 +6355,7 @@
   "name": "moon_raid_1",
   "scenario_tag": "0x8108e004",
   "checksum": "0x334523bb",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -5863,6 +6366,7 @@
   "name": "raid_epiphany",
   "scenario_tag": "0x812700b9",
   "checksum": "0xb07027c7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5873,6 +6377,7 @@
   "name": "raid_promise",
   "scenario_tag": "0x8179e00b",
   "checksum": "0xb298315e",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -5883,6 +6388,7 @@
   "name": "venus_raid_1",
   "scenario_tag": "0x80fe0103",
   "checksum": "0x9eef05c2",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -5893,6 +6399,7 @@
   "name": "moon_raid_1",
   "scenario_tag": "0x8108e004",
   "checksum": "0x334523bb",
+  "checksum_public": "0x8a286828",
   "bubbles": 15
  },
  {
@@ -5903,6 +6410,7 @@
   "name": "raid_epiphany",
   "scenario_tag": "0x812700b9",
   "checksum": "0xb07027c7",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5913,6 +6421,7 @@
   "name": "raid_promise",
   "scenario_tag": "0x8179e00b",
   "checksum": "0xb298315e",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -5930,6 +6439,7 @@
   "name": "strike_reliquary",
   "scenario_tag": "0x80cb84fa",
   "checksum": "0x963e7f9d",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -5940,6 +6450,7 @@
   "name": "strike_pandora",
   "scenario_tag": "0x81270086",
   "checksum": "0xcb7b1491",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5950,6 +6461,7 @@
   "name": "strike_overlord",
   "scenario_tag": "0x8127009f",
   "checksum": "0xc670a10f",
+  "checksum_public": "0x3608a83b",
   "bubbles": 20
  },
  {
@@ -5960,6 +6472,7 @@
   "name": "mars_portal_1_com01",
   "scenario_tag": "0x80d0020a",
   "checksum": "0xb8dfcb9c",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5970,6 +6483,7 @@
   "name": "mars_portal_2_com01",
   "scenario_tag": "0x80d00228",
   "checksum": "0x7881ffd6",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5980,6 +6494,7 @@
   "name": "mars_portal_3_com01",
   "scenario_tag": "0x80d00248",
   "checksum": "0x0bf10250",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -5990,6 +6505,7 @@
   "name": "cosmo_portal_1",
   "scenario_tag": "0x80cb80a8",
   "checksum": "0x7bafa9d6",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -6000,6 +6516,7 @@
   "name": "cosmo_portal_2",
   "scenario_tag": "0x80cb8120",
   "checksum": "0x5a15bea9",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {
@@ -6010,6 +6527,7 @@
   "name": "mars_portal_1",
   "scenario_tag": "0x80d000cb",
   "checksum": "0x4abb0741",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -6020,6 +6538,7 @@
   "name": "mars_portal_2",
   "scenario_tag": "0x80d000f1",
   "checksum": "0xaacbb696",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -6030,6 +6549,7 @@
   "name": "mars_portal_3",
   "scenario_tag": "0x80d0013b",
   "checksum": "0x75dc3980",
+  "checksum_public": "0x325c4bed",
   "bubbles": 29
  },
  {
@@ -6040,6 +6560,7 @@
   "name": "moon_portal_2",
   "scenario_tag": "0x80d4c07f",
   "checksum": "0xc5eccdec",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -6050,6 +6571,7 @@
   "name": "strike_vampire",
   "scenario_tag": "0x80d4c0bc",
   "checksum": "0x5361a7e2",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -6060,6 +6582,7 @@
   "name": "venus_portal_1",
   "scenario_tag": "0x80fe00bf",
   "checksum": "0x003ba328",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -6070,6 +6593,7 @@
   "name": "venus_portal_2",
   "scenario_tag": "0x80fe00e1",
   "checksum": "0x87451447",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -6080,6 +6604,7 @@
   "name": "strike_kingpin",
   "scenario_tag": "0x80d4c0c6",
   "checksum": "0x860eae76",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -6090,6 +6615,7 @@
   "name": "venus_portal_2_redux",
   "scenario_tag": "0x80fe0165",
   "checksum": "0x7125101f",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -6100,6 +6626,7 @@
   "name": "strike_tracker",
   "scenario_tag": "0x80fe014b",
   "checksum": "0x25dae95d",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -6110,6 +6637,7 @@
   "name": "strike_oath",
   "scenario_tag": "0x8179e026",
   "checksum": "0x3c49f5d2",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -6120,6 +6648,7 @@
   "name": "strike_starfish",
   "scenario_tag": "0x8179e06e",
   "checksum": "0x51c14d95",
+  "checksum_public": "0x6f6109d6",
   "bubbles": 25
  },
  {
@@ -6130,6 +6659,7 @@
   "name": "strike_turtle_dlc03",
   "scenario_tag": "0x80d54705",
   "checksum": "0x6df4aaab",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -6140,6 +6670,7 @@
   "name": "strike_oyster",
   "scenario_tag": "0x80d580a3",
   "checksum": "0x8669c3e0",
+  "checksum_public": "0x4776b394",
   "bubbles": 15
  },
  {
@@ -6150,6 +6681,7 @@
   "name": "strike_lobster",
   "scenario_tag": "0x80feb214",
   "checksum": "0x59e7a4d5",
+  "checksum_public": "0x9ee229d2",
   "bubbles": 29
  },
  {
@@ -6160,6 +6692,7 @@
   "name": "strike_dolphin_dlc03",
   "scenario_tag": "0x80cc2219",
   "checksum": "0x8bcf7252",
+  "checksum_public": "0xe354f1ea",
   "bubbles": 22
  },
  {

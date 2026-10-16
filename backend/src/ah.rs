@@ -76,7 +76,8 @@ const CLIENT_INDEX_WORDS: std::ops::Range<usize> = 256..384;
 
 /// Host -> client message: activity membership (type 11, 0x29D130), 0x5038 bytes:
 /// ```text
-/// @0 u32, @4 u32 (update id; a change resets the client's +0x64B4)
+/// @0 u32 change number (see membership_with), @4 u32 (update id; a change resets the
+///    client's +0x64B4)
 /// @8 players[20], 0x250 each: identity {machine[8], player[8], account, character,
 ///    fireteam} (optional), state (optional), @0x248 i8 slot index (optional)
 /// @0x2E48 optional fireteam block
@@ -192,8 +193,13 @@ pub fn membership_with(players: &[Player], region: Option<&RegionSession>) -> Ve
         })
         .collect();
     let mask = (1i64 << players.len()) - 1;
+    // @0 is the membership's change number: the simulation rebuilds its peer list from the
+    // peer mask @0x5028 only when it changes (0xBA3090), so a member added later would never
+    // be simulated by the others with a constant one. Every membership sent gets a new number.
+    static CHANGE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+    let change = CHANGE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let v = Value::Struct(vec![
-        Some(Value::Int(1)),
+        Some(Value::Int(change)),
         Some(Value::Int(1)),
         Some(Value::Array(slots)),
         Some(region_table(&[0], players.len(), region)),
@@ -255,7 +261,10 @@ fn world_globals() -> Option<(u32, Vec<u8>)> {
 /// scenario data read from the packages.
 pub struct Scenario {
     pub name: String,
+    /// checksum of a private instance; a public one is checked against `checksum_public`
+    /// (the client indexes the tag's checksums by its activity client kind: 0x299B00)
     pub checksum: u32,
+    pub checksum_public: u32,
     pub bubbles: u32,
 }
 
@@ -265,6 +274,7 @@ struct ActivityRow {
     hash: String,
     name: Option<String>,
     checksum: Option<String>,
+    checksum_public: Option<String>,
     bubbles: Option<u32>,
 }
 
@@ -282,7 +292,12 @@ fn hex_u32(s: &str) -> Option<u32> {
 
 pub fn scenario_for(activity_index: i32) -> Option<Scenario> {
     let r = activity_table().get(&activity_index)?;
-    Some(Scenario { name: r.name.clone()?, checksum: hex_u32(r.checksum.as_deref()?)?, bubbles: r.bubbles? })
+    Some(Scenario {
+        name: r.name.clone()?,
+        checksum: hex_u32(r.checksum.as_deref()?)?,
+        checksum_public: hex_u32(r.checksum_public.as_deref()?)?,
+        bubbles: r.bubbles?,
+    })
 }
 
 /// Activity hash of an activity index (the client's matchmaking key).
@@ -341,6 +356,47 @@ pub const CLIENT_AUTHORITATIVE_DATA_UPDATE: u32 = 21;
 pub const CLIENT_REQUEST_PEER_RESERVATION: u32 = 12;
 const TYPE_PEER_RESERVATION: &str = "0x80800bb9";
 
+/// A citizen joining a public instance names the private instance it comes from (properties
+/// @0x18) but carries no fireteam id (identity member 5, properties @0xA0: 0). The fireteam id
+/// is what the world controller groups players by (0x75F210, "fireteam_from_player"), and the
+/// simulation only creates a remote player once it has one (0xBA6830): the public host gives
+/// the player the fireteam id it has in its private instance.
+fn inherit_fireteam(all: &std::collections::HashMap<u64, Instance>, p: &mut Player) {
+    let int_at = |v: &Option<Value>, i: usize| match v {
+        Some(Value::Struct(f)) => match f.get(i) {
+            Some(Some(Value::Int(n))) => Some(*n),
+            _ => None,
+        },
+        _ => None,
+    };
+    let props = p.properties.clone();
+    if int_at(&props, 5) != Some(0) {
+        return;
+    }
+    let Some(parent) = int_at(&props, 3).filter(|&n| n != 0) else { return };
+    let machine = machine_of(&p.identity);
+    let Some(fireteam) = all.get(&(parent as u64)).and_then(|i| {
+        i.members
+            .iter()
+            .find(|(_, q, _)| machine_of(&q.identity) == machine)
+            .and_then(|(_, q, _)| int_at(&q.properties, 5).or_else(|| int_at(&Some(q.identity.clone()), 4)))
+    }) else {
+        return;
+    };
+    if fireteam == 0 {
+        return;
+    }
+    info!("activity host: player from instance {parent:#x} keeps fireteam {fireteam:#x}");
+    if let Some(Value::Struct(f)) = p.properties.as_mut() {
+        f[5] = Some(Value::Int(fireteam));
+    }
+    if let Value::Struct(f) = &mut p.identity {
+        if f.len() > 4 {
+            f[4] = Some(Value::Int(fireteam));
+        }
+    }
+}
+
 /// The machine id (first member) of an identity block 0x80800C2D.
 fn machine_of(identity: &Value) -> Option<Value> {
     match identity {
@@ -349,6 +405,10 @@ fn machine_of(identity: &Value) -> Option<Value> {
     }
 }
 
+/// Instance kinds (host startup blob byte 4; the client's activity client kind + 1).
+pub const INSTANCE_PRIVATE: u8 = 1;
+pub const INSTANCE_PUBLIC: u8 = 2;
+
 /// Host messages pushed to a connection from elsewhere (another member joining, ...).
 pub type Push = tokio::sync::mpsc::UnboundedSender<(u32, Vec<u8>)>;
 
@@ -356,6 +416,8 @@ pub type Push = tokio::sync::mpsc::UnboundedSender<(u32, Vec<u8>)>;
 /// client), joined by every member's activity client (one BAP connection each).
 struct Instance {
     activity: (i32, i32),
+    /// instance kind from the host startup (INSTANCE_PRIVATE / INSTANCE_PUBLIC)
+    kind: u8,
     /// (connection id, player, push channel), in slot order; a reserved slot (requested by
     /// the session host for a fireteam member that has not joined yet) has connection 0 and
     /// no channel
@@ -396,6 +458,8 @@ pub struct Host {
     /// From the host startup request (or the instance this connection joined): activity index
     /// and insertion point.
     activity: Option<(i32, i32)>,
+    /// instance kind (startup blob byte 4): 1 private, 2 public
+    kind: u8,
     joined: bool,
     sync_token: i64,
     /// Instance this connection talks to, and its own id and push channel.
@@ -409,6 +473,7 @@ impl Default for Host {
         Host {
             logged: Default::default(),
             activity: None,
+            kind: INSTANCE_PRIVATE,
             joined: false,
             sync_token: 0,
             instance: 0,
@@ -451,7 +516,8 @@ impl Host {
     }
 
     /// Host startup request (activity host manager request kind 3), after the kind byte:
-    /// a bitstream starting u32, u16 activity index (+0x8000), u16 insertion point (+0x8000).
+    /// a bitstream starting u16, u16 activity index (+0x8000), u16 insertion point (+0x8000),
+    /// u8 instance kind (1 private, 2 public).
     pub fn on_startup(&mut self, p: &[u8]) {
         // two length-prefixed blobs: u16 BE length @0 + data @2 (8 bytes: ?, activity index,
         // insertion point, ...), u16 BE length @0x202 + data (~1600 bytes, not yet decoded)
@@ -461,13 +527,15 @@ impl Host {
                 info!("activity host: startup blob @{at:#x} ({l} bytes): {}", crate::pb::hex(&d[..d.len().min(64)]));
             }
         }
-        if p.len() >= 8 {
+        if p.len() >= 9 {
             let index = u16::from_be_bytes([p[4], p[5]]) as i32 - 0x8000;
             let insertion = u16::from_be_bytes([p[6], p[7]]) as i32 - 0x8000;
             let name = scenario_for(index).map(|s| s.name).unwrap_or_default();
             info!("activity host: startup for activity index {index} ({name}, hash {:#010x}), insertion point {insertion}",
                   activity_hash(index).unwrap_or(0));
             self.activity = Some((index, insertion));
+            self.kind = p[8];
+            info!("activity host: instance kind {}", self.kind);
         }
     }
 
@@ -475,7 +543,7 @@ impl Host {
     pub fn register(&mut self, id: u64) {
         self.instance = id;
         if let Some(a) = self.activity {
-            instances().lock().unwrap().insert(id, Instance { activity: a, members: Vec::new(), region: None });
+            instances().lock().unwrap().insert(id, Instance { activity: a, kind: self.kind, members: Vec::new(), region: None });
         }
     }
 
@@ -489,6 +557,7 @@ impl Host {
             if let Some(inst) = instances().lock().unwrap().get(&target) {
                 self.instance = target;
                 self.activity = Some(inst.activity);
+                self.kind = inst.kind;
                 info!("activity host: connection joins instance {target:#x} (activity {:?})", inst.activity);
             }
         }
@@ -516,8 +585,10 @@ impl Host {
                 // add the player to the instance; everyone already there gets the new membership
                 let players: Vec<Player> = {
                     let mut all = instances().lock().unwrap();
-                    match (all.get_mut(&self.instance), player.clone(), self.push.clone()) {
-                        (Some(inst), Some(p), Some(push)) => {
+                    match (all.contains_key(&self.instance), player.clone(), self.push.clone()) {
+                        (true, Some(mut p), Some(push)) => {
+                            inherit_fireteam(&all, &mut p);
+                            let inst = all.get_mut(&self.instance).expect("checked above");
                             inst.members.retain(|(c, _, _)| *c != self.connection);
                             // a slot reserved for this machine is taken over in place
                             let machine = machine_of(&p.identity);
@@ -663,7 +734,10 @@ impl Host {
             insertion = n;
         }
         match scenario_for(index) {
-            Some(sc) => instance(&sc.name, sc.checksum, sc.bubbles, index, insertion),
+            Some(sc) => {
+                let checksum = if self.kind == INSTANCE_PUBLIC { sc.checksum_public } else { sc.checksum };
+                instance(&sc.name, checksum, sc.bubbles, index, insertion)
+            }
             None => {
                 warn!("activity host: no scenario known for activity index {index}");
                 instance("", 0, 0, index, insertion)

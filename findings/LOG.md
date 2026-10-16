@@ -1469,3 +1469,34 @@ game's player records (*(*0x273EA80 + 8), 0x2AF0 each, machine id @0x620). In th
 patrol B has [A, B], A only [A]. Players are added by simulation-queue `player_update`
 events (0xBAD260, from the dispatcher 0xBB4690), not by the activity membership, which A
 does receive (pushed) with both players.
+
+## 2026-10-16 (evening): both players simulated in the shared patrol
+
+A and B now both hold [A, B] in their player records in Earth patrol (ftp30). Three
+backend fixes, found by tracing the simulation's player diff (D1_TRACE_PLAYERS):
+- **Who makes player_update events**: 0xB9FAC0 (gated by *0x28A5410 and 0x906E00) →
+  0xBB6080 → 0xBA6760 / 0xBA6830 diffs the simulation tracker (P = *(*0x2801518); 20 slots
+  of 0xE8 from +0x18, mask +0x10, change number +0xC, known peers 20 × u64 @+0x123C) against
+  the activity session's membership (session = 0x75F130(handle), state +0x8C48 4..9;
+  membership +0x620: simulated mask +0x1C54, identity +0x1C5C, account +0x1CE0, character
+  +0x1CE8, peer index +0x1C64). A remote player is only created when (a) its fireteam id
+  (0x75F210 "fireteam_from_player": membership slot properties @0xA0) is set, (b) its peer's
+  machine id is among the tracker's known peers, which come from the simulation entry's
+  peer list.
+- **Public instance checksum**: the scenario tag holds one checksum per activity client
+  kind (+0xC private, +0x10 public; 0x299B00 indexes by the client's kind). Every public
+  client failed "activity checksum mismatch" and never instantiated the public world. The
+  host startup blob's byte 4 is the instance kind (1 private, 2 public); activities.json
+  now has `checksum_public`.
+- **Fireteam id in the public instance**: citizens join the public instance with fireteam
+  id 0 (identity member 5 and properties @0xA0) and the private instance id in properties
+  @0x18; the host fills in the fireteam id from that private instance.
+- **Membership change number** (@0): the simulation entry's peer list (Q + 0x12A78 +
+  i*0x18258, mask +0x4C, ids +0x5C) is rebuilt from the membership's peer mask @0x5028 only
+  when @0 changes (0xBA3090; built by 0xBA35E0). It was always 1, so a peer that joined
+  after the simulation started was never added on the host. Every membership now gets a
+  new number.
+
+Still open: the A↔B channel sometimes closes with "connection-overflowed" (A's reliable
+window fills while B, starved on two shared cores, is slow to ack); a session host
+migration follows. Seen in most two-instance runs before these fixes, not in ftp30.

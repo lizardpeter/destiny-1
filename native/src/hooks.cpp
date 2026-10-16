@@ -773,6 +773,124 @@ static void trace_players() {
         }
     }
     log("players:%s", out.empty() ? " none" : out.c_str());
+
+    // Player updates (0xBB6080 → 0xBA6760): the simulation (*0x2801518, role @+8; 1 = client)
+    // diffs its tracked players (P = *sim: mask @+0x10, generation @+0xC) against the activity
+    // session's membership (session = 0x75F130(*(Q + 0x12A78 + i*0x18258 + 0x10)), Q = *P,
+    // i = *(Q + 0x5B180); state @+0x8C48 must be 4..9; generation @+0x6330; membership @+0x620,
+    // simulated mask @+0x1C54, identity @+0x1C5C + slot*0xE8).
+    const uint64_t sim = *reinterpret_cast<const uint64_t*>(b + 0x2801518);
+    if (!sim) return;
+    const uint64_t P = *reinterpret_cast<const uint64_t*>(sim);
+    const uint64_t Q = P ? *reinterpret_cast<const uint64_t*>(P) : 0;
+    const int role = *reinterpret_cast<const int*>(sim + 8);
+    // 0xB9FAC0 only produces player updates while *0x28A5410 and 0x906E00() (object *0x273DCD0:
+    // +0x2B48 set, +0 clear → +1) hold.
+    // Simulation peers: the session's list (*0x273DCD0: mask @+0x20, 20 ids @+0x24), copied by
+    // 0x906750 → 0x913A90 into the global list (*0x273EA90: mask @+4, ids @+8), which a
+    // simulation tracker reset (0xBA6470) snapshots into its known peers.
+    if (const uint8_t* g = *reinterpret_cast<uint8_t* const*>(b + 0x273DCD0)) {
+        std::string peers;
+        auto list = [&](const char* name, const uint8_t* at, uint32_t mask) {
+            peers += name;
+            for (int k = 0; k < 20; ++k)
+                if (mask >> k & 1) {
+                    char buf[24];
+                    uint64_t v; std::memcpy(&v, at + k * 8, 8);
+                    std::snprintf(buf, sizeof buf, " %llx", (unsigned long long)v);
+                    peers += buf;
+                }
+        };
+        uint32_t m1; std::memcpy(&m1, g + 0x20, 4);
+        list(" session:", g + 0x24, m1);
+        if (const uint8_t* gl = *reinterpret_cast<uint8_t* const*>(b + 0x273EA90)) {
+            uint32_t m2; std::memcpy(&m2, gl + 4, 4);
+            list(" global:", gl + 8, m2);
+        }
+        log("players: producer gate %d, sim object [0]=%d [1]=%d [0x2b48]=%d;%s", *reinterpret_cast<const uint8_t*>(b + 0x28A5410), g[0], g[1], g[0x2B48], peers.c_str());
+    }
+    if (!Q) { log("players: sim role %d, no tracker", role); return; }
+    const int idx = *reinterpret_cast<const int*>(Q + 0x5B180);
+    uint64_t sess = 0;
+    if (idx != -1) {
+        // the simulation session entry's peer list (mask @+0x4C, ids @+0x5C, dirty @+0xFC):
+        // what 0xBA6510 publishes as simulation message 0xD
+        const uint64_t e = Q + 0x12A78 + uint64_t(idx) * 0x18258;
+        std::string el;
+        const uint32_t em = *reinterpret_cast<const uint32_t*>(e + 0x4C);
+        for (int k = 0; k < 20; ++k)
+            if (em >> k & 1) {
+                char buf[24];
+                std::snprintf(buf, sizeof buf, " %llx", (unsigned long long)*reinterpret_cast<const uint64_t*>(e + 0x5C + k * 8));
+                el += buf;
+            }
+        log("players: sim entry peers%s dirty %d; tracker host list mask %#x", el.c_str(), *reinterpret_cast<const uint8_t*>(e + 0xFC),
+            *reinterpret_cast<const uint32_t*>(P + 0x12DC));
+        using SessFn = D1_SYSV uint64_t (*)(uint64_t);
+        sess = reinterpret_cast<SessFn>(b + 0x75F130)(*reinterpret_cast<const uint64_t*>(Q + 0x12A78 + uint64_t(idx) * 0x18258 + 0x10));
+    }
+    const uint32_t tmask = *reinterpret_cast<const uint32_t*>(P + 0x10);
+    const int tgen = *reinterpret_cast<const int*>(P + 0xC);
+    if (!sess) { log("players: sim role %d idx %d, no session; tracked mask %#x gen %d", role, idx, tmask, tgen); return; }
+    const uint64_t m = sess + 0x620;
+    std::string ids;
+    const uint32_t smask = *reinterpret_cast<const uint32_t*>(m + 0x1C54);
+    for (int i = 0; i < 20; ++i)
+        if (smask >> i & 1) {
+            const uint64_t s = m + uint64_t(i) * 0xE8;  // +0x1CE0 account soid, +0x1CE8 character
+            // 0x75F210 (fireteam_from_player): the fireteam session's member entry for this
+            // identity, value @+0xA0 of its data; the diff needs it found and not 0/-1.
+            using FtFn = D1_SYSV bool (*)(const void*, int64_t*);
+            int64_t ft = -2;
+            const bool found = reinterpret_cast<FtFn>(b + 0x75F210)(reinterpret_cast<const void*>(s + 0x1C5C), &ft);
+            char buf[128];
+            std::snprintf(buf, sizeof buf, " %d:%016llx soid %llx char %llx ft %d/%lld", i, (unsigned long long)*reinterpret_cast<const uint64_t*>(s + 0x1C5C),
+                          (unsigned long long)*reinterpret_cast<const uint64_t*>(s + 0x1CE0), (unsigned long long)*reinterpret_cast<const uint64_t*>(s + 0x1CE8),
+                          found, (long long)ft);
+            ids += buf;
+        }
+    // slot peer index @+0x1C64, @+0x1C74 (must not be -1); peers (mask @+0x2C, state @+0x5C +
+    // p*0x168, id @+0x54 + p*0x168); the tracker's known peers: 20 u64 @P+0x123C
+    for (int i = 0; i < 20; ++i)
+        if (smask >> i & 1) {
+            const uint64_t s = m + uint64_t(i) * 0xE8;
+            char buf[64];
+            std::snprintf(buf, sizeof buf, " s%d:peer %d x %d", i, *reinterpret_cast<const int*>(s + 0x1C64), *reinterpret_cast<const int*>(s + 0x1C74));
+            ids += buf;
+        }
+    const uint32_t pmask = *reinterpret_cast<const uint32_t*>(m + 0x2C);
+    for (int p = 0; p < 20; ++p)
+        if (pmask >> p & 1) {
+            char buf[64];
+            std::snprintf(buf, sizeof buf, " p%d:%llx st %d", p, (unsigned long long)*reinterpret_cast<const uint64_t*>(m + 0x54 + uint64_t(p) * 0x168),
+                          *reinterpret_cast<const int*>(m + 0x5C + uint64_t(p) * 0x168));
+            ids += buf;
+        }
+    ids += " known:";
+    for (int k = 0; k < 20; ++k) {
+        const uint64_t v = *reinterpret_cast<const uint64_t*>(P + 0x123C + uint64_t(k) * 8);
+        if (v) { char buf[24]; std::snprintf(buf, sizeof buf, " %llx", (unsigned long long)v); ids += buf; }
+    }
+    for (int i = 0; i < 20; ++i)
+        if (tmask >> i & 1) {  // tracker slot: id @+0x18, pending flag @+0x20, @+0x28, @+0x34
+            const uint64_t t = P + uint64_t(i) * 0xE8;
+            char buf[96];
+            std::snprintf(buf, sizeof buf, " t%d:%016llx flag %d %llx %d", i, (unsigned long long)*reinterpret_cast<const uint64_t*>(t + 0x18),
+                          *reinterpret_cast<const uint8_t*>(t + 0x20), (unsigned long long)*reinterpret_cast<const uint64_t*>(t + 0x28),
+                          *reinterpret_cast<const int*>(t + 0x34));
+            ids += buf;
+        }
+    {
+        using IntFn = D1_SYSV int (*)();
+        using PtrFn = D1_SYSV uint64_t (*)();
+        const uint64_t ftsess = reinterpret_cast<PtrFn>(b + 0x75D330)();
+        log("players: mode %d fireteam slot %d session %#llx established %d", reinterpret_cast<IntFn>(b + 0x78F6B0)(),
+            reinterpret_cast<IntFn>(b + 0x75D200)(), (unsigned long long)ftsess,
+            ftsess ? *reinterpret_cast<const uint8_t*>(ftsess + 0x131) & 1 : -1);
+    }
+    log("players: sim role %d idx %d session state %u gen %d members %#x simulated %#x%s; tracked mask %#x gen %d",
+        role, idx, *reinterpret_cast<const uint32_t*>(sess + 0x8C48), *reinterpret_cast<const int*>(sess + 0x6330),
+        *reinterpret_cast<const uint32_t*>(m + 0x2C), smask, ids.c_str(), tmask, tgen);
 }
 
 void hooks_system_tick() {
