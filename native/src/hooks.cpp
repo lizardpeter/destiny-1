@@ -802,7 +802,13 @@ static void trace_players() {
                 char buf[32]; std::snprintf(buf, sizeof buf, " +%#x=%08x", o, v); h += buf;
             }
         }
-        if (!h.empty()) log("players: record %d handles%s", i, h.c_str());
+        if (!h.empty()) {
+            // +0x850: configuration (race, gender, class, ..., body tag @+0x85C); +0x1660 the
+            // resolved configuration (-1 = none: the player cannot spawn)
+            char cfg[64] = {};
+            for (int k = 0; k < 16; ++k) std::snprintf(cfg + 3 * k, 4, "%02x ", r[0x850 + k]);
+            log("players: record %d handles%s | config %s| +0x1660 %d", i, h.c_str(), cfg, *reinterpret_cast<const int32_t*>(r + 0x1660));
+        }
     }
 
     // Player updates (0xBB6080 → 0xBA6760): the simulation (*0x2801518, role @+8; 1 = client)

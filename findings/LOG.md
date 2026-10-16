@@ -1532,3 +1532,18 @@ entity, which should arrive by replication from its owner, is not created yet.
   (+0x4: A 0x..ff2000, B 0x..ff2001), and each side's copy of the other's record carries
   that player's gear tags (0x80A7xxxx). Whether the remote biped is drawn is not checked
   yet (headless runs, null GPU).
+
+## 2026-10-16 (afternoon): first Windows two-player test; why the world stayed black
+
+The user's two-instance run on Windows reached activity:in_world in Earth patrol on both
+machines with a healthy channel, but both screens stayed black. Cause: the backend's
+D1B_TEST_CHARACTER character had an empty creation request, so the player configuration
+(player record +0x850 race/gender/class, +0x85C body tag, resolved at +0x1660) stayed unset
+(0xFF / -1) and the player never got a unit (the director shows the dead camera). Headless
+runs had hidden it: there the leader used a character made on the creation screens. The
+test character now carries such a creation request; with two fresh accounts both players
+get units (ftp43). D1_TRACE_PLAYERS logs each record's configuration.
+
+Also seen in that run (not fixed yet): the Destiny 2 pre-order screen comes back after every
+dismissal (no server request is made on dismiss), and the director lists no destinations
+for the test characters.

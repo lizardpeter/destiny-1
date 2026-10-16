@@ -512,12 +512,16 @@ pub const TYPE_CREATE_REQUEST: &str = "0x80801860";
 pub fn characters() -> Vec<crate::account::Character> {
     let mut list = crate::account::characters();
     if list.is_empty() && std::env::var("D1B_TEST_CHARACTER").map(|v| v != "0").unwrap_or(false) {
-        let mut w = BitWriter::default();
-        encode(&mut w, TYPE_CREATE_REQUEST, &Value::Struct(vec![]));
-        list.push(crate::account::Character { id: first_character_id(), creation: hex(&w.finish()) });
+        list.push(crate::account::Character { id: first_character_id(), creation: TEST_CHARACTER_CREATION.into() });
     }
     list
 }
+/// The test character's creation request: one made on the creation screens (race, gender,
+/// class and appearance). An empty request leaves the player's configuration unset (player
+/// +0x850 race/gender/class 0xFF, +0x1660 -1), and such a player never gets a unit: the
+/// world loads but stays black.
+const TEST_CHARACTER_CREATION: &str =
+    "c0e0303045b0301030e250e490ce10ea70ea90eaafffeffff0e6d0def02393b8ae3faf0f97274f0f74040404040404040400";
 pub const FIRST_CHARACTER_ID_BASE: i64 = 0x4D31_0000_0000_0100;
 /// The current player's first character id (slot n: base + n << 32).
 pub fn first_character_id() -> i64 {
