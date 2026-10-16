@@ -1562,3 +1562,14 @@ pushes the profile when the account state changes; with that, a rendered orbit r
 presses Circle keeps the screen dismissed (dir3). D1_TRACE_UNLOCK logs unlock
 expressions (0x28E590: ops {u8 kind, u32 operand}, 1 flag, 10 unlock value, 11 constant)
 with their callers.
+
+## 2026-10-16 (afternoon): first co-op session on Windows
+
+Two instances on the user's laptop (Intel Arc), one backend: Player 2 joined Player 1's
+fireteam from orbit (F10), Player 1 launched Earth patrol (F9), and both loaded into the
+Cosmodrome as their Guardians; Player 1's view shows Player 2's nameplate and transmat
+arrival. Needed on the way: the test character's appearance (spawn), the client state round
+trip (pre-order screen), players known from sign-in (friend lists), configs carrying every
+test switch (D1B_* in d1-native.cfg). Both instances ran at 7-20 fps in the world with the
+renderer's command recording at 35-125 ms per frame: two games and two renderers sharing
+one laptop CPU/GPU. Texture flicker while moving was seen again (renderer, not co-op).
