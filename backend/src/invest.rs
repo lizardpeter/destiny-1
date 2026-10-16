@@ -612,13 +612,62 @@ fn character_list() -> Value {
 const PROFILE_FLAG_OVERRIDES: &[(i64, i64)] = &[(836, 1), (0x1A3, 2), (0x1B8, 2)];
 
 /// Flags a character past the opening story has (research: read off the director's activity
-/// lists, D1_TRACE_DIRECTOR): destinations and story nodes stay hidden while these are false.
-const VETERAN_FLAGS: &[i64] = &[98, 430, 434, 435, 2549, 2566, 3916, 5998];
+/// and destination lists, D1_TRACE_DIRECTOR / D1_TRACE_UNLOCK): destinations and story nodes
+/// stay hidden while these are false. Release-dated flags (430/434/435/5998: expansions) come
+/// from the schedule and the server time instead.
+const VETERAN_FLAGS: &[i64] = &[98, 2539, 2549, 2566, 3850, 3916];
 
-/// The profile's override list (at most 64): the fixed overrides, then with
-/// D1B_PROLOGUE_DONE=1 flag 836 true plus the veteran flags, then D1B_FLAGS_TRUE /
-/// D1B_FLAGS_FALSE (comma-separated master flag indices, research).
+/// Where a master flag index is stored (data/unlock_flag_slots.json, dumped from the client).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum FlagSlot {
+    Profile(usize),
+    ProfileExtra(usize),
+    Character(usize),
+}
+
+fn flag_slot(flag: i64) -> Option<FlagSlot> {
+    #[derive(serde::Deserialize)]
+    struct Slots {
+        profile: Vec<i64>,
+        profile_extra: Vec<i64>,
+        character: Vec<i64>,
+    }
+    static M: OnceLock<HashMap<i64, FlagSlot>> = OnceLock::new();
+    M.get_or_init(|| {
+        let s: Slots = serde_json::from_str(include_str!("../data/unlock_flag_slots.json")).expect("unlock_flag_slots.json");
+        let mut m = HashMap::new();
+        m.extend(s.profile.iter().enumerate().map(|(i, &f)| (f, FlagSlot::Profile(i))));
+        m.extend(s.profile_extra.iter().enumerate().map(|(i, &f)| (f, FlagSlot::ProfileExtra(i))));
+        m.extend(s.character.iter().enumerate().map(|(i, &f)| (f, FlagSlot::Character(i))));
+        m
+    })
+    .get(&flag)
+    .copied()
+}
+
+/// Write this account's flag settings that have a storage slot of the kind `pick` selects.
+fn set_slots(flags: &mut Value, pick: impl Fn(FlagSlot) -> Option<usize>) {
+    if let Value::Array(a) = flags {
+        for (f, state) in flag_settings() {
+            if let Some(i) = flag_slot(f).and_then(&pick).filter(|&i| i < a.len()) {
+                a[i] = Some(Value::Int(state));
+            }
+        }
+    }
+}
+
+/// The override lists (profile: at most 64): the settings of flags with no storage slot.
 fn profile_flag_overrides() -> Vec<(i64, i64)> {
+    let mut ov: Vec<(i64, i64)> = flag_settings().into_iter().filter(|&(f, _)| flag_slot(f).is_none()).collect();
+    ov.truncate(64);
+    ov
+}
+
+/// Flag settings for this account (state 1 false / 2 true): the fixed overrides; a new
+/// character has 2838 true (with 836 false the prologue starts); with D1B_PROLOGUE_DONE=1
+/// 836 true, 2838 false and the veteran flags true; then D1B_FLAGS_TRUE / D1B_FLAGS_FALSE
+/// (comma-separated master flag indices, research).
+fn flag_settings() -> Vec<(i64, i64)> {
     let env_on = |k: &str| std::env::var(k).is_ok_and(|v| v == "1");
     let list = |k: &str| -> Vec<i64> {
         std::env::var(k).unwrap_or_default().split(',').filter_map(|t| t.trim().parse().ok()).collect()
@@ -628,8 +677,10 @@ fn profile_flag_overrides() -> Vec<(i64, i64)> {
         Some(e) => e.1 = state,
         None => ov.push((flag, state)),
     };
+    set(2838, 2);
     if env_on("D1B_PROLOGUE_DONE") {
         set(836, 2);
+        set(2838, 1);
         for &f in VETERAN_FLAGS {
             set(f, 2);
         }
@@ -640,7 +691,6 @@ fn profile_flag_overrides() -> Vec<(i64, i64)> {
     for f in list("D1B_FLAGS_FALSE") {
         set(f, 1);
     }
-    ov.truncate(64);
     ov
 }
 
@@ -703,7 +753,9 @@ pub fn profile_baseline() -> FamilyUpdate {
     profile.resize(15, None);
     profile[5] = stored_state(crate::account::with(|a| a.client_state.clone()), TYPE_ACCOUNT_CLIENT_STATE)
         .or_else(test_account_state);
-    profile[10] = Some(unlock_flags(3100));
+    let mut stored = unlock_flags(3100);
+    set_slots(&mut stored, |s| match s { FlagSlot::Profile(i) => Some(i), _ => None });
+    profile[10] = Some(stored);
     // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
     // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
     let ov: Vec<Option<Value>> = profile_flag_overrides()
@@ -713,7 +765,9 @@ pub fn profile_baseline() -> FamilyUpdate {
     profile[12] = Some(Struct(vec![None, Some(Struct(vec![Some(Int(ov.len() as i64)), Some(Array(ov))])),
                                    Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))]))]));
     // +0x5428 (0x80801807): {i64, 512 more flags}
-    profile[14] = Some(Struct(vec![None, Some(unlock_flags(512))]));
+    let mut extra = unlock_flags(512);
+    set_slots(&mut extra, |s| match s { FlagSlot::ProfileExtra(i) => Some(i), _ => None });
+    profile[14] = Some(Struct(vec![None, Some(extra)]));
     let profile = Struct(profile);
     let mut objects = vec![Object { ty: TYPE_PROFILE, soid: account_id(), value: Struct(vec![Some(profile)]) }];
     if let Some(ch) = active {
@@ -730,28 +784,19 @@ pub fn profile_baseline() -> FamilyUpdate {
         let mut timing = vec![None; 8];
         timing[7] = Some(Struct(vec![Some(Bool(true)), Some(Int(server_time()))]));
         c[9] = Some(Struct(timing));
-        // character flags; slot 673 = flag 2838, set on a new character: the prologue
-        // (first mission) needs it true and flag 836 false
+        // character flags (slot 673 = flag 2838: a new character, held in the prologue;
+        // it also gates joining, 0x546F20)
         let mut flags = unlock_flags(2560);
-        // D1B_PROLOGUE_DONE=1 (research): the character has finished the prologue, so it is
-        // not held in the new-player experience (2838 also gates joining, 0x546F20)
-        let prologue_done = std::env::var("D1B_PROLOGUE_DONE").is_ok_and(|v| v == "1");
-        if let Array(f) = &mut flags {
-            f[673] = Some(Int(if prologue_done { 1 } else { 2 }));
-        }
+        set_slots(&mut flags, |s| match s { FlagSlot::Character(i) => Some(i), _ => None });
         c[11] = Some(flags);
         // +0x6FD0 (0x808018BB) +0x84: up to 20 {flag, state} overrides for flags kept
-        // nowhere else (scope 0 in the master flag table, vtable +0x2B8; applied by
-        // 0x28BC60). Flag 836 is one of those and gates the prologue.
-        // 836 true once the prologue is done (with 2838 false: what finishing it leaves)
-        // The same list carries the veteran flags (and D1B_FLAGS_TRUE/FALSE): the profile's
-        // override list alone does not reach them.
-        let mut overrides = vec![Some(Struct(vec![Some(Int(836)), Some(Int(if prologue_done { 2 } else { 1 }))]))];
-        for (flag, state) in profile_flag_overrides() {
-            if flag != 836 && !PROFILE_FLAG_OVERRIDES.iter().any(|&(f, _)| f == flag) && overrides.len() < 20 {
-                overrides.push(Some(Struct(vec![Some(Int(flag)), Some(Int(state))])));
-            }
-        }
+        // nowhere else (applied by 0x28BC60 scope 0, after the stored lists; e.g. 836, which
+        // gates the prologue)
+        let overrides: Vec<Option<Value>> = profile_flag_overrides()
+            .into_iter()
+            .take(20)
+            .map(|(f, st)| Some(Struct(vec![Some(Int(f)), Some(Int(st))])))
+            .collect();
         let mut st = vec![None; 6];
         st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));
         c[15] = Some(Struct(st));

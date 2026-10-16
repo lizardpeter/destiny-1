@@ -1175,8 +1175,8 @@ static std::string expr_ops(const int64_t* expr) {
 using ActivityStateFn = D1_SYSV int32_t (*)(void*, const uint8_t*);
 static ActivityStateFn g_activity_state_orig = nullptr;
 // Where each unlock flag is stored (research, D1_TRACE_DIRECTOR): the definitions manager
-// (0x25A550) lists, per storage scope, the master flag index of each stored slot. Vtable +0x298:
-// profile flags (scope 3), +0x2A0: character flags (scope 7, slot i = character +0x53C0 + i),
+// (0x25A550) lists, per storage scope, the master flag index of each stored slot. Vtable +0x290:
+// profile flags (scope 4, profile +0x383C, 3100), +0x298: more profile flags (scope 3, +0x5430), +0x2A0: character flags (scope 7, slot i = character +0x53C0 + i),
 // both {i32 count, i64 relative array @+8} of 8-byte entries {.. i16 master index @+0x14}
 // (as read by 0x28BC60). Logged once as "flagscope: <scope> <slot> <master>".
 static void dump_flag_scopes() {
@@ -1185,7 +1185,7 @@ static void dump_flag_scopes() {
     void* defs = reinterpret_cast<GetFn>(rt().modules[0].base + 0x25A550)();
     if (!defs) return;
     const auto vt = *reinterpret_cast<const uint64_t* const*>(defs);
-    for (auto [scope, off] : {std::pair{3, 0x298}, std::pair{7, 0x2A0}}) {
+    for (auto [scope, off] : {std::pair{4, 0x290}, std::pair{3, 0x298}, std::pair{7, 0x2A0}}) {
         const int32_t* lst = reinterpret_cast<ListFn>(vt[off / 8])(defs);
         if (!lst) continue;
         const auto* base = reinterpret_cast<const uint8_t*>(lst) + 8 + *reinterpret_cast<const int64_t*>(lst + 2);
@@ -1229,6 +1229,33 @@ static D1_SYSV const int64_t* flag_time_hook(const uint8_t* ctx, const uint8_t* 
             describe_addr(*reinterpret_cast<const uint64_t*>(ctx)).c_str(),
             (unsigned long long)*reinterpret_cast<const uint64_t*>(ctx + 0x10), (const void*)ch);
     return r;
+}
+
+// Unlock flag sources (0x28BC60(..., scope @arg10, owner @arg11, flags @arg12, ok @arg13)):
+// the client fills three arrays (scopes 12/11, scope 10, scopes 9..0) and merges them,
+// first non-zero wins (0x28E0C0). D1_WATCH_FLAGS=<i>,<j>,... (research) logs which scope
+// writes each watched flag and the value.
+using FlagApplyFn = D1_SYSV void (*)(void*, void*, void*, void*, void*, void*, void*, void*, void*, int32_t,
+                                     char, uint8_t*, uint8_t*);
+static FlagApplyFn g_flag_apply_orig = nullptr;
+static std::vector<int> g_watch_flags;
+static D1_SYSV void flag_apply_hook(void* a1, void* a2, void* a3, void* a4, void* a5, void* a6, void* a7, void* a8,
+                                    void* a9, int32_t scope, char owner, uint8_t* flags, uint8_t* ok) {
+    uint8_t before[16] = {};
+    for (size_t i = 0; i < g_watch_flags.size() && i < 16; ++i) before[i] = flags[g_watch_flags[i]];
+    g_flag_apply_orig(a1, a2, a3, a4, a5, a6, a7, a8, a9, scope, owner, flags, ok);
+    static std::mutex m;
+    static std::map<std::pair<int, int>, int> seen;
+    std::lock_guard lk(m);
+    for (size_t i = 0; i < g_watch_flags.size() && i < 16; ++i) {
+        const int f = g_watch_flags[i], v = flags[f];
+        if (v == before[i]) continue;
+        auto [it, fresh] = seen.try_emplace({f, scope}, v);
+        if (fresh || it->second != v) {
+            it->second = v;
+            log("flagsource: flag %d = %d by scope %d (owner %d)", f, v, scope, int(owner));
+        }
+    }
 }
 
 static D1_SYSV int32_t activity_state_hook(void* c, const uint8_t* list) {
@@ -1637,6 +1664,14 @@ void install_game_hooks() {
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    if (const char* w = getenv("D1_WATCH_FLAGS")) {
+        for (const char* p = w; *p;) {
+            g_watch_flags.push_back(atoi(p));
+            while (*p && *p != ',') ++p;
+            if (*p) ++p;
+        }
+        g_flag_apply_orig = reinterpret_cast<FlagApplyFn>(hook_function(exe.base + 0x28BC60, reinterpret_cast<const void*>(&flag_apply_hook)));
+    }
     if (getenv("D1_TRACE_DIRECTOR"))
         replace_function(exe.base + 0x265100, reinterpret_cast<const void*>(&flag_time_hook));
     if (getenv("D1_TRACE_DIRECTOR"))
