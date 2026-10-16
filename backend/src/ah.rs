@@ -33,6 +33,8 @@ const TYPE_IDENTITY: &str = "0x80800e98";
 const TYPE_JOIN_RESULT: &str = "0x80800a58";
 
 pub struct ClientMessage<'a> {
+    /// The activity host instance the message is for.
+    pub target: u64,
     pub ty: u32,
     pub data: &'a [u8],
 }
@@ -40,6 +42,7 @@ pub struct ClientMessage<'a> {
 /// Parse a client -> host notification payload (after the 14-byte header class 3, whose
 /// target id is the first 8 bytes of `payload` here).
 pub fn parse_client(payload: &[u8]) -> Option<ClientMessage<'_>> {
+    let target = u64::from_be_bytes(payload.get(..8)?.try_into().ok()?);
     let p = payload.get(8..)?;
     if *p.first()? != 1 || p.len() < 13 {
         return None;
@@ -47,7 +50,7 @@ pub fn parse_client(payload: &[u8]) -> Option<ClientMessage<'_>> {
     let ty = u32::from_be_bytes(p[1..5].try_into().ok()?);
     let len = u32::from_be_bytes(p[5..9].try_into().ok()?) as usize;
     let data = p.get(13..13 + len)?;
-    Some(ClientMessage { ty, data })
+    Some(ClientMessage { target, ty, data })
 }
 
 /// Host -> client notification payload (see module docs).
@@ -284,14 +287,85 @@ pub const KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_se
 #[allow(dead_code)]
 pub const HOST_CLIENT_REFERENCE: u32 = 7;
 
+/// Client -> host: request_peer_reservation (payload 0x80800BB9).
+pub const CLIENT_REQUEST_PEER_RESERVATION: u32 = 12;
+const TYPE_PEER_RESERVATION: &str = "0x80800bb9";
+
+/// The machine id (first member) of an identity block 0x80800C2D.
+fn machine_of(identity: &Value) -> Option<Value> {
+    match identity {
+        Value::Struct(f) => f.first().cloned().flatten(),
+        _ => None,
+    }
+}
+
+/// Host messages pushed to a connection from elsewhere (another member joining, ...).
+pub type Push = tokio::sync::mpsc::UnboundedSender<(u32, Vec<u8>)>;
+
+/// An activity host instance: created by a host startup (the session host's activity
+/// client), joined by every member's activity client (one BAP connection each).
+struct Instance {
+    activity: (i32, i32),
+    /// (connection id, player, push channel), in slot order; a reserved slot (requested by
+    /// the session host for a fireteam member that has not joined yet) has connection 0 and
+    /// no channel
+    members: Vec<(u64, Player, Option<Push>)>,
+}
+
+fn instances() -> &'static std::sync::Mutex<std::collections::HashMap<u64, Instance>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<u64, Instance>>> = std::sync::OnceLock::new();
+    I.get_or_init(Default::default)
+}
+
+static NEXT_CONNECTION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// Per-connection activity host state.
-#[derive(Default)]
 pub struct Host {
     logged: std::collections::HashSet<u32>,
-    /// From the host startup request: activity index and insertion point.
+    /// From the host startup request (or the instance this connection joined): activity index
+    /// and insertion point.
     activity: Option<(i32, i32)>,
     joined: bool,
     sync_token: i64,
+    /// Instance this connection talks to, and its own id and push channel.
+    instance: u64,
+    connection: u64,
+    push: Option<Push>,
+}
+
+impl Default for Host {
+    fn default() -> Self {
+        Host {
+            logged: Default::default(),
+            activity: None,
+            joined: false,
+            sync_token: 0,
+            instance: 0,
+            connection: NEXT_CONNECTION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            push: None,
+        }
+    }
+}
+
+impl Drop for Host {
+    fn drop(&mut self) {
+        // leave the instance; the others get the membership without this player
+        let mut all = instances().lock().unwrap();
+        if let Some(inst) = all.get_mut(&self.instance) {
+            let before = inst.members.len();
+            inst.members.retain(|(c, _, _)| *c != self.connection);
+            if inst.members.len() != before {
+                info!("activity host: instance {:#x}: a player left ({} remain)", self.instance, inst.members.len());
+                let players: Vec<Player> = inst.members.iter().map(|(_, p, _)| p.clone()).collect();
+                let m = membership(&players);
+                for (_, _, push) in &inst.members {
+                    if let Some(push) = push {
+                        let _ = push.send((HOST_MEMBERSHIP, m.clone()));
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Host {
@@ -327,6 +401,34 @@ impl Host {
         }
     }
 
+    /// The host startup was answered with instance id `id`: create the instance.
+    pub fn register(&mut self, id: u64) {
+        self.instance = id;
+        if let Some(a) = self.activity {
+            instances().lock().unwrap().insert(id, Instance { activity: a, members: Vec::new() });
+        }
+    }
+
+    /// A message for instance `target` arrived on this connection (a member's activity client
+    /// connects and joins without a startup of its own).
+    pub fn bind(&mut self, target: u64, push: &Push) {
+        if self.push.is_none() {
+            self.push = Some(push.clone());
+        }
+        if self.instance == 0 || self.activity.is_none() {
+            if let Some(inst) = instances().lock().unwrap().get(&target) {
+                self.instance = target;
+                self.activity = Some(inst.activity);
+                info!("activity host: connection joins instance {target:#x} (activity {:?})", inst.activity);
+            }
+        }
+    }
+
+    /// The instance this connection talks to (0 before a startup or a bound message).
+    pub fn instance_id(&self) -> u64 {
+        self.instance
+    }
+
     /// Handle one client message; returns host messages to send back (type, data).
     pub fn on_client(&mut self, m: &ClientMessage) -> Vec<(u32, Vec<u8>)> {
         match m.ty {
@@ -341,16 +443,91 @@ impl Host {
                     }),
                     _ => None,
                 };
+                // add the player to the instance; everyone already there gets the new membership
+                let players: Vec<Player> = {
+                    let mut all = instances().lock().unwrap();
+                    match (all.get_mut(&self.instance), player.clone(), self.push.clone()) {
+                        (Some(inst), Some(p), Some(push)) => {
+                            inst.members.retain(|(c, _, _)| *c != self.connection);
+                            // a slot reserved for this machine is taken over in place
+                            let machine = machine_of(&p.identity);
+                            match inst.members.iter_mut().find(|(c, q, _)| *c == 0 && machine_of(&q.identity) == machine) {
+                                Some(slot) => *slot = (self.connection, p, Some(push)),
+                                None => inst.members.push((self.connection, p, Some(push))),
+                            }
+                            let players: Vec<Player> = inst.members.iter().map(|(_, p, _)| p.clone()).collect();
+                            let m = membership(&players);
+                            for (c, _, push) in &inst.members {
+                                if *c != self.connection {
+                                    if let Some(push) = push {
+                                        let _ = push.send((HOST_MEMBERSHIP, m.clone()));
+                                    }
+                                }
+                            }
+                            info!("activity host: instance {:#x} now has {} players", self.instance, players.len());
+                            players
+                        }
+                        _ => player.into_iter().collect(),
+                    }
+                };
                 vec![
                     (HOST_JOIN_RESULT, join_result(&identity)),
                     (HOST_ENTITY_INDICES, entity_indices()),
-                    (HOST_MEMBERSHIP, membership(player.as_slice())),
+                    (HOST_MEMBERSHIP, membership(&players)),
                     (HOST_INSTANCE, self.instance()),
                 ]
                 .into_iter()
                 .chain(world_globals())
                 .chain(claim_abandoned())
                 .collect()
+            }
+            CLIENT_REQUEST_PEER_RESERVATION => {
+                // {u32 request, {count, up to 20 {.., identity 0x80800C2D}}} (0x80800BB9): the
+                // session host reserves slots for its fireteam members before they join; the
+                // membership then lists them, which is what lets their activity clients start
+                // ("waiting for session host to include us in the registered peer mask").
+                let v = invest::decode(&mut BitReader::new(m.data), TYPE_PEER_RESERVATION);
+                let ids: Vec<Value> = match &v {
+                    Value::Struct(f) => match f.get(1).cloned().flatten() {
+                        Some(Value::Struct(g)) => match g.get(1).cloned().flatten() {
+                            Some(Value::Array(a)) => a
+                                .into_iter()
+                                .flatten()
+                                // each element is (or wraps) the identity block
+                                .filter_map(|e| match e {
+                                    Value::Struct(x) if x.len() == 1 => x[0].clone(),
+                                    v @ Value::Struct(_) => Some(v),
+                                    _ => None,
+                                })
+                                .collect(),
+                            _ => vec![],
+                        },
+                        _ => vec![],
+                    },
+                    _ => vec![],
+                };
+                info!("activity host: instance {:#x}: peer reservation for {} players: {}", self.instance, ids.len(),
+                      invest::show(&v));
+                let mut all = instances().lock().unwrap();
+                if let Some(inst) = all.get_mut(&self.instance) {
+                    for id in ids {
+                        let machine = machine_of(&id);
+                        if !inst.members.iter().any(|(_, q, _)| machine_of(&q.identity) == machine) {
+                            inst.members.push((0, Player { identity: id, properties: None }, None));
+                        }
+                    }
+                    let players: Vec<Player> = inst.members.iter().map(|(_, p, _)| p.clone()).collect();
+                    let mm = membership(&players);
+                    for (c, _, push) in &inst.members {
+                        if *c != self.connection {
+                            if let Some(push) = push {
+                                let _ = push.send((HOST_MEMBERSHIP, mm.clone()));
+                            }
+                        }
+                    }
+                    return vec![(HOST_MEMBERSHIP, mm)];
+                }
+                Vec::new()
             }
             t => {
                 // Periodic messages (e.g. 15) are logged once.

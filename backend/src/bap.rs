@@ -289,12 +289,22 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
         }
     });
     let mut tick = tokio::time::interval(ah::KEEPALIVE_INTERVAL);
+    let (push_tx, mut push_rx) = tokio::sync::mpsc::unbounded_channel::<(u32, Vec<u8>)>();
     loop {
         let env = tokio::select! {
             r = rx.recv() => match r {
                 Some(r) => r?,
                 None => return Ok(()),
             },
+            Some((ty, data)) = push_rx.recv() => {
+                if chan.is_some() {
+                    notify_seq += 1;
+                    let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(ah_id, ty, &data));
+                    send(&mut sock, &mut chan, &msg).await?;
+                    info!("bap[AH]: pushed activity message type {ty} ({} bytes)", data.len());
+                }
+                continue;
+            }
             _ = tick.tick() => {
                 if role == Role::ActivityHost && chan.is_some() {
                     for (ty, data) in ah_state.keepalive() {
@@ -394,6 +404,7 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                     ah_id = AH_HOST_ID + NEXT_AH_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     info!("bap[AH]: host startup -> instance {ah_id:#x}");
                     ah_state.on_startup(&payload[1..]);
+                    ah_state.register(ah_id);
                 }
                 let mut body = vec![0u8; 0x89];
                 body[0] = 2;
@@ -405,6 +416,10 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                     warn!("bap[AH]: malformed activity message {}", pb::hex(&payload[..payload.len().min(64)]));
                     continue;
                 };
+                ah_state.bind(m.target, &push_tx);
+                if ah_state.instance_id() != 0 {
+                    ah_id = ah_state.instance_id();
+                }
                 for (ty, data) in ah_state.on_client(&m) {
                     notify_seq += 1;
                     let msg = notification(MSG_BAP_TO_CLIENT, notify_seq, &ah::host_payload(ah_id, ty, &data));

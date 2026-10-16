@@ -49,6 +49,17 @@ static int net_id() {
     }();
     return id;
 }
+
+// The console's MAC address, which the game turns into its machine id (session peers and
+// activity members are told apart by it): locally administered 02:D1, then a hash of the
+// player's online id and the D1_NET_ID test identity, so every player's console differs.
+static void console_mac(uint8_t* mac) {
+    uint32_t h = 2166136261u;
+    for (char c : settings().name) h = (h ^ uint8_t(c)) * 16777619u;
+    h = (h ^ uint32_t(net_id())) * 16777619u;
+    const uint8_t m[6] = {0x02, 0xD1, uint8_t(h >> 24), uint8_t(h >> 16), uint8_t(h >> 8), uint8_t(h | 1)};
+    std::memcpy(mac, m, 6);
+}
 static uint32_t console_ip() {  // network order
     const uint32_t n = net_id() ? uint32_t(net_id()) : 15u;
     return htonl(0x0A000200u | n);
@@ -147,7 +158,7 @@ static int32_t sceNetCtlGetInfo(int code, uint8_t* info) {
     auto str = [&](const char* s) { std::strcpy(reinterpret_cast<char*>(info), s); };
     switch (code) {
     case 1: break;                                   // device: wired
-    case 2: { const uint8_t m[6] = {0x02, 0xD1, 0, 0, 0, uint8_t(net_id() ? net_id() : 1)}; std::memcpy(info, m, 6); break; }
+    case 2: console_mac(static_cast<uint8_t*>(info)); break;
     case 3: { uint32_t mtu = 1500; std::memcpy(info, &mtu, 4); break; }
     case 4: info[0] = 1; break;                      // link up
     case 11: break;                                  // ip config: DHCP
@@ -178,8 +189,7 @@ HLE("sceNetCtlUnregisterCallback", sceNetCtlUnregisterCallback)
 static int32_t sceNetCtlCheckCallback() { return SCE_OK; }
 HLE("sceNetCtlCheckCallback", sceNetCtlCheckCallback)
 static int32_t sceNetGetMacAddress(uint8_t* mac, int) {
-    static const uint8_t m[6] = {0x02, 0xD1, 0x00, 0x00, 0x00, 0x01};
-    std::memcpy(mac, m, 6);
+    console_mac(mac);
     return SCE_OK;
 }
 HLE("sceNetGetMacAddress", sceNetGetMacAddress)

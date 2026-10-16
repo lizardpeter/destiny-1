@@ -1383,3 +1383,57 @@ Test setup (scratchpad tooling, not in the repo): one backend, two headless inst
 (`D1_NET_ID` 15 / 16, separate data dirs), `D1_JOIN_TEST=<secs>` on B (now ticked from
 sceSystemServiceGetStatus, so it also runs in orbit; the timer starts when the friend appears
 in the roster).
+
+## 2026-10-16: launching activities, public regions, fireteams in the activity host
+
+**Launch from orbit.** World-controller states are indices into the name table at
+0x165AA27 (0x19 cleanup, 0x1B setup:orbit, 0x1C setup:activity_session_creation, 0x24
+activity:in_world; current state *(*0x26CA078 +0x1B0)). The prologue handler (0x7A1470 case
+4) launches by writing an activity selection {u8 1, i16 activity index @2, u8 tier @4, ...}
+into the activity-selection manager (0x574DC0(*0x26BC068, &sel)) and requesting state 0x19
+(0x783ED0); the same works from orbit (d1-native D1_LAUNCH_ACTIVITY=<index>[:secs]).
+
+**Activity table.** Definitions: content globals (*0x26527E8) vtable +0x38 -> block {count,
+relptr -> 16-byte entries, relptr @+8 -> 0x100-byte definition}; +0 activity hash, +0x58
+relative string = scenario name, +0x88 type tag, +0xA4 matchmaking content hash. 653
+definitions. The scenario name's named tag (class 0x808008BA) has its `:scenario_client`
+child at +0x40 (checksum +0xC, bubbles +0x48); the named entry `<name>:scenario_client` can
+name a reused entry in later generations, so the child link is used.
+tools/d1_activity_table.py -> backend/data/activities.json (533 with scenario data). Several
+gen-0 names were renamed later: Earth patrol `cosmo_patrols_1` (index 8, "does not exist" in
+the current packages) is `patrol_deltas_com01` (93); Moon `patrol_accel_com01`, Mars
+`patrol_plains_com01`, Venus `patrol_shat_com01`. Story missions also start in the public
+region (PUB00.00); only the prologue's insertion point starts private.
+
+**Public regions.** A public slice set needs a region session ("PUBLIC TARGET" activity
+client + group session). Pieces the services provide:
+- matchmaking configuration (BAP 42 response field 4, schema 0x1942110): {1 general {11
+  ints}, 2 public slice sets {1 default record, 2 up to 16 records keyed by (f1, f2)}};
+  record {f1, f2, f3 max players, f4 max parties, f5 max matchmade (<= f3), f6, f7}
+  (0x59B510 / 0x59A500 -> settings +0x9C/+0xA0/+0xA4). Empty = 0 slots ->
+  "too-many-parties". Settings names come from the dump 0xB0DD60.
+- region table entry (membership @0x2E48, 0x80800C6F): @8 {u8, i2 ambassador state, i5
+  ambassador slot, bool @0x19 "a player reached the matchmaking threshold"}; the slice-set
+  manager copies the entry to +0x490 (0x77C3D0 reads +0x499 / +0x4A9). With the bool set
+  the ambassador stops searching (searches return no results with nobody else around) and
+  spins up a new public activity session (0x769DA0 -> 0x772BD0), whose activity client asks
+  the host for a startup of its own.
+- every host startup needs its own instance id: the client routes host messages to its
+  activity clients by id (two clients on one id: the public one timed out waiting for its
+  join result).
+With these, Earth patrol loads into activity:in_world in ~50 s headless.
+
+**Fireteams in the activity host.** Members' activity clients join the session host's
+instance without a startup; client messages carry the target instance id (u64 before the
+payload), so the backend keeps a registry of instances. Before a member's client is
+created, the session host sends `request_peer_reservation` (12, payload 0x80800BB9 {u32
+request, {count, [identity 0x80800C2D]}}); the member waits for "session host to include us
+in the registered peer mask", i.e. for the reservation to appear in the membership. The
+backend now reserves slots, pushes membership updates to every connection of the instance,
+and a joining member takes over its reserved slot (matched by machine id).
+- Machine ids come from the MAC address (sceNetGetMacAddress / sceNetCtlGetInfo 2); a fixed
+  MAC made every console 02:D1:00:00:00:01 and a member's join "booted" the leader (it
+  found itself in the wrong slot). d1-native derives the MAC from the online id.
+- A member that lags behind the leader's life-cycle state too long is booted
+  ("invalid_life_cycle_hierarchy" timeout); two instances on two cores are slow enough to
+  hit it when the leader launches right after the join.

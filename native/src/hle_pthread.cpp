@@ -123,7 +123,16 @@ static int32_t scePthreadCondattrDestroy(void** a) { return SCE_OK; }
 HLE("scePthreadCondattrDestroy", scePthreadCondattrDestroy)
 static int32_t scePthreadCondInit(Cond** c, void**, const char*) { *c = nullptr; get_cond(c); return SCE_OK; }
 HLE("scePthreadCondInit", scePthreadCondInit)
-static int32_t scePthreadCondDestroy(Cond** c) { if (*c) { pthread_cond_destroy(&(*c)->c); delete *c; } *c = nullptr; return SCE_OK; }
+// Destroyed condition variables and semaphores are never freed: another thread may still be
+// inside a wait or broadcast on them (the PS4 refuses such a destroy with EBUSY), and glibc
+// operating on freed memory hangs in pthread_cond_broadcast. They are small; the count is
+// logged occasionally.
+static std::atomic<uint64_t> g_leaked_sync{0};
+static void note_leak(const char* what) {
+    const uint64_t n = ++g_leaked_sync;
+    if ((n & (n - 1)) == 0 && n >= 64) log("sync: %llu destroyed %s objects kept alive", (unsigned long long)n, what);
+}
+static int32_t scePthreadCondDestroy(Cond** c) { if (*c) note_leak("cond"); *c = nullptr; return SCE_OK; }
 HLE("scePthreadCondDestroy", scePthreadCondDestroy)
 static int32_t scePthreadCondWait(Cond** c, Mutex** m) { return sce(pthread_cond_wait(&get_cond(c)->c, &get_mutex(m)->m)); }
 HLE("scePthreadCondWait", scePthreadCondWait)
@@ -377,13 +386,25 @@ static int32_t sceKernelCreateSema(Sema** out, const char* name, uint32_t attr, 
     return SCE_OK;
 }
 HLE("sceKernelCreateSema", sceKernelCreateSema)
-static int32_t sceKernelDeleteSema(Sema* s) { delete s; return SCE_OK; }
+static int32_t sceKernelDeleteSema(Sema* s) { if (s) note_leak("semaphore"); return SCE_OK; }
 HLE("sceKernelDeleteSema", sceKernelDeleteSema)
+// PS4 semantics (libkernel): waiting for more than the maximum is EINVAL; a timed wait
+// writes the remaining time back (0 on timeout, ETIMEDOUT); signalling past the maximum
+// fails with EINVAL and leaves the count unchanged. The game's job system counts pending
+// wakeups by whether its signal succeeded (0xF4E40), so a signal that silently clamps
+// makes it lose track of sleeping workers.
 static int32_t sceKernelWaitSema(Sema* s, int need, uint32_t* timeout_us) {
+    if (!s || need < 1 || need > s->max) return sce_err(22);
     std::unique_lock lk(s->m);
     auto ready = [&] { return s->count >= need; };
     if (timeout_us) {
-        if (!s->cv.wait_for(lk, std::chrono::microseconds(*timeout_us), ready)) { *timeout_us = 0; return sce_err(60); }
+        const auto start = std::chrono::steady_clock::now();
+        if (!s->cv.wait_for(lk, std::chrono::microseconds(*timeout_us), ready)) {
+            *timeout_us = 0;
+            return sce_err(60);
+        }
+        const auto used = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+        *timeout_us = used >= int64_t(*timeout_us) ? 0 : uint32_t(*timeout_us - used);
     } else {
         s->cv.wait(lk, ready);
     }
@@ -392,9 +413,16 @@ static int32_t sceKernelWaitSema(Sema* s, int need, uint32_t* timeout_us) {
 }
 HLE("sceKernelWaitSema", sceKernelWaitSema)
 static int32_t sceKernelSignalSema(Sema* s, int n) {
+    if (!s || n < 1) return sce_err(22);
     {
         std::lock_guard lk(s->m);
-        s->count = std::min(s->count + n, s->max);
+        if (s->count + n > s->max) {
+            static std::atomic<int> logged{0};
+            if (logged.fetch_add(1) < 5)
+                log("sema '%s': signal %d past max %d (count %d) -> EINVAL", s->name.c_str(), n, s->max, s->count);
+            return sce_err(22);
+        }
+        s->count += n;
     }
     s->cv.notify_all();
     return SCE_OK;
@@ -411,7 +439,7 @@ static int32_t sceKernelCreateEventFlag(EventFlag** out, const char* name, uint3
     return SCE_OK;
 }
 HLE("sceKernelCreateEventFlag", sceKernelCreateEventFlag)
-static int32_t sceKernelDeleteEventFlag(EventFlag* e) { delete e; return SCE_OK; }
+static int32_t sceKernelDeleteEventFlag(EventFlag* e) { if (e) note_leak("event flag"); return SCE_OK; }
 HLE("sceKernelDeleteEventFlag", sceKernelDeleteEventFlag)
 static int32_t sceKernelSetEventFlag(EventFlag* e, uint64_t bits) {
     { std::lock_guard lk(e->m); e->bits |= bits; }
