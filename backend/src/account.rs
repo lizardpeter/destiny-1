@@ -22,6 +22,10 @@ pub struct Character {
     pub id: i64,
     /// hex of the 0x1F5 request body (without the u16 message id and has_extra bit)
     pub creation: String,
+    /// the character's client state (0x8080193C, active character member 7) as the client
+    /// last reported it (world server request 0x2BE), hex of its encoding
+    #[serde(default)]
+    pub client_state: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -30,6 +34,10 @@ pub struct Account {
     /// last version sent per family type (queuez versions must keep increasing)
     #[serde(default)]
     pub versions: HashMap<u32, i32>,
+    /// the account's client state (0x80801716, profile member 5: seen / acknowledged bits,
+    /// settings) as the client last reported it (world server request 0x2BD), hex
+    #[serde(default)]
+    pub client_state: Option<String>,
     /// The player's current network session id as reported to Xetrov (request kind 6,
     /// field 43.1, e.g. "FAK_..._000001@orb@<name>@02D100000001"); served to friends in
     /// family 7 so they can join.

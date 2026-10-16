@@ -538,6 +538,12 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                     continue;
                 };
                 send(&mut sock, &mut chan, &response(MSG_WORLD_SERVER_RESPONSE, sequence, STATUS_OK, &body)).await?;
+                if (req.id == 0x2bd || req.id == 0x2be) && invest::take_profile_dirty() {
+                    let n = invest::queuez_update(&[invest::profile_baseline()]);
+                    notify_seq += 1;
+                    send(&mut sock, &mut chan, &notification(MSG_QUEUEZ_UPDATE_NOTIFICATION, notify_seq, &n)).await?;
+                    info!("bap: client state {:#x} changed; pushed profile ({} bytes)", req.id, n.len());
+                }
                 if req.id == 0x1f5 {
                     let n = invest::queuez_update(&[invest::account_baseline(), invest::profile_baseline()]);
                     notify_seq += 1;

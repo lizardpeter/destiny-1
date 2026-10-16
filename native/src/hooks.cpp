@@ -1118,6 +1118,44 @@ static D1_SYSV bool progress_hook(void* c, uint16_t idx) {
     return r;
 }
 
+// Unlock expressions (0x28E590(component, expression) -> bool): a stack program over ops
+// {u8 kind, u32 operand @+4}, 8 bytes each, at expression+8 + *(expression+8) + 0x10, count
+// at expression+0: 1 push flag (0x28CFE0), 10 push unlock value (0x28D160 on component
+// +0x2000), 11 push constant, 2 not, 0x15 negate, 3.. binary ops. D1_TRACE_UNLOCK=1
+// (research) logs each distinct expression's ops and every change of its result.
+using UnlockFn = D1_SYSV uint64_t (*)(void*, const int64_t*);
+static UnlockFn g_unlock_orig = nullptr;
+static D1_SYSV uint64_t unlock_hook(void* c, const int64_t* expr) {
+    const uint64_t r = g_unlock_orig(c, expr);
+    static std::mutex m;
+    static std::map<const void*, int> seen;
+    std::lock_guard lk(m);
+    auto [it, fresh] = seen.try_emplace(expr, int(r & 1));
+    if (fresh || it->second != int(r & 1)) {
+        it->second = int(r & 1);
+        std::string ops;
+        const int64_t n = expr[0];
+        const uint8_t* base = reinterpret_cast<const uint8_t*>(expr + 1) + expr[1] + 0x10;
+        for (int64_t i = 0; i < n && i < 24; ++i) {
+            char buf[32];
+            std::snprintf(buf, sizeof buf, " %u:%u", base[i * 8], *reinterpret_cast<const uint32_t*>(base + i * 8 + 4));
+            ops += buf;
+        }
+        // callers: the guest keeps frame pointers, so walk a few frames up from ours
+        std::string callers = describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0)));
+        const uint64_t* fp = static_cast<const uint64_t*>(__builtin_frame_address(0));
+        for (int k = 0; k < 4 && fp; ++k) {
+            const uint64_t* next = reinterpret_cast<const uint64_t*>(fp[0]);
+            // a frame chain only goes up the same stack: stop at anything else
+            if (next <= fp || reinterpret_cast<uint64_t>(next) - reinterpret_cast<uint64_t>(fp) > (1u << 20)) break;
+            fp = next;
+            callers += " < " + describe_addr(fp[1]);
+        }
+        log("unlock: expr %p ->%d [%s ] <- %s", (const void*)expr, int(r & 1), ops.c_str(), callers.c_str());
+    }
+    return r;
+}
+
 // UI error / notification (0x950620(ui, &message id, ?, ?)): the join manager reports
 // failures this way (message ids DAT_026BC300..0x26BC31C). Logged with D1_JOIN_TEST.
 using UiNotifyFn = D1_SYSV void (*)(void*, const uint32_t*, uint32_t, uint32_t);
@@ -1500,6 +1538,8 @@ void install_game_hooks() {
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    if (getenv("D1_TRACE_UNLOCK"))
+        g_unlock_orig = reinterpret_cast<UnlockFn>(hook_function(exe.base + 0x28E590, reinterpret_cast<const void*>(&unlock_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_progress_orig = reinterpret_cast<ProgressFn>(hook_function(exe.base + 0x28CFB0, reinterpret_cast<const void*>(&progress_hook)));
     if (getenv("D1_JOIN_TEST"))

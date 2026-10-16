@@ -512,7 +512,10 @@ pub const TYPE_CREATE_REQUEST: &str = "0x80801860";
 pub fn characters() -> Vec<crate::account::Character> {
     let mut list = crate::account::characters();
     if list.is_empty() && std::env::var("D1B_TEST_CHARACTER").map(|v| v != "0").unwrap_or(false) {
-        list.push(crate::account::Character { id: first_character_id(), creation: TEST_CHARACTER_CREATION.into() });
+        // stored like a created one, so its client state persists
+        let ch = crate::account::Character { id: first_character_id(), creation: TEST_CHARACTER_CREATION.into(), client_state: None };
+        crate::account::with(|a| a.characters.push(ch.clone()));
+        list.push(ch);
     }
     list
 }
@@ -522,6 +525,38 @@ pub fn characters() -> Vec<crate::account::Character> {
 /// world loads but stays black.
 const TEST_CHARACTER_CREATION: &str =
     "c0e0303045b0301030e250e490ce10ea70ea90eaafffeffff0e6d0def02393b8ae3faf0f97274f0f74040404040404040400";
+/// Set when a client state report changed the profile; the connection then pushes it.
+static PROFILE_DIRTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn take_profile_dirty() -> bool {
+    PROFILE_DIRTY.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
+
+const TYPE_ACCOUNT_CLIENT_STATE: &str = "0x80801716";
+const TYPE_CHARACTER_CLIENT_STATE: &str = "0x8080193c";
+
+fn stored_state(hex_state: Option<String>, ty: &str) -> Option<Value> {
+    let bytes = unhex(&hex_state?);
+    Some(decode(&mut BitReader::new(&bytes), ty))
+}
+
+/// Store a reported client state (0x2BD account, 0x2BE active character); true if changed.
+fn store_client_state(id: u16, v: &Value) -> bool {
+    let ty = if id == 0x2bd { TYPE_ACCOUNT_CLIENT_STATE } else { TYPE_CHARACTER_CLIENT_STATE };
+    let mut w = BitWriter::default();
+    encode(&mut w, ty, v);
+    let h = hex(&w.finish());
+    crate::account::with(|a| {
+        let slot = if id == 0x2bd { Some(&mut a.client_state) } else { a.characters.last_mut().map(|c| &mut c.client_state) };
+        match slot {
+            Some(cur) if cur.as_deref() != Some(h.as_str()) => {
+                *cur = Some(h);
+                true
+            }
+            _ => false,
+        }
+    })
+}
+
 pub const FIRST_CHARACTER_ID_BASE: i64 = 0x4D31_0000_0000_0100;
 /// The current player's first character id (slot n: base + n << 32).
 pub fn first_character_id() -> i64 {
@@ -583,7 +618,7 @@ pub fn create_character(req: &Request) -> i64 {
     let first = first_character_id();
     crate::account::with(|a| {
         let id = first + a.characters.len() as i64;
-        a.characters.push(crate::account::Character { id, creation });
+        a.characters.push(crate::account::Character { id, creation, client_state: None });
         id
     })
 }
@@ -613,6 +648,7 @@ pub fn profile_baseline() -> FamilyUpdate {
     let active = characters().last().cloned();
     let mut profile: Vec<Option<Value>> = vec![Some(Int(account_id())), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))];
     profile.resize(15, None);
+    profile[5] = stored_state(crate::account::with(|a| a.client_state.clone()), TYPE_ACCOUNT_CLIENT_STATE);
     profile[10] = Some(unlock_flags(3100));
     // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
     // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
@@ -632,6 +668,7 @@ pub fn profile_baseline() -> FamilyUpdate {
             _ => vec![],
         };
         c.resize(16, None);
+        c[7] = stored_state(ch.client_state.clone(), TYPE_CHARACTER_CLIENT_STATE);
         // character flags; slot 673 = flag 2838, set on a new character: the prologue
         // (first mission) needs it true and flag 836 false
         let mut flags = unlock_flags(2560);
@@ -807,6 +844,23 @@ pub fn respond(req: &Request) -> Option<Vec<u8>> {
         0x1f5 => {
             let id = create_character(req);
             response(0x1f5, &Struct(vec![None, Some(Int(id))]))
+        }
+        // the client's own state, reported every few seconds: account (0x2BD: seen /
+        // acknowledged bits such as dismissed promotions, settings) and active character
+        // (0x2BE). The profile carries it back (members 5 / 7); without that the client
+        // reverts to what the server has, e.g. the Destiny 2 pre-order screen comes back
+        // right after every dismissal.
+        0x2bd | 0x2be => {
+            let state = match &req.body {
+                Some(Struct(f)) => f.first().cloned().flatten(),
+                _ => None,
+            };
+            // the character's state changes all the time (it holds where the player is), so
+            // only an account state change is pushed back right away
+            if state.map_or(false, |v| store_client_state(req.id, &v)) && req.id == 0x2bd {
+                PROFILE_DIRTY.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            empty_response(req.id)
         }
         0xcd => response(0xcd, &Struct(vec![None, Some(Struct(vec![Some(Int(FAMILY5_ROOT_SOID))]))])),
         id => empty_response(id),

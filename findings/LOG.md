@@ -1547,3 +1547,18 @@ get units (ftp43). D1_TRACE_PLAYERS logs each record's configuration.
 Also seen in that run (not fixed yet): the Destiny 2 pre-order screen comes back after every
 dismissal (no server request is made on dismiss), and the director lists no destinations
 for the test characters.
+
+### The Destiny 2 pre-order screen: client state round trip
+
+The client reports its own state every few seconds with world server requests 0x2BD
+(account: 0x80801716 = {0x8080172C {128 x u64 bit words, 4 x u32}, 0x808017D6 settings
+(0x808017F0: subtitles, brightness, ...)}) and 0x2BE (active character: 0x8080193C, which
+holds location and loadout-like data). The same types sit in the profile: 0x808018C7
+member 5 (+0x80) and the active character 0x80801714 member 7 (+0x2C40). The backend
+answered both with an empty status and never put them back in the profile, so dismissing
+the Destiny 2 pre-order screen (account words go from [0] to [0x18800, 20, 0]) was undone:
+the screen came straight back. The backend now stores both per account / character and
+pushes the profile when the account state changes; with that, a rendered orbit run that
+presses Circle keeps the screen dismissed (dir3). D1_TRACE_UNLOCK logs unlock
+expressions (0x28E590: ops {u8 kind, u32 operand}, 1 flag, 10 unlock value, 11 constant)
+with their callers.
