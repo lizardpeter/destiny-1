@@ -23,6 +23,8 @@
 
 namespace d1 {
 void log(const char* fmt, ...);
+void hooks_request_launch();
+void hooks_request_join();
 }
 
 namespace d1::render {
@@ -220,6 +222,8 @@ void run_window_loop() {
                 break;
             case SDL_KEYDOWN:
                 if (!e.key.repeat && e.key.keysym.sym == SDLK_F2) set_capture(!g_captured);
+                if (!e.key.repeat && e.key.keysym.sym == SDLK_F9) d1::hooks_request_launch();   // co-op test keys
+                if (!e.key.repeat && e.key.keysym.sym == SDLK_F10) d1::hooks_request_join();
                 if (!e.key.repeat && e.key.keysym.sym >= SDLK_F5 && e.key.keysym.sym <= SDLK_F8)  // renderer test switches
                     d1::ng::flip_debug_toggle(int(e.key.keysym.sym - SDLK_F5));
                 if (!e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||

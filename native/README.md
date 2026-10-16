@@ -108,6 +108,8 @@ engine-side patch (not done yet).
 | `D1_BYPASS=prereq,transport` | research hooks: report failed bootflow prerequisites as satisfied; report the DemonWare transport as started |
 | `D1_NET=link` | report a connected interface, give the game real host sockets and a signed-in PSN user; DNS is refused |
 | `D1_BACKEND=<host>` | replacement backend server (implies `D1_NET=link`): Bungie, DemonWare and PSN hostnames resolve to it, all others are refused; HTTP(S) requests to those services go to it as plain HTTP on `D1_BACKEND_HTTP_PORT` (default 8080) with the original `Host` header |
+| `D1_NET_ID=<n>` | run as console 10.0.2.`<n>` (4..254): sockets bind to 127.0.0.`<n>`, so several instances on one PC reach each other (co-op testing) |
+| F9 / F10 | co-op test keys (renderer build): F9 launches Earth patrol from orbit (`D1_KEY_ACTIVITY=<index>` for another activity), F10 joins the first friend in the roster |
 | `D1_FRAMES=<dir>` | (renderer build) save displayed frames as PNG; `D1_FRAME_EVERY=<n>` sets the interval (default 60) |
 | `D1_RENDERER=0` | (renderer build) use the null GPU anyway |
 | `D1_WINDOW=0` | (renderer build) no window: offscreen rendering only |

@@ -715,24 +715,42 @@ static void dump_activity_vtables() {
 // 0x783ED0), which moves on to activity session creation. World-controller states are indices
 // into the name table at 0x165AA27 (0x1B setup:orbit, 0x24 activity:in_world); the current one
 // is *(*0x26CA078 + 0x1B0).
+static std::atomic<bool> g_launch_key{false}, g_join_key{false};
+void hooks_request_launch() {
+    g_launch_key = true;
+    log("keys: F9, launch requested (runs once in orbit)");
+}
+void hooks_request_join() {
+    g_join_key = true;
+    log("keys: F10, join requested (runs once a friend is listed and we are in orbit or the world)");
+}
+
 static void launch_tick() {
     static const char* spec = getenv("D1_LAUNCH_ACTIVITY");
     static bool done = false;
     static std::chrono::steady_clock::time_point since{};
-    if (!spec || done) return;
+    const bool key = g_launch_key.load();
+    if ((!spec || done) && !key) return;
     const uint64_t b = rt().modules[0].base;
     const uint64_t st = *reinterpret_cast<const uint64_t*>(b + 0x26CA078);
     if (!st || *reinterpret_cast<const int32_t*>(st + 0x1B0) != 0x1B) {
         since = {};
         return;
     }
-    const auto now = std::chrono::steady_clock::now();
-    if (since == std::chrono::steady_clock::time_point{}) since = now;
-    const char* colon = strchr(spec, ':');
-    const int wait = colon ? atoi(colon + 1) : 5;
-    if (now - since < std::chrono::seconds(wait)) return;
-    done = true;
-    const int index = atoi(spec);
+    int index;
+    if (key) {  // F9: now (Earth patrol unless D1_KEY_ACTIVITY names another index)
+        g_launch_key = false;
+        const char* k = getenv("D1_KEY_ACTIVITY");
+        index = k ? atoi(k) : 93;
+    } else {
+        const auto now = std::chrono::steady_clock::now();
+        if (since == std::chrono::steady_clock::time_point{}) since = now;
+        const char* colon = strchr(spec, ':');
+        const int wait = colon ? atoi(colon + 1) : 5;
+        if (now - since < std::chrono::seconds(wait)) return;
+        done = true;
+        index = atoi(spec);
+    }
     alignas(8) uint8_t sel[0x8C] = {};
     sel[0] = 1;
     *reinterpret_cast<int16_t*>(sel + 2) = int16_t(index);
@@ -988,7 +1006,10 @@ void hooks_system_tick() {
 // widget's join action 0xA2DC20 uses).
 static void roster_tick() {
     static const bool trace = getenv("D1_TRACE_ROSTER") != nullptr;
-    static const int join_after = getenv("D1_JOIN_TEST") ? atoi(getenv("D1_JOIN_TEST")) : -1;
+    static const int env_join_after = getenv("D1_JOIN_TEST") ? atoi(getenv("D1_JOIN_TEST")) : -1;
+    static bool key_pending = false;  // F10: join as soon as possible (again, if need be)
+    if (g_join_key.exchange(false)) key_pending = true;
+    const int join_after = key_pending ? 0 : env_join_after;
     if (!trace && join_after < 0) return;
     static auto next = std::chrono::steady_clock::now();
     static std::chrono::steady_clock::time_point start{};  // the friend first in the roster
@@ -1023,9 +1044,10 @@ static void roster_tick() {
             log("%s", line);
         }
     }
-    if (join_after >= 0 && !joined && n > 1 && start != std::chrono::steady_clock::time_point{} &&
+    if (join_after >= 0 && (!joined || key_pending) && n > 1 && start != std::chrono::steady_clock::time_point{} &&
         now - start > std::chrono::seconds(join_after)) {
         joined = true;
+        key_pending = false;
         // the first record whose name (record +0, up to '@') is not ours
         const std::string me = settings().name;
         for (int32_t i = 0; i < n; ++i) {

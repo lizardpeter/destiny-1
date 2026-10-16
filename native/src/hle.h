@@ -81,6 +81,11 @@ bool backend_http(const std::string& method, const std::string& host, const std:
 void push_system_event(int32_t type, const void* data, size_t size);
 // Per-frame research tick (hooks.cpp), run from sceSystemServiceGetStatus.
 void hooks_system_tick();
+// Co-op test keys (frontend): F9 launches Earth patrol from orbit (D1_KEY_ACTIVITY=<index>
+// for another activity), F10 joins the first friend in the roster. Both wait until the
+// game is in a state that allows them.
+void hooks_request_launch();
+void hooks_request_join();
 
 // Sockets the game opened (hle_net.cpp): `close` routes them to the network layer.
 bool net_is_socket(int fd);
