@@ -1573,3 +1573,38 @@ trip (pre-order screen), players known from sign-in (friend lists), configs carr
 test switch (D1B_* in d1-native.cfg). Both instances ran at 7-20 fps in the world with the
 renderer's command recording at 35-125 ms per frame: two games and two renderers sharing
 one laptop CPU/GPU. Texture flicker while moving was seen again (renderer, not co-op).
+
+## 2026-10-16 (evening): the Director, unlock flag storage and the server time
+
+The orbit screen is the ship view; the Director opens with the cursor on SET DESTINATION
+and Cross (headless: `D1_STATE_PRESS=setup:orbit:h@26+30,j@58+14,x@76`, now matched to the
+exact state and with left-stick letters h/j/k/l). For test characters it showed only Earth.
+Three things were missing, all on the backend side; with them the Director shows the full
+solar system (Earth, Moon, Venus, Mars, Reef, Saturn, Tower, Vanguard, Crucible; dir29).
+
+- **Activity states.** 0x264360(component, list) picks a director activity's state from
+  {i8 state, unlock expression} entries scanned from the last: the first true one wins
+  (none: 0). 0x58FD40 shows nodes at state 3 and up (4: new). Story missions read
+  {2 default} {3: 35xx or 2549} {4: own flag}, many hidden by "0 if NOT 98/435/5998".
+  Destinations (0x5909B0) have two more expressions each; the solar-system gates are
+  flags 3850, 98, 2539 and 170|2549. `D1_TRACE_DIRECTOR=1` logs the lists.
+- **Where flags live.** 0x28E0C0 merges three arrays, first non-zero wins: scopes 9..0
+  (0x28BC60 applied 9 down to 0: 7 character stored flags +0x53C0, 5 profile overrides,
+  4 profile stored flags +0x383C, 3 profile extra +0x5430, 0 character overrides), scope
+  10 (inventory/record derived) and scopes 12/11 (schedule, class grants). The stored
+  arrays map slot -> master index through definitions-manager lists (vtable +0x290
+  profile 3100, +0x298 profile extra 274, +0x2A0 character 2189), now in
+  backend/data/unlock_flag_slots.json. Overrides lose to a stored slot applied later
+  (flag 98 is profile slot 57: our all-false profile array reset it). The backend now
+  writes each flag setting to its slot and uses the override lists only for flags with
+  none. `D1_WATCH_FLAGS=<i>,...` logs which scope writes a flag.
+- **Server time.** Scope 12 is a schedule of {flag, state, Unix time} (8476 entries,
+  2014-2025: expansion releases, events, weekly rotations) evaluated at 0x265100(context,
+  character): the active character's member 9 (0x80801755) member 7 {present, i64 seconds}
+  (+0x3E80/+0x3E88), else a context clock that starts at 0. The backend never sent it, so
+  the client lived in 1970. It now sends the current time (`D1B_SERVER_TIME` overrides).
+  The schedule then sets the expansion flags itself (430/433/434/435/5998) and shows the
+  Iron Banner announcement in orbit.
+
+Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 2539,
+2549, 2566, 3850, 3916 true.
