@@ -1063,8 +1063,16 @@ static D1_SYSV bool can_spawn_hook(int32_t entity) {
     g_spawn_entity = entity;
     if (g_publish_fireteam) publish_fireteam(entity);
     const bool r = g_can_spawn_orig(entity);
-    static std::atomic<int> n{0};
-    if (g_trace_spawn && n++ % 300 == 0) log("spawn: check entity %#x -> %d (call %d)", entity, r, n.load());
+    if (g_trace_spawn) {  // each entity's first check and every change of its result
+        static std::mutex m;
+        static std::map<int32_t, bool> last;
+        std::lock_guard<std::mutex> lock(m);
+        const auto it = last.find(entity);
+        if (it == last.end() || it->second != r) {
+            last[entity] = r;
+            log("spawn: check entity %#x -> %d", entity, r);
+        }
+    }
     return r;
 }
 

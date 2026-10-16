@@ -1500,3 +1500,9 @@ backend fixes, found by tracing the simulation's player diff (D1_TRACE_PLAYERS):
 Still open: the A↔B channel sometimes closes with "connection-overflowed" (A's reliable
 window fills while B, starved on two shared cores, is slow to ack); a session host
 migration follows. Seen in most two-instance runs before these fixes, not in ftp30.
+
+Next layer, from ftp32 (D1_TRACE_SPAWN now logs each player entity's first spawn check and
+every change of its result): each client runs spawn checks only for its own player's
+entities (A: 0x..2000 and 0xEC700000, B: 0x..2001 and 0xEC710001, low bits = player index).
+The other player's record exists but no entity is checked for it, so the remote player's
+entity, which should arrive by replication from its owner, is not created yet.
