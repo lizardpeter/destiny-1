@@ -36,6 +36,37 @@ static bool net_link() {
     return link;
 }
 
+// ------------------------------------------------------------------ console identity
+// D1_NET_ID=<n> (4..254): run as console 10.0.2.<n> (default 15). With it set, the game's
+// sockets bind to the loopback alias 127.0.0.<n> and peer addresses 10.0.2.<m> map to
+// 127.0.0.<m>, so several instances on one machine can each use port 3074 and reach each
+// other (co-op testing). The backend (127.0.0.1) is not translated.
+static int net_id() {
+    static const int id = [] {
+        const char* v = getenv("D1_NET_ID");
+        const int n = v ? std::atoi(v) : 0;
+        return n >= 4 && n <= 254 ? n : 0;
+    }();
+    return id;
+}
+static uint32_t console_ip() {  // network order
+    const uint32_t n = net_id() ? uint32_t(net_id()) : 15u;
+    return htonl(0x0A000200u | n);
+}
+static uint32_t guest_to_host_ip(uint32_t a) {
+    if (!net_id()) return a;
+    const uint32_t h = ntohl(a);
+    if ((h & 0xFFFFFF00u) == 0x0A000200u && (h & 0xFF) >= 4) return htonl(0x7F000000u | (h & 0xFF));
+    if (h == 0) return htonl(0x7F000000u | uint32_t(net_id()));  // INADDR_ANY -> our alias
+    return a;
+}
+static uint32_t host_to_guest_ip(uint32_t a) {
+    if (!net_id()) return a;
+    const uint32_t h = ntohl(a);
+    if ((h & 0xFFFFFF00u) == 0x7F000000u && (h & 0xFF) >= 4) return htonl(0x0A000200u | (h & 0xFF));
+    return a;
+}
+
 // ------------------------------------------------------------------ backend routing
 static const char* const kBackendDomains[] = {
     "deadorbit.net", "gravityshavings.net", "bungie.net", "bungie.com",   // Bungie
@@ -116,11 +147,11 @@ static int32_t sceNetCtlGetInfo(int code, uint8_t* info) {
     auto str = [&](const char* s) { std::strcpy(reinterpret_cast<char*>(info), s); };
     switch (code) {
     case 1: break;                                   // device: wired
-    case 2: { const uint8_t m[6] = {0x02, 0xD1, 0, 0, 0, 1}; std::memcpy(info, m, 6); break; }
+    case 2: { const uint8_t m[6] = {0x02, 0xD1, 0, 0, 0, uint8_t(net_id() ? net_id() : 1)}; std::memcpy(info, m, 6); break; }
     case 3: { uint32_t mtu = 1500; std::memcpy(info, &mtu, 4); break; }
     case 4: info[0] = 1; break;                      // link up
     case 11: break;                                  // ip config: DHCP
-    case 14: str("10.0.2.15"); break;                // ip address
+    case 14: { in_addr ia{}; ia.s_addr = console_ip(); str(inet_ntoa(ia)); break; }  // ip address
     case 15: str("255.255.255.0"); break;            // netmask
     case 16: str("10.0.2.2"); break;                 // default route
     case 17: case 18: str("10.0.2.3"); break;        // DNS
@@ -134,7 +165,7 @@ static int32_t sceNetCtlGetNatInfo(NatInfo* n) {
     if (!net_link()) return int32_t(0x80412104);
     n->stun_status = 1;
     n->nat_type = 2;
-    n->mapped_addr = inet_addr("10.0.2.15");
+    n->mapped_addr = console_ip();
     return SCE_OK;
 }
 HLE("sceNetCtlGetNatInfo", sceNetCtlGetNatInfo)
@@ -173,7 +204,7 @@ static sockaddr_in to_host(const void* a) {
     auto* p = static_cast<const Ps4SockaddrIn*>(a);
     h.sin_family = AF_INET;
     h.sin_port = p->port;
-    h.sin_addr.s_addr = p->addr;
+    h.sin_addr.s_addr = guest_to_host_ip(p->addr);
     return h;
 }
 static void to_guest(const sockaddr_in& h, void* a, uint32_t* len) {
@@ -183,7 +214,7 @@ static void to_guest(const sockaddr_in& h, void* a, uint32_t* len) {
     p->len = sizeof *p;
     p->family = 2;
     p->port = h.sin_port;
-    p->addr = h.sin_addr.s_addr;
+    p->addr = host_to_guest_ip(h.sin_addr.s_addr);
     if (len) *len = sizeof *p;
 }
 
@@ -752,9 +783,11 @@ HLE("sceNpCheckCallback", sceNpCheckCallback)
 
 struct NpAuthorizationCode { char code[129]; uint8_t padding[7]; };
 static int32_t sceNpAuthGetAuthorizationCode(int32_t, const void*, NpAuthorizationCode* code, int32_t* issuer) {
-    log("np: authorization code requested — returning a placeholder; real Bungie/Sony servers would reject it");
+    // The code carries the player's online id to the backend (psn.rs -> sign-on -> BAP), which
+    // keeps an account per player; real Bungie/Sony servers would reject it.
     std::memset(code, 0, sizeof *code);
-    std::strcpy(code->code, "D1NATIVE-PLACEHOLDER");
+    std::snprintf(code->code, sizeof code->code, "D1NATIVE-%s", settings().name.c_str());
+    log("np: authorization code requested -> %s", code->code);
     if (issuer) *issuer = 1;
     return SCE_OK;
 }

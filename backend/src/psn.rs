@@ -31,7 +31,9 @@ pub async fn oauth_token(headers: HeaderMap, body: Bytes) -> Json<Value> {
     let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let header = b64.encode(br#"{"alg":"none","typ":"JWT"}"#);
     let payload = b64.encode(
-        json!({ "iss": "d1-backend", "sub": "d1native-user", "online_id": "D1NativeGuardian", "duid": "d1native" })
+        json!({ "iss": "d1-backend", "sub": "d1native-user",
+                "online_id": code.strip_prefix("D1NATIVE-").filter(|n| *n != "PLACEHOLDER").unwrap_or("D1NativeGuardian"),
+                "duid": "d1native" })
             .to_string(),
     );
     Json(json!({

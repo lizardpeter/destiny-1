@@ -514,11 +514,15 @@ pub fn characters() -> Vec<crate::account::Character> {
     if list.is_empty() && std::env::var("D1B_TEST_CHARACTER").map(|v| v != "0").unwrap_or(false) {
         let mut w = BitWriter::default();
         encode(&mut w, TYPE_CREATE_REQUEST, &Value::Struct(vec![]));
-        list.push(crate::account::Character { id: FIRST_CHARACTER_ID, creation: hex(&w.finish()) });
+        list.push(crate::account::Character { id: first_character_id(), creation: hex(&w.finish()) });
     }
     list
 }
-pub const FIRST_CHARACTER_ID: i64 = 0x4D31_0000_0000_0100;
+pub const FIRST_CHARACTER_ID_BASE: i64 = 0x4D31_0000_0000_0100;
+/// The current player's first character id (slot n: base + n << 32).
+pub fn first_character_id() -> i64 {
+    FIRST_CHARACTER_ID_BASE + crate::account::id_offset()
+}
 
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
@@ -572,8 +576,9 @@ pub fn create_character(req: &Request) -> i64 {
     let mut w = BitWriter::default();
     encode(&mut w, TYPE_CREATE_REQUEST, req.body.as_ref().unwrap_or(&Value::Struct(vec![])));
     let creation = hex(&w.finish());
+    let first = first_character_id();
     crate::account::with(|a| {
-        let id = FIRST_CHARACTER_ID + a.characters.len() as i64;
+        let id = first + a.characters.len() as i64;
         a.characters.push(crate::account::Character { id, creation });
         id
     })
@@ -581,12 +586,12 @@ pub fn create_character(req: &Request) -> i64 {
 
 pub fn account_baseline() -> FamilyUpdate {
     use Value::*;
-    let account = Struct(vec![Some(Int(ACCOUNT_ID)), Some(character_list()), None, None]);
-    let mut objects = vec![Object { ty: TYPE_ACCOUNT, soid: ACCOUNT_ID, value: account }];
+    let account = Struct(vec![Some(Int(account_id())), Some(character_list()), None, None]);
+    let mut objects = vec![Object { ty: TYPE_ACCOUNT, soid: account_id(), value: account }];
     for ch in characters() {
         objects.push(Object { ty: TYPE_CHARACTER_SUMMARY, soid: ch.id, value: character_head(&ch) });
     }
-    FamilyUpdate { family: FAMILY_ACCOUNT, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_ACCOUNT), flags: 1, objects }
+    FamilyUpdate { family: FAMILY_ACCOUNT, root: account_id(), version: crate::account::next_version(FAMILY_ACCOUNT), flags: 1, objects }
 }
 
 /// Family 4 (account profile): slot 0 0x80801803 wraps the profile 0x808018C7 {soid,
@@ -602,7 +607,7 @@ pub const TYPE_ACTIVE_CHARACTER: &str = "0x80801743";
 pub fn profile_baseline() -> FamilyUpdate {
     use Value::*;
     let active = characters().last().cloned();
-    let mut profile: Vec<Option<Value>> = vec![Some(Int(ACCOUNT_ID)), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))];
+    let mut profile: Vec<Option<Value>> = vec![Some(Int(account_id())), Some(character_list()), None, active.as_ref().map(|c| Int(c.id))];
     profile.resize(15, None);
     profile[10] = Some(unlock_flags(3100));
     // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
@@ -616,7 +621,7 @@ pub fn profile_baseline() -> FamilyUpdate {
     // +0x5428 (0x80801807): {i64, 512 more flags}
     profile[14] = Some(Struct(vec![None, Some(unlock_flags(512))]));
     let profile = Struct(profile);
-    let mut objects = vec![Object { ty: TYPE_PROFILE, soid: ACCOUNT_ID, value: Struct(vec![Some(profile)]) }];
+    let mut objects = vec![Object { ty: TYPE_PROFILE, soid: account_id(), value: Struct(vec![Some(profile)]) }];
     if let Some(ch) = active {
         let mut c = match character_head(&ch) {
             Struct(f) => f,
@@ -639,7 +644,7 @@ pub fn profile_baseline() -> FamilyUpdate {
         c[15] = Some(Struct(st));
         objects.push(Object { ty: TYPE_ACTIVE_CHARACTER, soid: ch.id, value: Struct(vec![Some(Struct(c))]) });
     }
-    FamilyUpdate { family: FAMILY_PROFILE, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
+    FamilyUpdate { family: FAMILY_PROFILE, root: account_id(), version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
 }
 
 /// Family 0 (peer view of an account, rooted at the account id): what every peer in an
@@ -658,13 +663,13 @@ pub fn peer_baseline() -> FamilyUpdate {
     let active = characters().last().cloned();
     let mut objects = vec![Object {
         ty: TYPE_PEER_ACCOUNT,
-        soid: ACCOUNT_ID,
-        value: Struct(vec![Some(Int(ACCOUNT_ID)), active.as_ref().map(|c| Int(c.id))]),
+        soid: account_id(),
+        value: Struct(vec![Some(Int(account_id())), active.as_ref().map(|c| Int(c.id))]),
     }];
     if let Some(ch) = active {
         objects.push(Object { ty: TYPE_PEER_CHARACTER, soid: ch.id, value: character_head(&ch) });
     }
-    FamilyUpdate { family: FAMILY_PEER, root: ACCOUNT_ID, version: crate::account::next_version(FAMILY_PEER), flags: 1, objects }
+    FamilyUpdate { family: FAMILY_PEER, root: account_id(), version: crate::account::next_version(FAMILY_PEER), flags: 1, objects }
 }
 
 /// Baseline of a family the client subscribes to (BAP message 12). Families we hold no
@@ -672,9 +677,9 @@ pub fn peer_baseline() -> FamilyUpdate {
 /// family live, which is what the peer-subscription check waits for).
 pub fn family_baseline(family: u32, root: i64) -> Option<FamilyUpdate> {
     Some(match family {
-        FAMILY_ACCOUNT if root == ACCOUNT_ID => account_baseline(),
-        FAMILY_PROFILE if root == ACCOUNT_ID => profile_baseline(),
-        FAMILY_PEER if root == ACCOUNT_ID => peer_baseline(),
+        FAMILY_ACCOUNT if root == account_id() => account_baseline(),
+        FAMILY_PROFILE if root == account_id() => profile_baseline(),
+        FAMILY_PEER if root == account_id() => peer_baseline(),
         _ => FamilyUpdate { family, root, version: crate::account::next_version(family), flags: 1, objects: vec![] },
     })
 }
@@ -684,7 +689,11 @@ pub fn family_baseline(family: u32, root: i64) -> Option<FamilyUpdate> {
 pub const FAMILY5_ROOT_SOID: i64 = i64::MAX;
 /// Account id returned by investment sign-in (0x1F7 response +8); the client keeps it in its
 /// account slot (0x586A10) and needs it non-zero.
-pub const ACCOUNT_ID: i64 = 0x4D31_0000_0000_0001;
+pub const ACCOUNT_ID_BASE: i64 = 0x4D31_0000_0000_0001;
+/// The current player's account id (slot n: base + n << 32).
+pub fn account_id() -> i64 {
+    ACCOUNT_ID_BASE + crate::account::id_offset()
+}
 
 /// Build the response payload for a world server request (None: no response). Every
 /// request needs an answer, in order: the client matches a response only against the oldest
@@ -694,7 +703,7 @@ pub fn respond(req: &Request) -> Option<Vec<u8>> {
     use Value::*;
     Some(match req.id {
         // investment sign-in: {status {i8, i32}, i64, i32, i32, family-5 root object}
-        0x1f7 => response(0x1f7, &Struct(vec![None, Some(Int(ACCOUNT_ID)), Some(Int(0)), Some(Int(0)),
+        0x1f7 => response(0x1f7, &Struct(vec![None, Some(Int(account_id())), Some(Int(0)), Some(Int(0)),
                                                Some(Struct(vec![Some(Int(FAMILY5_ROOT_SOID))]))])),
         // subscribe to a family {family type, root soid}: status + the family's baseline
         0xce => {
@@ -739,9 +748,9 @@ mod tests {
         let mut r = BitReader::new(&resp);
         assert_eq!(r.bits(16), 0x1f5);
         let v = decode(&mut r, &schema().messages["0x1f5"].res);
-        assert!(show(&v).contains(&FIRST_CHARACTER_ID.to_string()), "{}", show(&v));
+        assert!(show(&v).contains(&first_character_id().to_string()), "{}", show(&v));
         let ch = &crate::account::characters()[0];
-        assert!(show(&character_head(ch)).starts_with(&format!("{{{}, {{1, 0, 2}}", FIRST_CHARACTER_ID)));
+        assert!(show(&character_head(ch)).starts_with(&format!("{{{}, {{1, 0, 2}}", first_character_id())));
         // the pushes encode
         assert!(!queuez_update(&[account_baseline(), profile_baseline()]).is_empty());
     }

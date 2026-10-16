@@ -122,13 +122,13 @@ pub enum Role {
 async fn serve_role(listener: TcpListener, role: Role) {
     loop {
         let Ok((sock, peer)) = listener.accept().await else { continue };
-        tokio::spawn(async move {
+        tokio::spawn(crate::account::PLAYER.scope(std::cell::RefCell::new(None), async move {
             info!("bap: {role:?} connection from {peer}");
             match session(sock, role).await {
                 Ok(()) => info!("bap: {peer} closed"),
                 Err(e) => info!("bap: {peer} ended: {e}"),
             }
-        });
+        }));
     }
 }
 
@@ -326,6 +326,13 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
             }
             MSG_SECURE_HELLO_REQUEST => {
                 info!("bap: secure hello (seq {sequence})\n{}", pb::dump(payload, 2));
+                // field 1: the sign-on security token, "d1-backend:<online id>"
+                if let Some(name) = crate::pb::first_bytes(payload, 1)
+                    .and_then(|t| String::from_utf8(t).ok())
+                    .and_then(|t| t.strip_prefix("d1-backend:").map(str::to_string))
+                {
+                    crate::account::set_current(&name);
+                }
                 let mut nonce = [0u8; 12];
                 let mut key = [0u8; 16];
                 rand::thread_rng().fill_bytes(&mut nonce);
@@ -455,7 +462,7 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 info!("bap: account id translation ({count} ids, {:#x} -> {to:#x})", payload.get(2).copied().unwrap_or(0));
                 if to == 0xff {
                     for _ in 0..count {
-                        out.extend_from_slice(&invest::ACCOUNT_ID.to_be_bytes());
+                        out.extend_from_slice(&invest::account_id().to_be_bytes());
                     }
                 }
                 send(&mut sock, &mut chan, &response(kind + 1, sequence, STATUS_OK, &out)).await?;

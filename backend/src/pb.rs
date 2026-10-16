@@ -150,3 +150,11 @@ pub fn dump(b: &[u8], indent: usize) -> String {
 pub fn hex(b: &[u8]) -> String {
     b.iter().map(|c| format!("{c:02x}")).collect()
 }
+
+/// The first length-delimited value of a field, if the message parses.
+pub fn first_bytes(b: &[u8], field: u32) -> Option<Vec<u8>> {
+    parse(b)?.into_iter().find_map(|(f, v)| match v {
+        Val::Bytes(x) if f == field => Some(x),
+        _ => None,
+    })
+}

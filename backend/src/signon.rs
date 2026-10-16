@@ -49,7 +49,7 @@ pub async fn sign_on(State(st): State<Shared>, headers: HeaderMap, body: Bytes) 
         .bytes(1, &[0x11; 16])
         .bytes(2, &SESSION_AES_KEY)
         .bytes(3, &SESSION_HMAC_KEY)
-        .bytes(4, b"d1-backend-security-token")
+        .bytes(4, format!("d1-backend:{}", player(&body)).as_bytes())
         .int(5, (now + 86400) as i64)
         .uint(6, u64::from(ip))
         .uint(7, u64::from(st.bap_port));
@@ -64,6 +64,19 @@ pub async fn sign_on(State(st): State<Shared>, headers: HeaderMap, body: Bytes) 
     let out = resp.into_bytes();
     info!("signon: success -> next server {}:{} ({} bytes)", st.public_ip, st.bap_port, out.len());
     out
+}
+
+/// The player named by the request's PSN token (field 2, JSON): the access token is
+/// `d1b-D1NATIVE-<online id>` (psn.rs, d1-native's authorization code). "" if unknown.
+fn player(body: &[u8]) -> String {
+    let token = crate::pb::first_bytes(body, 2).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    token
+        .split("\"access_token\":\"d1b-D1NATIVE-")
+        .nth(1)
+        .and_then(|r| r.split('"').next())
+        .filter(|n| *n != "PLACEHOLDER")
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Engine configuration ("client config") stream carried in sign-on field 4.3.
