@@ -542,6 +542,41 @@ static void trace_references() {
     if (std::chrono::steady_clock::now() - start < std::chrono::seconds(atoi(v))) return;
     done = true;
     const uint64_t b = rt().modules[0].base;
+    // registered world cinematics (*0x26AFEF0: count @+0x1350, entries @+0x1320 + 0x38 i;
+    // 0x4E3D50 matches a play request's id against 0x354400(entry))
+    if (!*reinterpret_cast<uint8_t* const*>(b + 0x26AFEF0)) log("cinematics: no table");
+    if (const uint8_t* cb = *reinterpret_cast<uint8_t* const*>(b + 0x26AFEF0)) {
+        const int32_t n = *reinterpret_cast<const int32_t*>(cb + 0x1350);
+        log("cinematics: table %p count %d", (const void*)cb, n);
+        using IdFn = D1_SYSV void (*)(int32_t*, const uint64_t*);
+        const auto id_of = reinterpret_cast<IdFn>(b + 0x354400);
+        for (int32_t i = 0; i < n && i < 64; ++i) {
+            const uint8_t* e = cb + 0x1320 + 0x38 * i;
+            const uint32_t h50 = *reinterpret_cast<const uint32_t*>(e + 0x50);
+            const uint32_t h58 = *reinterpret_cast<const uint32_t*>(e + 0x58);
+            uint64_t arg[5] = {};
+            arg[0] = reinterpret_cast<uint64_t>(tag_data(b, h50));
+            const uint8_t* t58 = tag_data(b, h58);
+            arg[1] = t58 ? reinterpret_cast<uint64_t>(t58) + *reinterpret_cast<const uint64_t*>(e + 0x60) : 0;
+            arg[2] = *reinterpret_cast<const uint64_t*>(e + 0x58);
+            arg[3] = *reinterpret_cast<const uint64_t*>(e + 0x60);
+            arg[4] = *reinterpret_cast<const uint32_t*>(e + 0x68);
+            int32_t id[2] = {-1, -1};
+            if (arg[0] && arg[1]) id_of(id, arg);
+            log("cinematics: [%d] id %08x tag %08x obj %08x+%llx", i, id[0], h50, h58,
+                (unsigned long long)*reinterpret_cast<const uint64_t*>(e + 0x60));
+        }
+    }
+    // simulation queue element definitions (*0x2689508)[type]: vtable of each (research)
+    if (const uint64_t* defs = *reinterpret_cast<uint64_t* const*>(b + 0x2689508)) {
+        for (int t = 0; t < 0x80; ++t) {
+            const uint64_t d = defs[t];
+            if (d && d > b && d < b + 0x4000000)
+                log("simq: element %#x def +%#llx vtable +%#llx", t, (unsigned long long)(d - b),
+                    (unsigned long long)(*reinterpret_cast<const uint64_t*>(d) - b));
+            else if (d) log("simq: element %#x def %#llx", t, (unsigned long long)d);
+        }
+    }
     const uint16_t ctx = *reinterpret_cast<uint16_t*>(b + 0x25D6FF8);
     if (!ctx) { log("refs: no context"); return; }
     const uint64_t pool = *reinterpret_cast<uint64_t*>(b + 0x1AD5000);

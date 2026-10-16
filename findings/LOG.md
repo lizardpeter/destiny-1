@@ -1223,3 +1223,38 @@ whose +0x108 is 0 or -1, so in this state it reaches none of them.
 **Relay.** The client registers as a NAT relay client at sign-in (302); the relay
 (300 initiate / request_relay_connection / nat_punch_relay_intro) is the console-to-console
 channel fallback, not an activity host transport.
+
+## 2026-10-15 (late): simulation queue map, cinematics, host incidents
+
+- **Fast test runs**: `D1_WINDOW=0 D1_NATIVE_GFX=off` (no window, null GPU) reaches
+  activity:in_world in ~45 s on the 2-core test VM instead of 7-15 min; the software
+  Vulkan driver (llvmpipe) had been saturating both cores even with D1_RENDERER_LATE.
+- **Simulation queue element types** (definitions at *(0x2689508)[type], classes from the
+  RTTI tables; D1_TRACE_REFS logs them): 0x6 entity handoff, 0x7 claim authority, 0x8
+  authority change, 0xd machine update, 0x15 activity-client purge, 0x16 advance replication
+  epoch, 0x17 global state, 0x18 world globals, **0x19 activity-client incident**, 0x1a join
+  result, 0x1b membership, 0x1c entity slots, 0x1d-0x1f activity manager instance
+  start/create client/dispose, 0x20 investment activity proxy set activity state, 0x22-0x32
+  investment, 0x35 cinematic camera emote, **0x37 cinematic object, 0x38 cache gear, 0x39
+  cinematic start/stop, 0x3a cinematic batch request**, 0x40 ghost dialog transmat event,
+  0x45-0x4b UI, 0x4f slice-set transition, 0x51 global status, **0x52 player
+  resurrection**, 0x53 objective abandon, 0x55 skip cinematic, 0x5c video playback complete,
+  0x5d end game (vtables in the log).
+- Host messages land in the queue: incident (18) -> world interface +0x348 -> 0xBB2170 ->
+  element 0x19; sensor_auth_update (5) -> +0x338 -> 0xBB1C10 -> element 0x13 (world
+  interface *0x264C798 = 0x1943F08, vtable 0x19439A0).
+- **Incident payload** 0x8080097D (host and client): {u5 count, u12 kinds[25]},
+  {u1, {u5 count, u32[25]}}, {u9 length, u8 blob[500]}; kind-specific metadata is packed
+  in the blob.
+- **World cinematics** (0x7652E0 applies element 0x39: payload {u32 id, i8, u8 flags};
+  flags 0x21 start, 0x31 start first person, 0x2 stop, 0x51 play the prepared slot).
+  The registered list (*0x26AFEF0: count @+0x1350, entries @+0x1320 + 0x38 i) is empty in
+  the prologue world. These are the world controller's loading cinematics: with
+  D1_ALLOW_LOADING_CINE the prologue loads "the intro and filler cinematics" (log), plays the
+  spaceflight cloud descent, then "Timeout entering the prologue-filler (given 900 ticks)".
+  The client's own prologue step 4 (0x7A1470) writes the selection {kind 1, ...}, so the
+  suppression is retail behaviour; these travel cinematics are not the resurrection
+  (`pf_104_res` is a mission object, kind 6, group 0 index 1, unbound).
+
+Next lead: what the client does with a host incident (element 0x19 apply) - incidents have
+cinematic, sequence, resurrection and insertion-point metadata kinds.
