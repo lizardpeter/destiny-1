@@ -70,9 +70,13 @@ pub fn host_payload(host_id: u64, ty: u32, data: &[u8]) -> Vec<u8> {
 pub const HOST_ENTITY_INDICES: u32 = 0;
 const TYPE_ENTITY_INDICES: &str = "0x80800d64";
 const ENTITY_INDEX_WORDS: usize = 384;
-/// Words of the entity index space granted to the client (indices 8192..12287); the rest
-/// stay with the host.
+/// Words of the entity index space for clients (indices 8192..12287); the rest stay with the
+/// host. Each member of an instance gets its own slice: a client's indices are the entities
+/// it owns (0xB53BB0 ORs the grant into the simulation's local set), so two members with the
+/// same grant both claim each other's replicated entities.
 const CLIENT_INDEX_WORDS: std::ops::Range<usize> = 256..384;
+/// Slices of the client range: 16 members (a public instance's capacity), 256 indices each.
+const CLIENT_INDEX_SLICES: usize = 16;
 
 /// Host -> client message: activity membership (type 11, 0x29D130), 0x5038 bytes:
 /// ```text
@@ -81,7 +85,8 @@ const CLIENT_INDEX_WORDS: std::ops::Range<usize> = 256..384;
 /// @8 players[20], 0x250 each: identity {machine[8], player[8], account, character,
 ///    fireteam} (optional), state (optional), @0x248 i8 slot index (optional)
 /// @0x2E48 optional fireteam block
-/// @0x5028 / @0x502C / @0x5030 optional u20 masks; @0x502C = valid player slots
+/// @0x5028 / @0x502C / @0x5030 optional u20 masks: @0x5028 simulation peers (0xBA3090),
+/// @0x502C valid player slots, @0x5030 replicating peers (0xBA3770)
 /// ```
 /// The client finds itself by machine id among the valid slots (0x2A5520) and then marks
 /// itself established (+0x131 bit 0). The membership also carries the host-tabulated region
@@ -205,7 +210,11 @@ pub fn membership_with(players: &[Player], region: Option<&RegionSession>) -> Ve
         Some(region_table(&[0], players.len(), region)),
         Some(Value::Int(mask)),
         Some(Value::Int(mask)),
-        Some(Value::Int(0)),
+        // @0x5030: players whose machines replicate to each other: the simulation's domain
+        // watcher (0xBA32D0 -> 0xBA3770) enables a peer's view for entity replication
+        // (view +0xB2, the entity database view's "+0xA" the writer 0xB5C530 needs) only
+        // with its bit set. With 0 no entity ever left its owner.
+        Some(Value::Int(mask)),
     ]);
     // Decoded as an update of the client's current membership (0x2C9AE0): one "present"
     // bit, then the usual engine-type encoding (0x101EB30).
@@ -635,7 +644,15 @@ impl Host {
                 };
                 vec![
                     (HOST_JOIN_RESULT, join_result(&identity)),
-                    (HOST_ENTITY_INDICES, entity_indices()),
+                    (HOST_ENTITY_INDICES, {
+                        let all = instances().lock().unwrap();
+                        let slot = all
+                            .get(&self.instance)
+                            .and_then(|i| i.members.iter().position(|(c, _, _)| *c == self.connection))
+                            .unwrap_or(0);
+                        info!("activity host: instance {:#x}: entity indices for slot {slot}", self.instance);
+                        entity_indices(slot)
+                    }),
                     (HOST_MEMBERSHIP, {
                         let all = instances().lock().unwrap();
                         membership_with(&players, all.get(&self.instance).and_then(|i| i.region.as_ref()))
@@ -746,11 +763,15 @@ impl Host {
     }
 }
 
-pub fn entity_indices() -> Vec<u8> {
+/// The entity index grant for the member in `slot` of its instance.
+pub fn entity_indices(slot: usize) -> Vec<u8> {
     // D1B_GRANT_ALL_INDICES (research): grant the host's range too
     let grant_all = std::env::var_os("D1B_GRANT_ALL_INDICES").is_some();
+    let per = CLIENT_INDEX_WORDS.len() / CLIENT_INDEX_SLICES;
+    let start = CLIENT_INDEX_WORDS.start + (slot % CLIENT_INDEX_SLICES) * per;
+    let mine = start..start + per;
     let words = (0..ENTITY_INDEX_WORDS)
-        .map(|i| Some(Value::Int(if CLIENT_INDEX_WORDS.contains(&i) || grant_all { 0xFFFF_FFFF } else { 0 })))
+        .map(|i| Some(Value::Int(if mine.contains(&i) || grant_all { 0xFFFF_FFFF } else { 0 })))
         .collect();
     let mut w = BitWriter::default();
     invest::encode(&mut w, TYPE_ENTITY_INDICES, &Value::Struct(vec![Some(Value::Array(words))]));

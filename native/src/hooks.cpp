@@ -826,6 +826,57 @@ static void trace_players() {
             }
         log("players: sim entry peers%s dirty %d; tracker host list mask %#x", el.c_str(), *reinterpret_cast<const uint8_t*>(e + 0xFC),
             *reinterpret_cast<const uint32_t*>(P + 0x12DC));
+        // Simulation views, one per remote machine (list *(e + 0x38), 19 slots @+0x118; view:
+        // alive @+0x44, machine @+0x54, peer @+0x5C, channel @+0x68 (set once the channel is
+        // connected, 0xBB31D0), error @+0x70, local state @+0x74 / id @+0x78, remote state
+        // @+0x84, replicating @+0xA4 (0xBB3280), @+0xB2)
+        if (const uint64_t L = *reinterpret_cast<const uint64_t*>(e + 0x38)) {
+            std::string vs;
+            for (int k = 0; k < 19; ++k) {
+                const uint8_t* v = *reinterpret_cast<uint8_t* const*>(L + 0x118 + k * 8);
+                if (!v || !v[0x44]) continue;
+                char buf[160];
+                std::snprintf(buf, sizeof buf, " [%llx peer %d ch %d err %d state %d/%d remote %d repl %d/%d b2 %d]",
+                              (unsigned long long)*reinterpret_cast<const uint64_t*>(v + 0x54), *reinterpret_cast<const int*>(v + 0x5C),
+                              *reinterpret_cast<const uint64_t*>(v + 0x68) != 0, *reinterpret_cast<const int*>(v + 0x70),
+                              *reinterpret_cast<const int*>(v + 0x74), *reinterpret_cast<const int*>(v + 0x78),
+                              *reinterpret_cast<const int*>(v + 0x84), v[0xA4], v[0xA5], v[0xB2]);
+                vs += buf;
+            }
+            log("players: views%s", vs.empty() ? " none" : vs.c_str());
+        }
+        // Entity database (e + 0x1B0, 0xB53BB0 / 0xB5A220): per index i a 6-byte record @+0xB4
+        // (i16 entity record, u8 counters @+0xB6/+0xB7, u8 state @+0xB8), locally owned mask
+        // @+0x120B8. Count live entities per 256-index slice of the client range
+        // (8192..12287), '*' marking owned slices.
+        {
+            const uint64_t db = e + 0x1B0;
+            std::string cs;
+            // an index's entity: i16 @+0xB4 (record in the entity table at 0x28832D8, -1 none)
+            auto live = [db](int i) { const int16_t r = *reinterpret_cast<const int16_t*>(db + 0xB4 + uint64_t(i) * 6); return r > 0; };
+            for (int s = 0; s < 16; ++s) {
+                int used = 0;
+                for (int i = 8192 + s * 256; i < 8192 + (s + 1) * 256; ++i)
+                    if (live(i)) ++used;
+                const uint32_t own = *reinterpret_cast<const uint32_t*>(db + 0x120B8 + uint64_t((8192 + s * 256) >> 5) * 4);
+                if (used || own) { char buf[24]; std::snprintf(buf, sizeof buf, " %d:%d%s", s, used, own ? "*" : ""); cs += buf; }
+            }
+            int low = 0;
+            for (int i = 0; i < 8192; ++i)
+                if (live(i)) ++low;
+            // per-view replication objects the database feeds (0xB5A220 -> 0xB5EBA0: view index
+            // @+0xC, database @+0x10, entities queued for creation @+0x28)
+            std::string dv;
+            for (int k = 0; k < 19; ++k)
+                if (const uint8_t* rv = *reinterpret_cast<uint8_t* const*>(db + 0x18 + k * 8)) {
+                    char buf[96];  // the writer (0xB5C530) only runs with +9 and +0xA set
+                    std::snprintf(buf, sizeof buf, " %d:(view %d flags %d/%d/%d queued %d/%d/%d/%d)", k, *reinterpret_cast<const int*>(rv + 0xC),
+                                  rv[8], rv[9], rv[10], *reinterpret_cast<const int*>(rv + 0x28), *reinterpret_cast<const int*>(rv + 0x2C),
+                                  *reinterpret_cast<const int*>(rv + 0x30), *reinterpret_cast<const int*>(rv + 0x34));
+                    dv += buf;
+                }
+            log("players: entities host range %d, client slices%s; database views%s", low, cs.c_str(), dv.empty() ? " none" : dv.c_str());
+        }
         using SessFn = D1_SYSV uint64_t (*)(uint64_t);
         sess = reinterpret_cast<SessFn>(b + 0x75F130)(*reinterpret_cast<const uint64_t*>(Q + 0x12A78 + uint64_t(idx) * 0x18258 + 0x10));
     }

@@ -1506,3 +1506,23 @@ every change of its result): each client runs spawn checks only for its own play
 entities (A: 0x..2000 and 0xEC700000, B: 0x..2001 and 0xEC710001, low bits = player index).
 The other player's record exists but no entity is checked for it, so the remote player's
 entity, which should arrive by replication from its owner, is not created yet.
+
+## 2026-10-16 (evening): entity replication between the two consoles
+
+- **Simulation views** (one per remote machine; entry list *(sim entry + 0x38), 19 slots @+0x118;
+  view: machine +0x54, peer +0x5C, channel +0x68, state +0x74, replicating +0xA4) were
+  established both ways (state 5) in the shared patrol, but no entity crossed: each side's
+  entity database (sim entry + 0x1B0; per index a 6-byte record @+0xB4 (i16 entity record),
+  owned mask @+0x120B8) held only its own entities, and the per-view replication object
+  (database +0x18 + k*8; +0xC view, +0x28 creations awaiting delivery, decremented by the
+  delivery callback 0xB5E000) kept every creation queued.
+- The writer (0xB5C530) runs only while the entity database view (sim view + 0xA8) has
+  +9 and +0xA set; +0xA is sim view +0xB2, set by 0xBB3EA0 when the domain watcher
+  (0xBA32D0 -> 0xBA3770) is called with the peer's bit of the membership mask **@0x5030**
+  (0x2A5490), which the backend sent as 0. Now all members are in it: B receives A's
+  entities (ftp38: 3 of A's 4) and A briefly held B's one before it went away again.
+- Entity indices: each member now gets its own 256-index slice of 8192..12287 (by slot in
+  the instance) instead of all members sharing the whole range. Player simulation entities
+  are not allocated from it (they are 0x2000 + player index on every machine).
+- D1_TRACE_PLAYERS also logs the views, the per-slice entity counts and the replication
+  queues.
