@@ -611,6 +611,39 @@ fn character_list() -> Value {
 /// purchase prerequisite (world transition, 0x5505C0: "unpurchased prerequisites").
 const PROFILE_FLAG_OVERRIDES: &[(i64, i64)] = &[(836, 1), (0x1A3, 2), (0x1B8, 2)];
 
+/// Flags a character past the opening story has (research: read off the director's activity
+/// lists, D1_TRACE_DIRECTOR): destinations and story nodes stay hidden while these are false.
+const VETERAN_FLAGS: &[i64] = &[98, 430, 434, 435, 2549, 2566, 3916, 5998];
+
+/// The profile's override list (at most 64): the fixed overrides, then with
+/// D1B_PROLOGUE_DONE=1 flag 836 true plus the veteran flags, then D1B_FLAGS_TRUE /
+/// D1B_FLAGS_FALSE (comma-separated master flag indices, research).
+fn profile_flag_overrides() -> Vec<(i64, i64)> {
+    let env_on = |k: &str| std::env::var(k).is_ok_and(|v| v == "1");
+    let list = |k: &str| -> Vec<i64> {
+        std::env::var(k).unwrap_or_default().split(',').filter_map(|t| t.trim().parse().ok()).collect()
+    };
+    let mut ov: Vec<(i64, i64)> = PROFILE_FLAG_OVERRIDES.to_vec();
+    let mut set = |flag: i64, state: i64| match ov.iter_mut().find(|(f, _)| *f == flag) {
+        Some(e) => e.1 = state,
+        None => ov.push((flag, state)),
+    };
+    if env_on("D1B_PROLOGUE_DONE") {
+        set(836, 2);
+        for &f in VETERAN_FLAGS {
+            set(f, 2);
+        }
+    }
+    for f in list("D1B_FLAGS_TRUE") {
+        set(f, 2);
+    }
+    for f in list("D1B_FLAGS_FALSE") {
+        set(f, 1);
+    }
+    ov.truncate(64);
+    ov
+}
+
 fn unlock_flags(n: usize) -> Value {
     Value::Array((0..n).map(|_| Some(Value::Int(1))).collect())
 }
@@ -666,12 +699,9 @@ pub fn profile_baseline() -> FamilyUpdate {
     profile[10] = Some(unlock_flags(3100));
     // +0x4AC0 (0x80800FD7): {i64, {count, 64 {flag, state}}, {count, 64 {value, i32}}}:
     // overrides for flags of no storage scope (applied by 0x28BC60 case 5)
-    let ov: Vec<Option<Value>> = PROFILE_FLAG_OVERRIDES
-        .iter()
-        .map(|&(flag, state)| {
-            let done = flag == 836 && std::env::var("D1B_PROLOGUE_DONE").is_ok_and(|v| v == "1");
-            Some(Struct(vec![Some(Int(flag)), Some(Int(if done { 2 } else { state }))]))
-        })
+    let ov: Vec<Option<Value>> = profile_flag_overrides()
+        .into_iter()
+        .map(|(flag, state)| Some(Struct(vec![Some(Int(flag)), Some(Int(state))])))
         .collect();
     profile[12] = Some(Struct(vec![None, Some(Struct(vec![Some(Int(ov.len() as i64)), Some(Array(ov))])),
                                    Some(Struct(vec![Some(Int(0)), Some(Array(vec![]))]))]));

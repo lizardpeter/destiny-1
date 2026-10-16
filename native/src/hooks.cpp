@@ -1156,6 +1156,46 @@ static D1_SYSV uint64_t unlock_hook(void* c, const int64_t* expr) {
     return r;
 }
 
+// Director activity state (0x264360(component, activity unlock list) -> state): the list is
+// {i64 count @+0x18, relative array @+0x20} of 0x18-byte entries {i8 state @+0, unlock
+// expression @+8}; scanned from the last entry, the first true expression gives the state
+// (none: 0). The director (0x58FD40) shows a node at state 3 and up (4: newly available).
+// D1_TRACE_DIRECTOR=1 (research) logs each list, its entries and every change of its state.
+static std::string expr_ops(const int64_t* expr) {
+    std::string ops;
+    const int64_t n = expr[0];
+    const uint8_t* base = reinterpret_cast<const uint8_t*>(expr + 1) + expr[1] + 0x10;
+    for (int64_t i = 0; i < n && i < 24; ++i) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, " %u:%u", base[i * 8], *reinterpret_cast<const uint32_t*>(base + i * 8 + 4));
+        ops += buf;
+    }
+    return ops;
+}
+using ActivityStateFn = D1_SYSV int32_t (*)(void*, const uint8_t*);
+static ActivityStateFn g_activity_state_orig = nullptr;
+static D1_SYSV int32_t activity_state_hook(void* c, const uint8_t* list) {
+    const int32_t r = g_activity_state_orig(c, list);
+    static std::mutex m;
+    static std::map<const void*, int> seen;
+    std::lock_guard lk(m);
+    auto [it, fresh] = seen.try_emplace(list, r);
+    if (fresh || it->second != r) {
+        it->second = r;
+        std::string entries;
+        const int64_t n = *reinterpret_cast<const int64_t*>(list + 0x18);
+        const uint8_t* arr = list + 0x20 + *reinterpret_cast<const int64_t*>(list + 0x20) + 0x10;
+        for (int64_t i = 0; i < n && i < 12; ++i) {
+            const uint8_t* e = arr + i * 0x18;
+            const auto* expr = reinterpret_cast<const int64_t*>(e + 8);
+            entries += " {" + std::to_string(int(int8_t(e[0]))) + ":" + expr_ops(expr) + "}";
+        }
+        log("director: activity %p state %d (%lld entries)%s <- %s", (const void*)list, r, (long long)n, entries.c_str(),
+            describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str());
+    }
+    return r;
+}
+
 // UI error / notification (0x950620(ui, &message id, ?, ?)): the join manager reports
 // failures this way (message ids DAT_026BC300..0x26BC31C). Logged with D1_JOIN_TEST.
 using UiNotifyFn = D1_SYSV void (*)(void*, const uint32_t*, uint32_t, uint32_t);
@@ -1538,6 +1578,8 @@ void install_game_hooks() {
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    if (getenv("D1_TRACE_DIRECTOR"))
+        g_activity_state_orig = reinterpret_cast<ActivityStateFn>(hook_function(exe.base + 0x264360, reinterpret_cast<const void*>(&activity_state_hook)));
     if (getenv("D1_TRACE_UNLOCK"))
         g_unlock_orig = reinterpret_cast<UnlockFn>(hook_function(exe.base + 0x28E590, reinterpret_cast<const void*>(&unlock_hook)));
     if (getenv("D1_JOIN_TEST"))
