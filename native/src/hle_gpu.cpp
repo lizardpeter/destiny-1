@@ -680,8 +680,11 @@ void for_each_guest_region(void (*fn)(uint64_t addr, uint64_t size));  // hle_ke
 static void maybe_attach_renderer() {
     if (!g_late || g_gpu_real) return;
     static std::chrono::steady_clock::time_point t_world{};
+    // D1_RENDERER_LATE_STATE=<state prefix> (default activity:in_world): attach in another
+    // state, e.g. setup:orbit for the orbit screen and menus
+    static const char* want = getenv("D1_RENDERER_LATE_STATE") ? getenv("D1_RENDERER_LATE_STATE") : "activity:in_world";
     const char* st = game_state();
-    if (!st || std::strcmp(st, "activity:in_world") != 0) {
+    if (!st || std::strncmp(st, want, std::strlen(want)) != 0) {
         t_world = {};
         return;
     }

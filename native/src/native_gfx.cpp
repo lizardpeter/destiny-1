@@ -1233,11 +1233,15 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
                 mine.size(), newest - oldest, newest);
     }
     // D1_NG_EVERY_WORLD=<secs>: (testing) draw every frame from <secs> after reaching the world
+    // (or the state named by D1_NG_EVERY_STATE, a prefix, e.g. setup:orbit). With a large
+    // D1_NG_EVERY (e.g. 100000) nothing is drawn before that: a rendered check of a late
+    // screen at about headless speed.
     static const double every_world = getenv("D1_NG_EVERY_WORLD") ? std::atof(getenv("D1_NG_EVERY_WORLD")) : -1;
+    static const char* every_state = getenv("D1_NG_EVERY_STATE") ? getenv("D1_NG_EVERY_STATE") : "activity:in_world";
     if (every_world >= 0 && nr::g_every > 1) {
         static std::chrono::steady_clock::time_point t_world{};
         const char* gs = game_state();
-        if (gs && std::strcmp(gs, "activity:in_world") == 0) {
+        if (gs && std::strncmp(gs, every_state, std::strlen(every_state)) == 0) {
             if (t_world == std::chrono::steady_clock::time_point{}) t_world = std::chrono::steady_clock::now();
             else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_world).count() > every_world) {
                 nr::g_every = 1;

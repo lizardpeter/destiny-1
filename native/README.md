@@ -119,7 +119,7 @@ engine-side patch (not done yet).
 | `D1_PIPELINE_CACHE=0` | (renderer build) don't keep compiled shaders and pipelines in `<data>/shader_cache` between runs |
 | `D1_RENDER_EVERY=N` | (renderer build) draw only every Nth frame; the frames between go through the null GPU, so the game keeps its normal speed and network timing on a slow GPU or software rendering (debugging: in-world screenshots on lavapipe) |
 | `D1_RENDER_ASYNC=1` | (renderer build) draw a frame only when the renderer is idle, otherwise pass it through the null GPU without waiting |
-| `D1_RENDERER_LATE=<s>` | (renderer build) null GPU until `<s>` seconds into `activity:in_world`, then start the renderer |
+| `D1_RENDERER_LATE=<s>` | (renderer build) null GPU until `<s>` seconds into `activity:in_world` (or the state named by `D1_RENDERER_LATE_STATE`, e.g. `setup:orbit`), then start the renderer: rendered checks of a late screen at headless speed |
 | `D1_GPU_LOG_ALL=1` | (renderer build) don't throttle repeated renderer warnings |
 | `D1_GPU_MEMORY_MB=<n>` | (renderer build) texture cache memory budget; integrated GPUs now default to the driver budget minus a quarter (at most 4 GB) instead of leaving 8 GB to the system |
 | `D1_PROFILE_GPU=<file>` | (Linux renderer build) sample the GPU thread's call stacks every 1 ms of its CPU time into `<file>` |
@@ -134,7 +134,7 @@ Native renderer (`native/gfx`, the default without shadPS4):
 | env | effect |
 |---|---|
 | `D1_GPU=<n>` | use the n-th Vulkan device |
-| `D1_NG_EVERY=<n>` / `D1_NG_EVERY_WORLD=<s>` | draw every n-th frame only (software rendering); from `<s>` seconds in the world, every frame |
+| `D1_NG_EVERY=<n>` / `D1_NG_EVERY_WORLD=<s>` / `D1_NG_EVERY_STATE=<state>` | draw every n-th frame only (software rendering); from `<s>` seconds in the world (or in the given state, e.g. `setup:orbit`), every frame. `D1_NG_EVERY=100000` skips drawing until then: rendered checks of a late screen at headless speed |
 | `D1_NG_NOCACHE=1` | no geometry cache and no texture change tracking |
 | `D1_NG_FRAMES_IN_FLIGHT=<n>` | frames the CPU may record ahead of the GPU (default 2) |
 | `D1_NG_READBACK=<pixels>` | largest never-sampled render target written back to guest memory for the CPU (default 4096, 0 off); `D1_NG_LOG_READBACK=1` lists the decisions |
