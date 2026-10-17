@@ -296,3 +296,24 @@ pub fn equipment_value(character: i64, items: &[i64]) -> Value {
     }
     Array(ids.into_iter().map(|i| Some(Int(i))).collect())
 }
+
+/// The active character's inventory (0x80801714 member 3 at +0x30, 0x80800F9F): {i32 count,
+/// 340 x 0x808016E0 {i16 item index, i64 instance id, i32, i32, i32}}. This is the list the
+/// game treats as "items the character has": the world tag loader's character-instance
+/// filler (0x576410 -> 0x554B90) walks it from +0x38 and loads each item's gear
+/// (0x5551A0 with the definition's +0x58 index), checking equipped ones against the
+/// equipment (0x269750). Without it the in-world weapons, the ship and the item slots have
+/// nothing loaded. The three i32 are not known yet and are left out.
+pub fn inventory_value(character: i64, equipped: &[i64], backpack: &[i64]) -> Value {
+    use Value::*;
+    let mut entries: Vec<Option<Value>> = Vec::new();
+    for (k, &index) in equipped.iter().enumerate() {
+        entries.push(Some(Struct(vec![Some(Int(index)), Some(Int(item_id(character, k)))])));
+    }
+    for (k, &index) in backpack.iter().enumerate() {
+        entries.push(Some(Struct(vec![Some(Int(index)), Some(Int(backpack_id(character, k)))])));
+    }
+    let n = entries.len() as i64;
+    Struct(vec![Some(Int(n)), Some(Array(entries))])
+}
+

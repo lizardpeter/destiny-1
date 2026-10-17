@@ -1743,3 +1743,16 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   (D1B_NO_SPARROW=1 leaves it out): the user's test showed "no vehicles available" because
   the kit had none. The headless Ghost-menu summon (touch pad + Square) did not reach
   0x7420F0, so the old crash is not re-checked yet.
+- **The character's inventory list**: active character member 3 (+0x30, 0x80800F9F) is
+  {i32 count, 340 x 0x808016E0 {i16 item index, i64 instance id, i32, i32, i32}}. The world
+  tag loader (fillers at vtable 0x193EB40 etc.: peer view 0x576070 -> 0x556C70 on the
+  summary's loadout; character instance 0x576410 -> 0x554B90) walks it from +0x38 and loads
+  each item's gear (0x5551A0 with the definition's +0x58 index; equipped ones checked
+  against the equipment by 0x269750). The backend never sent it: the game had item objects
+  and an equipment list but no items "in" the character. It now lists the equipped and
+  backpack items (D1B_NO_INVENTORY=1 leaves it out). User test-15: the sparrow spawns and
+  can be ridden; the sniper has a magazine (4) from the weapon stats; the weapon in hand,
+  the item icons and the inventory tab were still missing.
+- **Fast rendered checks**: D1_NG_EVERY=100000 D1_NG_EVERY_WORLD=<s> D1_NG_EVERY_STATE=
+  setup:orbit draws nothing until orbit, which then renders after ~2.5 min instead of
+  ~11 min. Attached in the world the first frames stay black (llvmpipe at 0.5 fps).

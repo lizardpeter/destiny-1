@@ -859,6 +859,10 @@ pub fn profile_baseline() -> FamilyUpdate {
         // member 5: equipped item ids in equipment slot order
         let kit = crate::gear::loadout(character_class(&ch));
         c[5] = Some(crate::gear::equipment_value(ch.id, &kit));
+        // member 3: the character's inventory (equipped + backpack items)
+        if std::env::var("D1B_NO_INVENTORY").map(|v| v != "1").unwrap_or(true) {
+            c[3] = Some(crate::gear::inventory_value(ch.id, &kit, &crate::gear::backpack(character_class(&ch))));
+        }
         // member 17 0x808016F8 {i32, i32, 0x80801923} (research: level, light)
         let (lv, light) = level();
         c[17] = Some(Struct(vec![Some(Int(lv)), Some(Int(light)), Some(level_value())]));
