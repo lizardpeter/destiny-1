@@ -18,7 +18,7 @@ struct Settings {
     // one; anything else is the host name or address of a backend server.
     std::string backend = "local";
     // research hooks needed to get past sign-in for now (see README)
-    std::string bypass = "prereq,transport,localres,spawn";
+    std::string bypass = "prereq,transport,localres,spawn,profile";
     // internal render resolution (the game's own render targets; 1920x1080 on the console)
     int render_width = 1920;
     int render_height = 1080;

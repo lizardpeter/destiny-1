@@ -1693,3 +1693,9 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   "[E]", the touch pad "[M]"; the game boots and plays as before.
 - Not done yet: the menu cursor (Director, character screen) still moves with the left stick
   (WASD); a mouse-driven cursor needs the UI cursor code found.
+- **First start on a new account** (user test, 2026-10-17): profile_setup passes the
+  brightness screen (step 1 -> 2 by its own "completed" event) but stays at step 3 after
+  the screen bounds screen is confirmed: no 0x22 event, a spinner over the background.
+  Reproduced headless with controller prompts (not the prompt change). `profile` is now in
+  the default bypass list (completes steps 1/3/5), so new accounts go straight on to
+  prepare_for_orbit; why the screen bounds event never comes is still open.

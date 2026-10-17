@@ -115,8 +115,9 @@ skip_intro = true              # [D1_SKIP_INTRO=0]
 
 # Research hooks for checks the backend cannot answer yet: prereq/transport (sign-in),
 # localres (load global resources locally), spawn (finish loading into a mission once the
-# player has spawned).
-bypass = prereq,transport,localres,spawn   # [D1_BYPASS]
+# player has spawned), profile (skip the first-start brightness / screen bounds screens:
+# the screen bounds step never finishes yet, and both are in the game's settings menu).
+bypass = prereq,transport,localres,spawn,profile   # [D1_BYPASS]
 
 # Any D1_* switch from the README can be set here too, e.g.
 # D1_NG_READBACK_SYNC = 0

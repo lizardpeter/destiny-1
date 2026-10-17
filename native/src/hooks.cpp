@@ -2005,7 +2005,8 @@ static D1_SYSV void invest_update_hook(void* h) {
 static HandlerUpdateFn g_profile_update_orig = nullptr;
 // Screens: 0 brightness (UI 0x16), 2 screen bounds (0x15), 4 (0x17); each finishes with a
 // "completed" event (0x7A02E0: 0x23/0x22/0x24) moving 1->2, 3->4, 5->6. D1_BYPASS=profile
-// completes them at once (headless testing).
+// completes them at once (on by default: on a new account the screen bounds step never
+// sends its event - the screen shows a spinner after it is confirmed - 2026-10-17).
 static bool g_profile_bypass = false;
 static D1_SYSV void profile_update_hook(void* h) {
     auto* step = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + 0x38);
