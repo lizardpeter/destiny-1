@@ -223,8 +223,8 @@ const char* glyph_action(uint32_t glyph) {
     case 0xE007: return "aim";          // L2
     case 0xE008: return "grenade";      // L1
     case 0xE009: return "melee";        // R1
-    case 0xE010: return "pad_r3";       // R3
-    case 0xE012: return "sprint";       // L3
+    case 0xE010: return "mouse_look";   // R3 / right stick (the glyph is the stick)
+    case 0xE012: return "movement";     // L3 / left stick ("use the left stick to move ...")
     case 0xE013: return "emote_up";     // D-pad
     case 0xE014: return "emote_right";
     case 0xE015: return "emote_down";
@@ -342,14 +342,24 @@ int prompt_label(uint32_t glyph, char16_t* out, int max) {
     const char* action = glyph_action(glyph);
     if (!action) return 0;
     std::call_once(g_binds_once, load_binds_once);
-    for (int a = 0; a < kActionCount; ++a) {
-        if (std::strcmp(kActions[a].name, action) != 0 || g_binds[a].empty()) continue;
-        const std::string text = "[" + input_name(g_binds[a][0]) + "]";
+    auto put = [&](const std::string& text) {
         int n = 0;
         for (char c : text)
             if (n < max - 1) out[n++] = char16_t(static_cast<unsigned char>(c));
         out[n] = 0;
         return n;
+    };
+    if (!std::strcmp(action, "mouse_look")) return put("Mouse");
+    if (!std::strcmp(action, "movement")) {  // the four move keys, e.g. "WASD"
+        std::string keys;
+        for (const char* m : {"move_forward", "move_left", "move_back", "move_right"})
+            for (int a = 0; a < kActionCount; ++a)
+                if (!std::strcmp(kActions[a].name, m) && !g_binds[a].empty()) keys += input_name(g_binds[a][0]);
+        return keys.size() == 4 ? put(keys) : put("Move keys");
+    }
+    for (int a = 0; a < kActionCount; ++a) {
+        if (std::strcmp(kActions[a].name, action) != 0 || g_binds[a].empty()) continue;
+        return put(input_name(g_binds[a][0]));
     }
     return 0;
 }

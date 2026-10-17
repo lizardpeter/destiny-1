@@ -1747,8 +1747,9 @@ static void trace_glyphs(int st) {
 // E003, touch pad E021 E005, R2 E006, L2 E007, L1 E008, R1 E009, R3 E010, L3 E012, D-pad
 // up E013 / right E014 / down E015 / left E016, Options E017.
 // d1-native reimplements 0x8D5530 (same decode) and, while the keyboard and mouse are in
-// use, replaces a glyph-only part with the bound key's name ("[E]"), growing the run it was
-// allocated for (0x8DA760 hook remembers the last run per thread); backdrop glyphs vanish.
+// use, replaces a glyph-only part with the bound key's name ("E"), growing the run it was
+// allocated for (0x8DA760 hook remembers the last run per thread); backdrop glyphs become a
+// space (never an empty run).
 using RunAllocFn = D1_SYSV uint8_t* (*)(int64_t chars);
 static RunAllocFn g_run_alloc_orig = nullptr;
 static thread_local uint8_t* t_last_run = nullptr;
@@ -1810,9 +1811,16 @@ static D1_SYSV void string_part_decode(const uint8_t* part, uint16_t* out, int64
         if (!is_glyph(start[i])) return;
         if (!is_backdrop(start[i]) && !button) button = start[i];
     }
+    if (!button) {
+        // a backdrop part (U+E020 / U+E021 drawn under Cross..Triangle / the touch pad): a
+        // space in place. An empty run is not an option: a text with an empty run is dropped
+        // whole (the title's "press to start", the orbit bar, 2026-10-17 test-12).
+        for (int64_t i = 0; i < len; ++i) start[i] = u' ';
+        return;
+    }
     char16_t label[32];
-    const int n = button ? render::prompt_label(button, label, 32) : 0;
-    if (button && n <= 0) return;  // a button with no key bound: keep the glyph
+    const int n = render::prompt_label(button, label, 32);
+    if (n <= 0) return;  // a button with no key bound: keep the glyph
     uint8_t* run = t_last_run;
     static std::atomic<int> traced{0};
     if (trace && traced.fetch_add(1) < 60) {
@@ -1838,8 +1846,6 @@ static D1_SYSV void string_part_decode(const uint8_t* part, uint16_t* out, int64
         buf[n] = 0;
         *reinterpret_cast<int32_t*>(run + 0x40) = n;
         t_last_run = nullptr;
-    } else if (n == 0) {  // a backdrop on its own, in a buffer we cannot resize: a space
-        start[0] = u' ', start[1] = 0;
     } else if (n <= len) {
         for (int i = 0; i < n; ++i) start[i] = uint16_t(label[i]);
         start[n] = 0;
@@ -2001,16 +2007,20 @@ static D1_SYSV void invest_update_hook(void* h) {
     if (step[0] != a || step[1] != b) log("bootflow: investment_signin step %d.%d -> %d.%d", a, b, step[0], step[1]);
 }
 
-// profile_setup (eboot+0x7A01C0): step at +0x38 (0 brightness, 2 screen bounds, 4 ..., 7 done)
+// profile_setup (eboot+0x7A01C0): step at +0x38 (7 done). Screens: 0 screen bounds (UI 0x16),
+// 2 UI 0x15, 4 UI 0x17; each finishes with a "completed" event (0x7A02E0: 0x23/0x22/0x24)
+// moving 1->2, 3->4, 5->6. On a new account UI 0x15 and 0x17 never come up (a spinner over
+// the background) and so never send 0x22 / 0x24: D1_BYPASS=profile (on by default) completes
+// those two steps (the screen bounds screen still runs).
 static HandlerUpdateFn g_profile_update_orig = nullptr;
-// Screens: 0 brightness (UI 0x16), 2 screen bounds (0x15), 4 (0x17); each finishes with a
-// "completed" event (0x7A02E0: 0x23/0x22/0x24) moving 1->2, 3->4, 5->6. D1_BYPASS=profile
-// completes them at once (on by default: on a new account the screen bounds step never
-// sends its event - the screen shows a spinner after it is confirmed - 2026-10-17).
 static bool g_profile_bypass = false;
 static D1_SYSV void profile_update_hook(void* h) {
     auto* step = reinterpret_cast<int32_t*>(static_cast<uint8_t*>(h) + 0x38);
-    if (g_profile_bypass && (*step == 1 || *step == 3 || *step == 5)) ++*step;
+    // screens 2 and 3 (UI 0x15, 0x17) never come up on a new account (a spinner instead) and
+    // so never send their events: complete those; the screen bounds screen is played
+    // normally. D1_BYPASS=profile_all completes all three (headless testing).
+    static const bool all = [] { const char* b = getenv("D1_BYPASS"); return b && std::strstr(b, "profile_all"); }();
+    if (g_profile_bypass && (*step == 3 || *step == 5 || (all && *step == 1))) ++*step;
     const int32_t a = *step;
     g_profile_update_orig(h);
     if (*step != a) log("bootflow: profile_setup step %d -> %d", a, *step);

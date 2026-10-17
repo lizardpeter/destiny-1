@@ -95,7 +95,7 @@ bool take_mouse_motion(int32_t& dx, int32_t& dy);
 int take_weapon_request();
 // Button prompts: true while the keyboard and mouse are the last input used (and prompts are
 // not switched off), so the UI shows key names; prompt_label writes the name of the key bound
-// to the action behind a DualShock 4 glyph character (U+E000..), e.g. u"[E]", returning its
+// to the action behind a DualShock 4 glyph character (U+E000..), e.g. u"E", returning its
 // length, or 0 when nothing is bound.
 bool keyboard_prompts();
 int prompt_label(uint32_t glyph, char16_t* out, int max);

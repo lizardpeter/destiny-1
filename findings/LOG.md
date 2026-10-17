@@ -1697,5 +1697,16 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   brightness screen (step 1 -> 2 by its own "completed" event) but stays at step 3 after
   the screen bounds screen is confirmed: no 0x22 event, a spinner over the background.
   Reproduced headless with controller prompts (not the prompt change). `profile` is now in
-  the default bypass list (completes steps 1/3/5), so new accounts go straight on to
-  prepare_for_orbit; why the screen bounds event never comes is still open.
+  the default bypass list. Correction after test-12/13: the order is 0x16 screen bounds
+  (step 1, works), then UI 0x15 (step 3) and 0x17 (step 5), which never come up (spinner)
+  on a new account; `profile` now completes only steps 3 and 5, so the screen bounds screen
+  is played (`profile_all` completes all three). Why 0x15 / 0x17 never load is open.
+- **Prompt regression (test-12)**: removing the backdrop glyph (U+E020/E021) by making its
+  run empty drops the whole text: the title's "press to play", the orbit popups and bottom
+  bar vanished. Backdrops are now replaced by a space, and key names have no brackets
+  (the menu tab hints "[Q]" wrapped in their slots). Rendered checks: title "PRESS SPACE TO
+  PLAY", the orbit Iron Banner popup "Space OK". The left-stick glyph (U+E012) shows the move
+  keys ("WASD"), the right-stick one (U+E010) "Mouse".
+- **Still controller icons**: HUD prompts such as the Ghost's "summon vehicle" /
+  "go to orbit" do not go through localized text (no call of 0x748FE0 / 0x745650 outside
+  0x94B0F0), so they are icon widgets with fixed images; not replaced yet.
