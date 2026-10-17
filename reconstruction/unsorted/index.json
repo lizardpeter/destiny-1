@@ -558,6 +558,12 @@
   "file": "decompiled/12d6d0.c"
  },
  {
+  "va": "0x1b5d60",
+  "size_bytes": 688,
+  "direct_call_sites": 4,
+  "file": "decompiled/1b5d60.c"
+ },
+ {
   "va": "0x1b6df0",
   "size_bytes": 12824,
   "direct_call_sites": 0,
@@ -864,6 +870,48 @@
   "file": "decompiled/269550.c"
  },
  {
+  "va": "0x273d50",
+  "size_bytes": 4,
+  "direct_call_sites": 2,
+  "file": "decompiled/273d50.c"
+ },
+ {
+  "va": "0x273e40",
+  "size_bytes": 30,
+  "direct_call_sites": 2,
+  "file": "decompiled/273e40.c"
+ },
+ {
+  "va": "0x273e80",
+  "size_bytes": 77,
+  "direct_call_sites": 1,
+  "file": "decompiled/273e80.c"
+ },
+ {
+  "va": "0x273ed0",
+  "size_bytes": 21,
+  "direct_call_sites": 2,
+  "file": "decompiled/273ed0.c"
+ },
+ {
+  "va": "0x273ef0",
+  "size_bytes": 77,
+  "direct_call_sites": 1,
+  "file": "decompiled/273ef0.c"
+ },
+ {
+  "va": "0x273f90",
+  "size_bytes": 41,
+  "direct_call_sites": 1,
+  "file": "decompiled/273f90.c"
+ },
+ {
+  "va": "0x273fc0",
+  "size_bytes": 37,
+  "direct_call_sites": 1,
+  "file": "decompiled/273fc0.c"
+ },
+ {
   "va": "0x2778b0",
   "size_bytes": 2431,
   "direct_call_sites": 0,
@@ -880,6 +928,12 @@
   "size_bytes": 559,
   "direct_call_sites": 3,
   "file": "decompiled/281e70.c"
+ },
+ {
+  "va": "0x28a2f0",
+  "size_bytes": 64,
+  "direct_call_sites": 4,
+  "file": "decompiled/28a2f0.c"
  },
  {
   "va": "0x28c860",
@@ -1638,6 +1692,12 @@
   "file": "decompiled/310430.c"
  },
  {
+  "va": "0x3401a0",
+  "size_bytes": 555,
+  "direct_call_sites": 1,
+  "file": "decompiled/3401a0.c"
+ },
+ {
   "va": "0x340d10",
   "size_bytes": 80,
   "direct_call_sites": 7,
@@ -1668,6 +1728,12 @@
   "file": "decompiled/346d20.c"
  },
  {
+  "va": "0x349c10",
+  "size_bytes": 34,
+  "direct_call_sites": 22,
+  "file": "decompiled/349c10.c"
+ },
+ {
   "va": "0x349c50",
   "size_bytes": 86,
   "direct_call_sites": 11,
@@ -1678,6 +1744,18 @@
   "size_bytes": 16785,
   "direct_call_sites": 2,
   "file": "decompiled/34e620.c"
+ },
+ {
+  "va": "0x353610",
+  "size_bytes": 35,
+  "direct_call_sites": 209,
+  "file": "decompiled/353610.c"
+ },
+ {
+  "va": "0x3a25f0",
+  "size_bytes": 756,
+  "direct_call_sites": 67,
+  "file": "decompiled/3a25f0.c"
  },
  {
   "va": "0x3d5f90",
@@ -1764,6 +1842,30 @@
   "file": "decompiled/4aaff0.c"
  },
  {
+  "va": "0x4ed070",
+  "size_bytes": 280,
+  "direct_call_sites": 18,
+  "file": "decompiled/4ed070.c"
+ },
+ {
+  "va": "0x4ed850",
+  "size_bytes": 479,
+  "direct_call_sites": 1,
+  "file": "decompiled/4ed850.c"
+ },
+ {
+  "va": "0x4edad0",
+  "size_bytes": 144,
+  "direct_call_sites": 1,
+  "file": "decompiled/4edad0.c"
+ },
+ {
+  "va": "0x4ee210",
+  "size_bytes": 314,
+  "direct_call_sites": 0,
+  "file": "decompiled/4ee210.c"
+ },
+ {
   "va": "0x528780",
   "size_bytes": 16,
   "direct_call_sites": 2,
@@ -1786,6 +1888,12 @@
   "size_bytes": 95,
   "direct_call_sites": 2,
   "file": "decompiled/528a00.c"
+ },
+ {
+  "va": "0x52a750",
+  "size_bytes": 1537,
+  "direct_call_sites": 0,
+  "file": "decompiled/52a750.c"
  },
  {
   "va": "0x545280",
@@ -1818,16 +1926,58 @@
   "file": "decompiled/5498e0.c"
  },
  {
+  "va": "0x54c5f0",
+  "size_bytes": 191,
+  "direct_call_sites": 2,
+  "file": "decompiled/54c5f0.c"
+ },
+ {
+  "va": "0x54c6b0",
+  "size_bytes": 49,
+  "direct_call_sites": 14,
+  "file": "decompiled/54c6b0.c"
+ },
+ {
+  "va": "0x54c6f0",
+  "size_bytes": 191,
+  "direct_call_sites": 2,
+  "file": "decompiled/54c6f0.c"
+ },
+ {
   "va": "0x54c9b0",
   "size_bytes": 53,
   "direct_call_sites": 15,
   "file": "decompiled/54c9b0.c"
  },
  {
+  "va": "0x54cab0",
+  "size_bytes": 280,
+  "direct_call_sites": 1,
+  "file": "decompiled/54cab0.c"
+ },
+ {
+  "va": "0x54ed90",
+  "size_bytes": 2724,
+  "direct_call_sites": 2,
+  "file": "decompiled/54ed90.c"
+ },
+ {
   "va": "0x5505a0",
   "size_bytes": 17,
   "direct_call_sites": 2,
   "file": "decompiled/5505a0.c"
+ },
+ {
+  "va": "0x551400",
+  "size_bytes": 843,
+  "direct_call_sites": 1,
+  "file": "decompiled/551400.c"
+ },
+ {
+  "va": "0x554b90",
+  "size_bytes": 597,
+  "direct_call_sites": 1,
+  "file": "decompiled/554b90.c"
  },
  {
   "va": "0x557bb0",
@@ -2442,6 +2592,30 @@
   "file": "decompiled/5753c0.c"
  },
  {
+  "va": "0x576070",
+  "size_bytes": 214,
+  "direct_call_sites": 0,
+  "file": "decompiled/576070.c"
+ },
+ {
+  "va": "0x576150",
+  "size_bytes": 569,
+  "direct_call_sites": 0,
+  "file": "decompiled/576150.c"
+ },
+ {
+  "va": "0x5763b0",
+  "size_bytes": 81,
+  "direct_call_sites": 0,
+  "file": "decompiled/5763b0.c"
+ },
+ {
+  "va": "0x576410",
+  "size_bytes": 104,
+  "direct_call_sites": 0,
+  "file": "decompiled/576410.c"
+ },
+ {
   "va": "0x577410",
   "size_bytes": 269,
   "direct_call_sites": 1,
@@ -2452,6 +2626,12 @@
   "size_bytes": 2638,
   "direct_call_sites": 1,
   "file": "decompiled/5781b0.c"
+ },
+ {
+  "va": "0x5795a0",
+  "size_bytes": 179,
+  "direct_call_sites": 1,
+  "file": "decompiled/5795a0.c"
  },
  {
   "va": "0x57a7a0",
@@ -2880,6 +3060,12 @@
   "file": "decompiled/5885d0.c"
  },
  {
+  "va": "0x589a30",
+  "size_bytes": 330,
+  "direct_call_sites": 1,
+  "file": "decompiled/589a30.c"
+ },
+ {
   "va": "0x58b350",
   "size_bytes": 273,
   "direct_call_sites": 0,
@@ -2932,6 +3118,12 @@
   "size_bytes": 364,
   "direct_call_sites": 0,
   "file": "decompiled/58f840.c"
+ },
+ {
+  "va": "0x5906d0",
+  "size_bytes": 613,
+  "direct_call_sites": 1,
+  "file": "decompiled/5906d0.c"
  },
  {
   "va": "0x5927d0",
@@ -3036,16 +3228,292 @@
   "file": "decompiled/5a0690.c"
  },
  {
+  "va": "0x5a9b20",
+  "size_bytes": 100,
+  "direct_call_sites": 1,
+  "file": "decompiled/5a9b20.c"
+ },
+ {
+  "va": "0x5ada10",
+  "size_bytes": 1022,
+  "direct_call_sites": 3,
+  "file": "decompiled/5ada10.c"
+ },
+ {
   "va": "0x5b1110",
   "size_bytes": 587,
   "direct_call_sites": 2,
   "file": "decompiled/5b1110.c"
  },
  {
+  "va": "0x5f2850",
+  "size_bytes": 1860,
+  "direct_call_sites": 2,
+  "file": "decompiled/5f2850.c"
+ },
+ {
   "va": "0x616bb0",
   "size_bytes": 1222,
   "direct_call_sites": 0,
   "file": "decompiled/616bb0.c"
+ },
+ {
+  "va": "0x62fd30",
+  "size_bytes": 178,
+  "direct_call_sites": 0,
+  "file": "decompiled/62fd30.c"
+ },
+ {
+  "va": "0x62fdf0",
+  "size_bytes": 198,
+  "direct_call_sites": 0,
+  "file": "decompiled/62fdf0.c"
+ },
+ {
+  "va": "0x62fec0",
+  "size_bytes": 148,
+  "direct_call_sites": 0,
+  "file": "decompiled/62fec0.c"
+ },
+ {
+  "va": "0x630c70",
+  "size_bytes": 100,
+  "direct_call_sites": 0,
+  "file": "decompiled/630c70.c"
+ },
+ {
+  "va": "0x630ce0",
+  "size_bytes": 12,
+  "direct_call_sites": 1,
+  "file": "decompiled/630ce0.c"
+ },
+ {
+  "va": "0x630cf0",
+  "size_bytes": 38,
+  "direct_call_sites": 1,
+  "file": "decompiled/630cf0.c"
+ },
+ {
+  "va": "0x630d20",
+  "size_bytes": 17,
+  "direct_call_sites": 3,
+  "file": "decompiled/630d20.c"
+ },
+ {
+  "va": "0x630d50",
+  "size_bytes": 14,
+  "direct_call_sites": 1,
+  "file": "decompiled/630d50.c"
+ },
+ {
+  "va": "0x630dd0",
+  "size_bytes": 19,
+  "direct_call_sites": 1,
+  "file": "decompiled/630dd0.c"
+ },
+ {
+  "va": "0x630df0",
+  "size_bytes": 428,
+  "direct_call_sites": 0,
+  "file": "decompiled/630df0.c"
+ },
+ {
+  "va": "0x639d30",
+  "size_bytes": 186,
+  "direct_call_sites": 2,
+  "file": "decompiled/639d30.c"
+ },
+ {
+  "va": "0x63b650",
+  "size_bytes": 124,
+  "direct_call_sites": 5,
+  "file": "decompiled/63b650.c"
+ },
+ {
+  "va": "0x63b880",
+  "size_bytes": 649,
+  "direct_call_sites": 10,
+  "file": "decompiled/63b880.c"
+ },
+ {
+  "va": "0x63be90",
+  "size_bytes": 83,
+  "direct_call_sites": 6,
+  "file": "decompiled/63be90.c"
+ },
+ {
+  "va": "0x63ca80",
+  "size_bytes": 314,
+  "direct_call_sites": 4,
+  "file": "decompiled/63ca80.c"
+ },
+ {
+  "va": "0x63cd80",
+  "size_bytes": 664,
+  "direct_call_sites": 3,
+  "file": "decompiled/63cd80.c"
+ },
+ {
+  "va": "0x63dbb0",
+  "size_bytes": 64,
+  "direct_call_sites": 4,
+  "file": "decompiled/63dbb0.c"
+ },
+ {
+  "va": "0x63dca0",
+  "size_bytes": 355,
+  "direct_call_sites": 1,
+  "file": "decompiled/63dca0.c"
+ },
+ {
+  "va": "0x63e6c0",
+  "size_bytes": 346,
+  "direct_call_sites": 3,
+  "file": "decompiled/63e6c0.c"
+ },
+ {
+  "va": "0x63e820",
+  "size_bytes": 17,
+  "direct_call_sites": 0,
+  "file": "decompiled/63e820.c"
+ },
+ {
+  "va": "0x63ef90",
+  "size_bytes": 321,
+  "direct_call_sites": 0,
+  "file": "decompiled/63ef90.c"
+ },
+ {
+  "va": "0x63f6f0",
+  "size_bytes": 119,
+  "direct_call_sites": 0,
+  "file": "decompiled/63f6f0.c"
+ },
+ {
+  "va": "0x63f9b0",
+  "size_bytes": 89,
+  "direct_call_sites": 0,
+  "file": "decompiled/63f9b0.c"
+ },
+ {
+  "va": "0x63fa10",
+  "size_bytes": 107,
+  "direct_call_sites": 0,
+  "file": "decompiled/63fa10.c"
+ },
+ {
+  "va": "0x63fa80",
+  "size_bytes": 125,
+  "direct_call_sites": 0,
+  "file": "decompiled/63fa80.c"
+ },
+ {
+  "va": "0x63fdc0",
+  "size_bytes": 12,
+  "direct_call_sites": 2,
+  "file": "decompiled/63fdc0.c"
+ },
+ {
+  "va": "0x63fe20",
+  "size_bytes": 25,
+  "direct_call_sites": 0,
+  "file": "decompiled/63fe20.c"
+ },
+ {
+  "va": "0x63fe90",
+  "size_bytes": 14,
+  "direct_call_sites": 0,
+  "file": "decompiled/63fe90.c"
+ },
+ {
+  "va": "0x640160",
+  "size_bytes": 516,
+  "direct_call_sites": 3,
+  "file": "decompiled/640160.c"
+ },
+ {
+  "va": "0x6404c0",
+  "size_bytes": 1782,
+  "direct_call_sites": 1,
+  "file": "decompiled/6404c0.c"
+ },
+ {
+  "va": "0x640ce0",
+  "size_bytes": 491,
+  "direct_call_sites": 0,
+  "file": "decompiled/640ce0.c"
+ },
+ {
+  "va": "0x642be0",
+  "size_bytes": 296,
+  "direct_call_sites": 0,
+  "file": "decompiled/642be0.c"
+ },
+ {
+  "va": "0x642d20",
+  "size_bytes": 805,
+  "direct_call_sites": 0,
+  "file": "decompiled/642d20.c"
+ },
+ {
+  "va": "0x6442f0",
+  "size_bytes": 46,
+  "direct_call_sites": 0,
+  "file": "decompiled/6442f0.c"
+ },
+ {
+  "va": "0x644810",
+  "size_bytes": 263,
+  "direct_call_sites": 1,
+  "file": "decompiled/644810.c"
+ },
+ {
+  "va": "0x644920",
+  "size_bytes": 12,
+  "direct_call_sites": 0,
+  "file": "decompiled/644920.c"
+ },
+ {
+  "va": "0x644930",
+  "size_bytes": 57,
+  "direct_call_sites": 1,
+  "file": "decompiled/644930.c"
+ },
+ {
+  "va": "0x644970",
+  "size_bytes": 45,
+  "direct_call_sites": 1,
+  "file": "decompiled/644970.c"
+ },
+ {
+  "va": "0x6449a0",
+  "size_bytes": 45,
+  "direct_call_sites": 1,
+  "file": "decompiled/6449a0.c"
+ },
+ {
+  "va": "0x6449d0",
+  "size_bytes": 51,
+  "direct_call_sites": 1,
+  "file": "decompiled/6449d0.c"
+ },
+ {
+  "va": "0x644d00",
+  "size_bytes": 271,
+  "direct_call_sites": 0,
+  "file": "decompiled/644d00.c"
+ },
+ {
+  "va": "0x644e20",
+  "size_bytes": 153,
+  "direct_call_sites": 7,
+  "file": "decompiled/644e20.c"
+ },
+ {
+  "va": "0x644ed0",
+  "size_bytes": 856,
+  "direct_call_sites": 0,
+  "file": "decompiled/644ed0.c"
  },
  {
   "va": "0x66acc0",
@@ -3670,6 +4138,12 @@
   "size_bytes": 919,
   "direct_call_sites": 1,
   "file": "decompiled/7afb70.c"
+ },
+ {
+  "va": "0x7b0950",
+  "size_bytes": 996,
+  "direct_call_sites": 2,
+  "file": "decompiled/7b0950.c"
  },
  {
   "va": "0x7c5080",
@@ -4770,6 +5244,12 @@
   "file": "decompiled/8b3980.c"
  },
  {
+  "va": "0x8d9950",
+  "size_bytes": 120,
+  "direct_call_sites": 19,
+  "file": "decompiled/8d9950.c"
+ },
+ {
   "va": "0x8de640",
   "size_bytes": 509,
   "direct_call_sites": 0,
@@ -4872,6 +5352,18 @@
   "file": "decompiled/9072f0.c"
  },
  {
+  "va": "0x90c8d0",
+  "size_bytes": 1532,
+  "direct_call_sites": 0,
+  "file": "decompiled/90c8d0.c"
+ },
+ {
+  "va": "0x90cee0",
+  "size_bytes": 221,
+  "direct_call_sites": 0,
+  "file": "decompiled/90cee0.c"
+ },
+ {
   "va": "0x90d0c0",
   "size_bytes": 4185,
   "direct_call_sites": 0,
@@ -4912,6 +5404,36 @@
   "size_bytes": 2628,
   "direct_call_sites": 2,
   "file": "decompiled/90f180.c"
+ },
+ {
+  "va": "0x9101f0",
+  "size_bytes": 391,
+  "direct_call_sites": 3,
+  "file": "decompiled/9101f0.c"
+ },
+ {
+  "va": "0x910380",
+  "size_bytes": 873,
+  "direct_call_sites": 3,
+  "file": "decompiled/910380.c"
+ },
+ {
+  "va": "0x9106f0",
+  "size_bytes": 513,
+  "direct_call_sites": 3,
+  "file": "decompiled/9106f0.c"
+ },
+ {
+  "va": "0x910e40",
+  "size_bytes": 642,
+  "direct_call_sites": 5,
+  "file": "decompiled/910e40.c"
+ },
+ {
+  "va": "0x9110d0",
+  "size_bytes": 237,
+  "direct_call_sites": 2,
+  "file": "decompiled/9110d0.c"
  },
  {
   "va": "0x9111c0",
@@ -4956,16 +5478,34 @@
   "file": "decompiled/913d20.c"
  },
  {
-  "va": "0x9141f0",
-  "size_bytes": 235,
+  "va": "0x9140e0",
+  "size_bytes": 34,
+  "direct_call_sites": 3,
+  "file": "decompiled/9140e0.c"
+ },
+ {
+  "va": "0x914190",
+  "size_bytes": 77,
   "direct_call_sites": 1,
-  "file": "decompiled/9141f0.c"
+  "file": "decompiled/914190.c"
+ },
+ {
+  "va": "0x914a80",
+  "size_bytes": 8286,
+  "direct_call_sites": 1,
+  "file": "decompiled/914a80.c"
  },
  {
   "va": "0x917d70",
   "size_bytes": 1168,
   "direct_call_sites": 2,
   "file": "decompiled/917d70.c"
+ },
+ {
+  "va": "0x91e000",
+  "size_bytes": 3728,
+  "direct_call_sites": 1,
+  "file": "decompiled/91e000.c"
  },
  {
   "va": "0x922cf0",
@@ -5146,6 +5686,24 @@
   "size_bytes": 1391,
   "direct_call_sites": 0,
   "file": "decompiled/9489d0.c"
+ },
+ {
+  "va": "0x94bdb0",
+  "size_bytes": 129,
+  "direct_call_sites": 1,
+  "file": "decompiled/94bdb0.c"
+ },
+ {
+  "va": "0x94be40",
+  "size_bytes": 792,
+  "direct_call_sites": 1,
+  "file": "decompiled/94be40.c"
+ },
+ {
+  "va": "0x94c160",
+  "size_bytes": 213,
+  "direct_call_sites": 1,
+  "file": "decompiled/94c160.c"
  },
  {
   "va": "0x9535f0",
@@ -5724,6 +6282,12 @@
   "file": "decompiled/bad130.c"
  },
  {
+  "va": "0xbb0ee0",
+  "size_bytes": 459,
+  "direct_call_sites": 1,
+  "file": "decompiled/bb0ee0.c"
+ },
+ {
   "va": "0xbb1a40",
   "size_bytes": 301,
   "direct_call_sites": 1,
@@ -5928,10 +6492,28 @@
   "file": "decompiled/bc3d30.c"
  },
  {
+  "va": "0xbd5b80",
+  "size_bytes": 110,
+  "direct_call_sites": 4,
+  "file": "decompiled/bd5b80.c"
+ },
+ {
+  "va": "0xbd5bf0",
+  "size_bytes": 83,
+  "direct_call_sites": 2,
+  "file": "decompiled/bd5bf0.c"
+ },
+ {
   "va": "0xbf5110",
   "size_bytes": 198,
   "direct_call_sites": 4,
   "file": "decompiled/bf5110.c"
+ },
+ {
+  "va": "0xc76ea0",
+  "size_bytes": 2150,
+  "direct_call_sites": 1,
+  "file": "decompiled/c76ea0.c"
  },
  {
   "va": "0xf69070",

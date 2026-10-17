@@ -5621,5 +5621,403 @@
   "size_bytes": 324,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:unit_pending_weapon_index:bd8040",
   "calls": []
+ },
+ {
+  "va": "0x63f0e0",
+  "name": "gear_cache_registries_init",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63f0e0_gear_cache_registries_init.c",
+  "role": "Creates the gear cache registries (0x63B650): player 0x26BEA78, weapon 0x26BEA80, ship 0x26BEA88, ghost 0x26BEA90, vehicle 0x26BEA98, the player emote registry 0x26BEAA0 and the gear component registry 0x26BEAB0 ({type 0 player / 1 weapon / 2 ship, object handle}).",
+  "size_bytes": 375,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_cache_registries_init:63f0e0",
+  "calls": [
+   "0x63b650",
+   "0x641230"
+  ]
+ },
+ {
+  "va": "0x63bb10",
+  "name": "gear_cache_request",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63bb10_gear_cache_request.c",
+  "role": "Requests a gear cache entry: (registry, build type, x, description, ref) -> handle. Build type 3 composites the parts (entry states 2-5); other types finish once the tags are loaded.",
+  "size_bytes": 893,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_cache_request:63bb10",
+  "calls": []
+ },
+ {
+  "va": "0x63bef0",
+  "name": "gear_cache_entry",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63bef0_gear_cache_entry.c",
+  "role": "(registry, handle) -> the gear cache entry; i32 state @+0 (6 done, 7 failed), i32 build type @+4.",
+  "size_bytes": 18,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_cache_entry:63bef0",
+  "calls": []
+ },
+ {
+  "va": "0x639e00",
+  "name": "gear_cache_entry_step",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "639e00_gear_cache_entry_step.c",
+  "role": "Gear cache entry state machine: 1 load the description's tags (+0xD4 load group; done -> 6 unless build type 3 -> 2), 2-5 composite (0x6403F0, 0x63A5F0, 0x63A3F0), 7 failed.",
+  "size_bytes": 660,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_cache_entry_step:639e00",
+  "calls": [
+   "0x6403f0",
+   "0x63a5f0",
+   "0x63a3f0"
+  ]
+ },
+ {
+  "va": "0x63fb20",
+  "name": "weapon_gear_cache_request",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63fb20_weapon_gear_cache_request.c",
+  "role": "0x63BB10(weapon registry *0x26BEA80, 1, x, desc, 0): a weapon's gear (dyes) for the player's loading gate (player +0x285C..+0x2864).",
+  "size_bytes": 33,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_cache_request:63fb20",
+  "calls": [
+   "0x63bb10"
+  ]
+ },
+ {
+  "va": "0x63ff50",
+  "name": "weapon_gear_cache_loading",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63ff50_weapon_gear_cache_loading.c",
+  "role": "True while a weapon gear cache entry is not done (state not 6 / 7).",
+  "size_bytes": 128,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_cache_loading:63ff50",
+  "calls": [
+   "0x63bef0"
+  ]
+ },
+ {
+  "va": "0x63fed0",
+  "name": "player_gear_cache_loading",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63fed0_player_gear_cache_loading.c",
+  "role": "True while a player gear cache entry is not done.",
+  "size_bytes": 128,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_gear_cache_loading:63fed0",
+  "calls": [
+   "0x63bef0"
+  ]
+ },
+ {
+  "va": "0x63fc10",
+  "name": "weapon_gear_cache_release",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63fc10_weapon_gear_cache_release.c",
+  "role": "Releases a weapon gear cache handle (0x63BE90).",
+  "size_bytes": 38,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_cache_release:63fc10",
+  "calls": [
+   "0x63be90"
+  ]
+ },
+ {
+  "va": "0x63fd60",
+  "name": "gear_component_register",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63fd60_gear_component_register.c",
+  "role": "Registers a gear component {type, object handle} in 0x26BEAB0 (type 0 player, 1 weapon, 2 ship).",
+  "size_bytes": 64,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_component_register:63fd60",
+  "calls": []
+ },
+ {
+  "va": "0x9141f0",
+  "name": "players_gear_loading",
+  "subsystem": "omaha.simulation",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "9141f0_players_gear_loading.c",
+  "role": "True while any player's body (+0x2854) or weapon (+0x285C..+0x2864) gear cache entry is still loading.",
+  "size_bytes": 235,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:players_gear_loading:9141f0",
+  "calls": [
+   "0x63fed0",
+   "0x63ff50"
+  ]
+ },
+ {
+  "va": "0x6440e0",
+  "name": "weapon_gear_component_activate",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "6440e0_weapon_gear_component_activate.c",
+  "role": "Weapon gear component activate: resets it (0x644140), registers it (0x63FD60 type 1) and binds the weapon gear registry (0x63CA80).",
+  "size_bytes": 86,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_component_activate:6440e0",
+  "calls": [
+   "0x644140",
+   "0x63fd60",
+   "0x63ca80"
+  ]
+ },
+ {
+  "va": "0x644140",
+  "name": "weapon_gear_component_reset",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "644140_weapon_gear_component_reset.c",
+  "role": "Clears a weapon gear component's description (+0x30 seven dye pairs = 0x811C9DC5 none, +0x68 parts = -1) and marks it dirty.",
+  "size_bytes": 422,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_component_reset:644140",
+  "calls": []
+ },
+ {
+  "va": "0x644320",
+  "name": "weapon_gear_component_update",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "644320_weapon_gear_component_update.c",
+  "role": "Builds the gear description from the component (+0x68 parts, +0x30 dyes when +0x19C is set) and the object's six model slots (+0xA8..+0xF8), then first time 0x63D0E0, later 0x63DBB0.",
+  "size_bytes": 729,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_component_update:644320",
+  "calls": [
+   "0x63d0e0",
+   "0x63dbb0"
+  ]
+ },
+ {
+  "va": "0x644640",
+  "name": "weapon_gear_component_set",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "644640_weapon_gear_component_set.c",
+  "role": "Sets a weapon gear component's description (0x6C bytes: 7 dye pairs {hash, value}, then 13 part / dye handles) and marks it dirty; called by 0x669B20 with the weapon configuration's description.",
+  "size_bytes": 428,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_component_set:644640",
+  "calls": []
+ },
+ {
+  "va": "0x641bb0",
+  "name": "player_gear_component_activate",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "641bb0_player_gear_component_activate.c",
+  "role": "Player gear component activate (0x63FD60 type 0).",
+  "size_bytes": 83,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:player_gear_component_activate:641bb0",
+  "calls": [
+   "0x63fd60",
+   "0x63ca80"
+  ]
+ },
+ {
+  "va": "0x642a30",
+  "name": "ship_gear_component_activate",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "642a30_ship_gear_component_activate.c",
+  "role": "Ship gear component activate (0x63FD60 type 2).",
+  "size_bytes": 76,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:ship_gear_component_activate:642a30",
+  "calls": [
+   "0x63fd60",
+   "0x63ca80"
+  ]
+ },
+ {
+  "va": "0x63d0e0",
+  "name": "gear_component_begin",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63d0e0_gear_component_begin.c",
+  "role": "First update of a gear component: requests its own gear cache entry (0x63D290 state 2) unless the description is cached (0x63B470), else applies it (0x63D7F0).",
+  "size_bytes": 424,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_component_begin:63d0e0",
+  "calls": [
+   "0x63d290",
+   "0x63d7f0",
+   "0x63b470"
+  ]
+ },
+ {
+  "va": "0x63d290",
+  "name": "gear_component_set_state",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63d290_gear_component_set_state.c",
+  "role": "Gear component state machine: 2 request the entry (0x63BB10, build type from the object's definition), 3 apply the built parts (0x63DCA0 / 0x63E9D0 per slot), 4 apply the description directly (0x63D7F0), 1 idle.",
+  "size_bytes": 1376,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_component_set_state:63d290",
+  "calls": [
+   "0x63bb10",
+   "0x63d7f0"
+  ]
+ },
+ {
+  "va": "0x63d7f0",
+  "name": "gear_component_apply",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63d7f0_gear_component_apply.c",
+  "role": "Installs the description's eight part tags into the component's slots (0x63EA00 each) with the dye pairs.",
+  "size_bytes": 621,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_component_apply:63d7f0",
+  "calls": [
+   "0x63ea00"
+  ]
+ },
+ {
+  "va": "0x63ea00",
+  "name": "gear_component_slot_install",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "63ea00_gear_component_slot_install.c",
+  "role": "Creates the child object of one gear slot from a part tag (0x308EB0; -1 = empty slot) and applies the dye overrides: the visible model of a weapon, armour piece or ship.",
+  "size_bytes": 724,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_component_slot_install:63ea00",
+  "calls": [
+   "0x308eb0"
+  ]
+ },
+ {
+  "va": "0x669b20",
+  "name": "weapon_object_gear_set",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "669b20_weapon_object_gear_set.c",
+  "role": "Builds a weapon object's gear description from its weapon configuration (0x672B60) and sets its weapon gear component (0x644640).",
+  "size_bytes": 445,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_object_gear_set:669b20",
+  "calls": [
+   "0x672b60",
+   "0x644640"
+  ]
+ },
+ {
+  "va": "0x672b60",
+  "name": "weapon_gear_description_build",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "672b60_weapon_gear_description_build.c",
+  "role": "Weapon gear description from the configuration's parts (config +0x24: 6-7 part tags), dyes (+0x40..+0x48) and its dye pair; build type 3 copies all seven parts.",
+  "size_bytes": 400,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_gear_description_build:672b60",
+  "calls": [
+   "0x672cf0"
+  ]
+ },
+ {
+  "va": "0x9109b0",
+  "name": "weapon_configuration_parts",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "9109b0_weapon_configuration_parts.c",
+  "role": "Weapon configuration parts: copies the player's per-slot part tags (record +0x9C8 + slot*0x20, 7 x i32) and resolves the loadout entry's gear parts with keys 5-7 (member 6) through the gear table 0x54C6B0 into dye tags; +0x28 member 5 hash / value.",
+  "size_bytes": 673,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:weapon_configuration_parts:9109b0",
+  "calls": [
+   "0x54c6b0"
+  ]
+ },
+ {
+  "va": "0x54dff0",
+  "name": "character_record_build_slots",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "54dff0_character_record_build_slots.c",
+  "role": "Builds the player record's per-slot data from the loadout: for each slot the base gear index (loadout entry i16 @+0xC, table 0x54C5B0) and the override indices (@+0xE, 7 x i16) become part tags (0x54F840) at record +0x9C8 + slot*0x20.",
+  "size_bytes": 1763,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:character_record_build_slots:54dff0",
+  "calls": [
+   "0x54f840",
+   "0x54c5b0"
+  ]
+ },
+ {
+  "va": "0x54eb50",
+  "name": "character_record_build_defaults",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "54eb50_character_record_build_defaults.c",
+  "role": "Builds the player record block (+0x850: race / gender / class, +0x85C body tag, ...) for a character creation request, with the class's default gear parts (0x54F840 from the default items' arrangement base).",
+  "size_bytes": 568,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:character_record_build_defaults:54eb50",
+  "calls": [
+   "0x54ed90",
+   "0x54f840"
+  ]
+ },
+ {
+  "va": "0x54f840",
+  "name": "gear_base_parts_resolve",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "54f840_gear_base_parts_resolve.c",
+  "role": "Resolves a gear base (0x54C5B0 entry: part hashes, gender variants @+4) and its override indices into up to eight part tags (0x58EA60 hash -> tag).",
+  "size_bytes": 1152,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:gear_base_parts_resolve:54f840",
+  "calls": [
+   "0x58ea60",
+   "0x54c5b0"
+  ]
+ },
+ {
+  "va": "0x578e80",
+  "name": "world_tag_loader_default_gear_parts",
+  "subsystem": "spasaha.investment",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "578e80_world_tag_loader_default_gear_parts.c",
+  "role": "World tag loader: the part tags of default gear (0x54F840 per arrangement base) to load.",
+  "size_bytes": 1815,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:world_tag_loader_default_gear_parts:578e80",
+  "calls": [
+   "0x54f840"
+  ]
+ },
+ {
+  "va": "0x90ff60",
+  "name": "armor_configuration_parts",
+  "subsystem": "omaha.objects",
+  "class": null,
+  "evidence": "Static decompilation plus d1-native D1_TRACE_CALLS traces and a gdb watchpoint (wrun.sh rendered Earth patrol checks: weapon and armour models appear once loadout member 3 carries the base gear), 2026-10-17",
+  "file": "90ff60_armor_configuration_parts.c",
+  "role": "Armour piece configuration: the first part tag of the slot's record parts, the dye pair, and the dyes of keys from the gear parts list (0x54C6B0).",
+  "size_bytes": 633,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:armor_configuration_parts:90ff60",
+  "calls": [
+   "0x54c6b0"
+  ]
  }
 ]

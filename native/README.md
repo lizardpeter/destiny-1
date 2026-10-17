@@ -101,6 +101,7 @@ engine-side patch (not done yet).
 | env | effect |
 |---|---|
 | `D1_TRACE=1` | log every firmware call with its first three arguments |
+| `D1_TRACE_CALLS=off[:n][/a[+bytes]],...` | (research) log the first n calls (default 20) of up to 16 eboot functions (hex offsets): six integer arguments, return value and caller; `/a` also dumps the memory argument a (0-5) points at before the call (default 0x80 bytes). Only for functions with at most six integer / pointer arguments |
 | `D1_GAME_LOG=1` or `=<substring>` | re-enable the engine's own logging (stripped thresholds in release) and print it |
 | `D1_AUTOPRESS=<s>` | tap Cross for 100 ms every `<s>` seconds (no host input yet) |
 | `D1_WATCHDOG=<s>` | after `<s>` seconds dump every guest thread's call stack, call counts and GPU stats, then exit |

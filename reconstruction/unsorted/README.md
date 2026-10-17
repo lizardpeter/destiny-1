@@ -1,8 +1,8 @@
 # Unsorted decompiles
 
-Unedited Ghidra 11.4.2 decompiler output for 1165 functions of the 01.33 eboot
+Unedited Ghidra 11.4.2 decompiler output for 1253 functions of the 01.33 eboot
 (CUSA00219, `eboot.bin` SHA-256 `672f0341…0833`) that were decompiled during the
-research sessions of 2026-10-12 .. 2026-10-16 but are **not yet attributed to a
+research sessions of 2026-10-12 .. 2026-10-17 but are **not yet attributed to a
 subsystem** and have no entry in `reconstruction/functions.json`.
 
 - `decompiled/<va>.c`: one file per function, named by its eboot virtual address (hex,

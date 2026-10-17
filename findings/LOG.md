@@ -1782,4 +1782,31 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   .gear_dye). The backend now sends them (items.json "gear"); the requests carry the dye
   tags, but the weapon is still not drawn. The weapon's art comes from the sandbox pattern
   row (weapon config +0: gear 0x80A6A02E etc., type 0x80800734, ~20 KB, in
-  investment_assets) and is loaded too. Open.
+  investment_assets) and is loaded too. Solved below.
+
+## 2026-10-17 (evening): weapon, armour and ship models (loadout base gear)
+
+- **Cause**: loadout entry member 3 (0x8080183C @+0xC, i16) is the item's **base gear
+  index** into the gear base table 0x54C5B0 (the definition arrangement's base, items.json
+  `base`: Fatebringer 1378). The backend sent 0. 0x54DFF0 (player record build) resolves each
+  slot's base with 0x54F840 (base entry part hashes, gender variants @+4, override indices
+  from member 4 @+0xE, 7 x i16; 0x58EA60 hash -> tag) into up to eight part tags at player
+  record +0x9C8 + slot * 0x20. With 0 the weapons had no parts at all and the armour got a
+  stand-in (0x809F837E in every body slot).
+- **The path to the screen**: the player configuration (0x912240) copies the slot's parts
+  into each weapon configuration (0x910C60 -> 0x9109B0: +0x24, plus dyes from member 6 keys
+  5-7); 0x669B20 builds the weapon object's gear description (0x672B60) and sets its weapon
+  gear component (0x644640). Gear components (registry 0x26BEAB0: 0 player 0x641BB0, 1 weapon
+  0x6440E0, 2 ship 0x642A30) update through 0x63D0E0 / 0x63D290 and install each part with
+  0x63EA00, which spawns the part's child object (0x308EB0) - the visible model. Traced with
+  `D1_TRACE_CALLS=63ea00:80,9109b0:12/1+20`: before, all weapon slots were -1; after, each
+  weapon has 5-6 parts (Fatebringer 80a743a4 80a73ba9 ...), the body five Iron Banner pieces
+  and the ship six parts (80a7bd65 ...).
+- **Verified rendered** (wrun.sh, Earth patrol): Fatebringer drawn in the hand, real
+  gauntlets on the arms.
+- The weapon gear cache (0x63FB20) only carries the dyes (build type 1: done once the tags
+  load); it gates loading (0x9141F0), it is not the model.
+- **New research tool**: `D1_TRACE_CALLS=off[:n][/arg[+bytes]],...` logs the first n calls of
+  up to 16 eboot functions (six integer arguments, return value, caller) and can dump the
+  memory an argument points at. A gdb watchpoint (Python breakpoint classes, armed from a
+  breakpoint on `d1::install_game_hooks` once the eboot is mapped) found 0x54F840.

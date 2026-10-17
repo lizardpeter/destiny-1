@@ -220,20 +220,20 @@ pub fn loadout_value(character: i64, items: &[i64]) -> Value {
     let entries: Vec<Option<Value>> = slot
         .into_iter()
         // {i64 instance, i16 item index @8, i16 weapon sandbox pattern index @0xA (0x910C60 takes
-        // the weapon's gear from the 0x54C7F0 pattern table; 0 elsewhere), i16 @0xC}
+        // the weapon's gear from the 0x54C7F0 pattern table; 0 elsewhere), i16 base gear @0xC}
         .map(|(id, index)| {
             let item = crate::gear::items().get(index.max(0) as usize).filter(|_| index >= 0);
             let pattern = item.and_then(|it| it.pattern).unwrap_or(0);
-            let mut e = vec![Some(Int(id)), Some(Int(index)), Some(Int(pattern)), Some(Int(0)), None, None, None];
+            // member 3 (@0xC): the item's base gear index (0x54C5B0 table: the definition
+            // arrangement's base). 0x54DFF0 resolves its parts (weapon / armor models) from it into
+            // the player's per-slot part handles (player record +0x9C8); member 4 (@0xE, 7 x
+            // i16) would override single parts with other indices of the same table
+            let base = item.and_then(|it| it.base).unwrap_or(0);
+            let mut e = vec![Some(Int(id)), Some(Int(index)), Some(Int(pattern)), Some(Int(base)), None, None, None];
             // member 6 (@0x28, 0x808046BC): the gear parts {i8 key, i16 gear index}; the
             // weapon config (0x9109B0) looks up parts 5-7 here for the weapon's gear request
             if let Some(it) = item.filter(|it| !it.gear.is_empty()) {
-                let mut parts: Vec<[i64; 2]> = it.gear.clone();
-                // D1B_GEAR_BASE_KEY=<k> (research): also send the arrangement's other index
-                // under part key k
-                if let (Some(k), Some(b)) = (std::env::var("D1B_GEAR_BASE_KEY").ok().and_then(|v| v.parse().ok()), it.base) {
-                    parts.push([k, b]);
-                }
+                let parts: &[[i64; 2]] = &it.gear;
                 e[6] = Some(Array(parts.iter().take(6).map(|[k, g]| Some(Struct(vec![Some(Int(*k)), Some(Int(*g))]))).collect()));
             }
             Some(Struct(e))

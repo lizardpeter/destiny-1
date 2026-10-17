@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <map>
@@ -2204,6 +2205,74 @@ static void install_call_counters(const char* list) {
     }
     log("hooks: %zu call counters", g_counters.size());
 }
+// ---- call traces (research): D1_TRACE_CALLS=off[:n][/a[+bytes]],... (eboot offsets, hex; up
+// to 16) logs the first n calls (default 20) of each function: its six integer arguments, the
+// return value and the caller; /a (argument 0-5) also dumps the memory that argument points
+// at before the call (bytes in hex, default 0x80). Only for functions taking at most six
+// integer / pointer arguments (stack arguments are not passed on; vector registers are not
+// preserved).
+struct CallTrace { uint64_t off = 0; int left = 0; void* orig = nullptr; int dump_arg = -1; uint32_t dump_len = 0x80; };
+static CallTrace g_call_traces[16];
+template <int I>
+static D1_SYSV uint64_t call_trace_hook(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f) {
+    CallTrace& t = g_call_traces[I];
+    std::string mem;
+    if (t.dump_arg >= 0 && t.left > 0) {
+        const uint64_t args[6] = {a, b, c, d, e, f};
+        const auto* q = reinterpret_cast<const uint32_t*>(args[t.dump_arg]);
+        if (q && args[t.dump_arg] > 0x10000)
+            for (uint32_t i = 0; i < t.dump_len / 4; ++i) {
+                char w[12];
+                std::snprintf(w, sizeof w, "%s%08x", i % 8 ? " " : (i ? " | " : ""), q[i]);
+                mem += w;
+            }
+    }
+    const uint64_t r = reinterpret_cast<D1_SYSV uint64_t (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t)>(
+        t.orig)(a, b, c, d, e, f);
+    static std::mutex m;
+    std::lock_guard lk(m);
+    if (t.left > 0) {
+        --t.left;
+        log("calltrace: %#llx(%#llx, %#llx, %#llx, %#llx, %#llx, %#llx) -> %#llx <- %s", (unsigned long long)t.off,
+            (unsigned long long)a, (unsigned long long)b, (unsigned long long)c, (unsigned long long)d,
+            (unsigned long long)e, (unsigned long long)f, (unsigned long long)r,
+            describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str());
+        if (!mem.empty()) log("calltrace:   [arg %d] %s", t.dump_arg, mem.c_str());
+    }
+    return r;
+}
+template <int... I>
+static const void* const* call_trace_table(std::integer_sequence<int, I...>) {
+    static const void* const t[] = {reinterpret_cast<const void*>(&call_trace_hook<I>)...};
+    return t;
+}
+static void install_call_traces(const char* list) {
+    const void* const* hooks = call_trace_table(std::make_integer_sequence<int, 16>{});
+    int n = 0;
+    for (const char* p = list; *p && n < 16;) {
+        char* end;
+        const uint64_t off = std::strtoull(p, &end, 16);
+        int count = 20;
+        if (*end == ':') count = int(std::strtol(end + 1, &end, 10));
+        int dump = -1;
+        uint32_t len = 0x80;
+        if (*end == '/') {
+            dump = int(std::strtol(end + 1, &end, 10));
+            if (*end == '+') len = uint32_t(std::strtoul(end + 1, &end, 16));
+            if (dump > 5) dump = -1;
+        }
+        p = *end == ',' ? end + 1 : end;
+        g_call_traces[n].dump_arg = dump;
+        g_call_traces[n].dump_len = len;
+        if (!off) { if (end == p) break; continue; }
+        g_call_traces[n].off = off;
+        g_call_traces[n].left = count;
+        g_call_traces[n].orig = hook_function(rt().modules[0].base + off, hooks[n]);
+        if (g_call_traces[n].orig) ++n;
+    }
+    log("hooks: %d call traces", n);
+}
+
 // Per-frame rates since the last call (null GPU statistics, every 300 flips): non-zero only.
 void print_call_rates(uint64_t frames) {
     static std::vector<uint64_t> prev;
@@ -2393,6 +2462,7 @@ void install_game_hooks() {
             g_bap_update_orig && g_invest_update_orig && g_profile_update_orig ? "on" : "FAILED");
     }
     if (const char* c = getenv("D1_COUNT")) install_call_counters(c);
+    if (const char* c = getenv("D1_TRACE_CALLS")) install_call_traces(c);
     if (const char* a = getenv("D1_ALLOC_LOG")) {
         g_alloc_log_min = std::strtoull(a, nullptr, 10) << 20;
         g_heap_alloc_orig = reinterpret_cast<HeapAllocFn>(
