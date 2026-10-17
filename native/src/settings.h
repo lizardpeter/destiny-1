@@ -44,6 +44,8 @@ struct Settings {
     double mouse_sensitivity = 1.5;
     bool mouse_invert = false;
     double mouse_zoom_scale = 1.0;
+    // aim down sights: false = hold the aim key, true = press to aim, press again to stop
+    bool aim_toggle = false;
     // skip the new-character intro cinematic
     bool skip_intro = true;
     // button prompts: "auto" (key names while on keyboard and mouse, glyphs on a controller),

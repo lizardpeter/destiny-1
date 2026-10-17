@@ -760,16 +760,42 @@ fn character_with_loadout(ch: &crate::account::Character, at: usize) -> Value {
 }
 
 /// Character level and light for test characters: D1B_LEVEL (default 40) and D1B_LIGHT
-/// (default 400) as 0x80801923 {f32 progress, i32 level, i16 light} (layout guessed).
+/// (default 400).
 fn level() -> (i64, i64) {
     let get = |k: &str, d: i64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
     (get("D1B_LEVEL", 40), get("D1B_LIGHT", 400))
 }
 
+/// The character level progression (definitions globals +0x166) and its steps' xp (01.33
+/// data, read with D1_TRACE_LEVEL): level n needs the sum of the first n steps.
+const LEVEL_PROGRESSION: i64 = 117;
+const LEVEL_STEPS: [i64; 40] = [
+    0, 900, 4100, 5000, 6000, 7000, 8000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000,
+    9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 9000, 10000, 15000, 20000,
+];
+fn level_xp(level: i64) -> i64 {
+    LEVEL_STEPS.iter().take(level.clamp(0, 40) as usize).sum()
+}
+
+/// 0x80801923 {f32, i32, i16} (summary member 5, peer character member 4, active character
+/// member 17 +8): the nameplate's progress bar towards the next level (0..1), the grimoire
+/// score (the stacked-cards number under the level on the character screen: 0x266520 sums
+/// the scores of the unlocked grimoire cards) and an index the game sets itself (-1 none).
+/// Checked on screen with D1B_LEVEL_VALUE=0.5,123,7: half a bar, grimoire 123.
 fn level_value() -> Value {
     use Value::*;
-    let (lv, light) = level();
-    Struct(vec![Some(Float(0.0)), Some(Int(lv)), Some(Int(light))])
+    if let Ok(v) = std::env::var("D1B_LEVEL_VALUE") {
+        let p: Vec<&str> = v.split(',').collect();
+        if p.len() == 3 {
+            return Struct(vec![
+                Some(Float(p[0].parse().unwrap_or(0.0))),
+                Some(Int(p[1].parse().unwrap_or(0))),
+                Some(Int(p[2].parse().unwrap_or(-1))),
+            ]);
+        }
+    }
+    let grimoire = std::env::var("D1B_GRIMOIRE").ok().and_then(|v| v.parse().ok()).unwrap_or(0i64);
+    Struct(vec![Some(Float(0.0)), Some(Int(grimoire)), Some(Int(-1))])
 }
 
 /// Character creation (0x1F5): store it and return its id.
@@ -863,8 +889,19 @@ pub fn profile_baseline() -> FamilyUpdate {
         if std::env::var("D1B_NO_INVENTORY").map(|v| v != "1").unwrap_or(true) {
             c[3] = Some(crate::gear::inventory_value(ch.id, &kit, &crate::gear::backpack(character_class(&ch))));
         }
-        // member 17 0x808016F8 {i32, i32, 0x80801923} (research: level, light)
+        // member 8 (+0x3660, 0x808047A7): the character's progressions, {7-bit count, up to
+        // 127 x 0x8080176B {i32 total xp, i32 level (research), i32, i16 progression index}} (0x275A00, scope
+        // 1). The character level is the level progression's (definitions globals +0x166:
+        // 117) xp walked through its 40 steps (0x274AF0); 0x265C50 recomputes member 17 from
+        // it, so the level the game shows comes from here.
         let (lv, light) = level();
+        c[8] = Some(Struct(vec![
+            Some(Int(1)),
+            Some(Array(vec![Some(Struct(vec![Some(Int(level_xp(lv))), Some(Int(lv)), Some(Int(0)), Some(Int(LEVEL_PROGRESSION))]))])),
+        ]));
+        // member 17 0x808016F8 {i32 level, i32 light, 0x80801923 {f32 progress, ...}}:
+        // recomputed by the game (0x265C50: level from the progression above, light from the
+        // equipped items' stat 0)
         c[17] = Some(Struct(vec![Some(Int(lv)), Some(Int(light)), Some(level_value())]));
         let mut st = vec![None; 8];
         st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));

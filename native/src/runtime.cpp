@@ -192,6 +192,20 @@ static void* make_thunk(uint64_t idx, void* target) {
         if (!g_thunk_mem) throw std::runtime_error("cannot allocate import thunks");
     }
     uint8_t* p = g_thunk_mem + g_thunk_used;
+    // Implemented imports jump straight to their implementation: the logging entry (register
+    // save, two shared atomic counters, the crash-report ring) costs on every one of the
+    // hundreds of thousands of import calls a second (semaphores, clocks, memory) and bounces
+    // a cache line between all game threads. D1_TRACE / D1_CALL_STATS=1 keep the logging
+    // entry (call ring in crash reports, import call counts).
+    static const bool slow = getenv("D1_TRACE") || getenv("D1_CALL_STATS") || getenv("D1_ABORT_ON_UNIMPL");
+    if (target && !slow) {
+        uint8_t code[] = {0xFF, 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // jmp [rip+0] ; dq target
+        uint64_t t = reinterpret_cast<uint64_t>(target);
+        std::memcpy(code + 6, &t, 8);
+        std::memcpy(p, code, sizeof code);
+        g_thunk_used += 16;
+        return p;
+    }
     // mov r11, imm64 ; mov r10, imm64 ; jmp [rip+0] ; dq d1_import_entry
     uint8_t code[] = {0x49, 0xBB, 0, 0, 0, 0, 0, 0, 0, 0, 0x49, 0xBA, 0, 0, 0, 0, 0, 0, 0, 0,
                       0xFF, 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};

@@ -275,18 +275,22 @@ uint32_t thread_id() { return GetCurrentThreadId(); }
 // of Sleep(); the remainder is spun.
 void sleep_us(uint64_t us) {
     if (us == 0) { SwitchToThread(); return; }
+    // A high-resolution waitable timer (about 0.5 ms precision) for the whole sleep: the
+    // game's threads poll with short sleeps, and spinning those out (as this did for any
+    // sleep under 0.6 ms and the last 0.5 ms of longer ones) kept every core busy. Long
+    // sleeps (frame pacing) spin only their last 0.3 ms, for precision.
+    static thread_local HANDLE timer = CreateWaitableTimerExW(
+        nullptr, nullptr, 0x00000002 /*CREATE_WAITABLE_TIMER_HIGH_RESOLUTION*/, TIMER_ALL_ACCESS);
+    const uint64_t spin = us >= 2000 ? 300 : 0;
     LARGE_INTEGER f, t0, t;
     QueryPerformanceFrequency(&f);
     QueryPerformanceCounter(&t0);
     const int64_t end = t0.QuadPart + int64_t(us) * f.QuadPart / 1000000;
-    if (us > 600) {
-        static thread_local HANDLE timer = CreateWaitableTimerExW(
-            nullptr, nullptr, 0x00000002 /*CREATE_WAITABLE_TIMER_HIGH_RESOLUTION*/, TIMER_ALL_ACCESS);
-        LARGE_INTEGER due;
-        due.QuadPart = -int64_t(us - 500) * 10;  // 100 ns units, relative
-        if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) WaitForSingleObject(timer, INFINITE);
-        else Sleep(DWORD((us - 500) / 1000));
-    }
+    LARGE_INTEGER due;
+    due.QuadPart = -int64_t(us - spin) * 10;  // 100 ns units, relative
+    if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) WaitForSingleObject(timer, INFINITE);
+    else Sleep(DWORD(std::max<uint64_t>(1, (us - spin) / 1000)));
+    if (!spin) return;
     do {
         YieldProcessor();
         QueryPerformanceCounter(&t);

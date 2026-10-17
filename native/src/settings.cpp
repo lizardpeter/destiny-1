@@ -68,6 +68,9 @@ sensitivity = 1.5              # [D1_SENSITIVITY]
 mouse_invert = false           # [D1_MOUSE_INVERT=1]
 mouse_zoom_scale = 1.0         # [D1_MOUSE_ZOOM_SCALE]
 
+# Aim down sights: hold (keep the aim key held) or toggle (press to aim, press again to stop).
+aim = hold                     # [D1_AIM=toggle]
+
 # Button prompts: auto (key names while you play on keyboard and mouse, controller buttons
 # once you pick up a controller), keyboard, or controller.
 prompts = auto                 # [D1_PROMPTS]
@@ -153,6 +156,7 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "mouse_invert") s.mouse_invert = truthy(v);
     else if (key == "mouse_zoom_scale") s.mouse_zoom_scale = std::atof(v.c_str());
     else if (key == "prompts") s.prompts = v;
+    else if (key == "aim") s.aim_toggle = v == "toggle";
     else if (key.rfind("bind_", 0) == 0) s.binds.emplace_back(key.substr(5), v);
     else if (key.rfind("D1_", 0) == 0 || key.rfind("D1B_", 0) == 0) {  // any D1_* environment setting (testing
         // switches) or D1B_* backend setting (the local backend inherits the environment), unless already set
@@ -207,6 +211,7 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_NAME")) s.name = v;
     if (const char* v = getenv("D1_SKIP_INTRO")) s.skip_intro = truthy(v);
     if (const char* v = getenv("D1_PROMPTS")) s.prompts = v;
+    if (const char* v = getenv("D1_AIM")) s.aim_toggle = std::string(v) == "toggle";
     if (const char* v = getenv("D1_SENSITIVITY")) s.mouse_sensitivity = std::atof(v);
     if (const char* v = getenv("D1_MOUSE_INVERT")) s.mouse_invert = truthy(v);
     if (const char* v = getenv("D1_MOUSE_ZOOM_SCALE")) s.mouse_zoom_scale = std::atof(v);

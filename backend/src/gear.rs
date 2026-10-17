@@ -290,9 +290,35 @@ pub fn item_values(character: i64, items: &[i64]) -> Vec<(i64, Value)> {
             m[1] = Some(Struct(vec![Some(Int(character)), Some(Int(location))]));
             m[2] = Some(Struct(vec![Some(Int(1)), Some(Int(0)), Some(Int(0))]));
             m[3] = Some(Int(index));
+            // member 5 (@0x38, 0x80801846) instance data, member 0 the primary stat
+            // 0x8080176B {i32 stat index, i32 value, i32 max, i16} (research: the character's
+            // Light is the average of the equipped items' primary stats; attack is stat 11 on
+            // weapons, defense stat 1 on armour: the definition's first stat, valued 0 there)
+            if let Some((stat, value)) = primary_stat(index) {
+                m[5] = Some(Struct(vec![Some(Struct(vec![Some(Int(stat)), Some(Int(value)), Some(Int(value))]))]));
+            }
             (id, Struct(m))
         })
         .collect()
+}
+
+/// An item's primary stat: (stat index, value). D1B_ITEM_LIGHT (default 400) for weapons and
+/// armour; none for other items.
+fn primary_stat(index: i64) -> Option<(i64, i64)> {
+    let it = items().get(index.max(0) as usize)?;
+    let light = std::env::var("D1B_ITEM_LIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(400i64);
+    let stat = match it.stats.first() {
+        Some([k, _]) => *k,
+        None => match it.slot? {
+            2..=4 => 11,
+            7..=11 | 14 | 36 => 1,
+            _ => return None,
+        },
+    };
+    match it.slot? {
+        2..=4 | 7..=11 | 14 | 36 => Some((stat, light)),
+        _ => None,
+    }
 }
 
 /// Equipment slot order (definitions manager vtable +0x100: 17 rows {bucket hash, item slot

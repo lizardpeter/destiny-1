@@ -245,8 +245,11 @@ void poll_input() {
         switch (in.type) {
         case Input::key:
             return k[in.code] != 0 && !(alt && in.code == SDL_SCANCODE_RETURN);
-        case Input::mouse:
-            return (mouse & SDL_BUTTON(in.code)) != 0;
+        case Input::mouse: {
+            // Mouse1-5 = left, right, middle, back, forward (SDL numbers middle 2, right 3)
+            static const int sdl[] = {0, SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE, SDL_BUTTON_X1, SDL_BUTTON_X2};
+            return (mouse & SDL_BUTTON(sdl[in.code])) != 0;
+        }
         case Input::wheel_up:
             return g_captured && int32_t(g_wheel_up_until.load() - now) > 0;
         case Input::wheel_down:
@@ -256,6 +259,8 @@ void poll_input() {
     };
     static bool was[kActionCount] = {};
     static uint32_t tap_until[kActionCount] = {};
+    static bool toggled[kActionCount] = {};
+    static const bool aim_toggle = d1::settings().aim_toggle;
     int lx = 0, ly = 0;
     for (int a = 0; a < kActionCount; ++a) {
         bool on = false;
@@ -265,7 +270,15 @@ void poll_input() {
         const Action& act = kActions[a];
         switch (act.kind) {
         case Kind::hold:
-            if (on) s.buttons |= act.buttons;
+            if (aim_toggle && act.buttons == kL2 && std::strcmp(act.name, "aim") == 0) {
+                // toggle aim: a press starts aiming, the next press stops (as does losing
+                // the mouse capture)
+                if (pressed) toggled[a] = !toggled[a];
+                if (!g_captured) toggled[a] = false;
+                if (toggled[a]) s.buttons |= act.buttons;
+            } else if (on) {
+                s.buttons |= act.buttons;
+            }
             break;
         case Kind::tap:
             if (pressed) tap_until[a] = now + kTapMs;

@@ -376,7 +376,11 @@ static int32_t scePthreadOnce(Once* o, D1_SYSV void (*fn)()) {
 HLE("scePthreadOnce", scePthreadOnce)
 
 // ------------------------------------------------------------------ semaphores
-struct Sema { std::mutex m; std::condition_variable cv; int count, max; std::string name; };
+// waiters / multi: threads blocked in a wait, and how many of them want more than one unit.
+// A signal wakes only as many single-unit waiters as units arrived (notify_one each): the
+// game's job system signals its workers' semaphores many times a frame, and waking every
+// waiter for each unit (notify_all) made most of the CPU time context switches.
+struct Sema { std::mutex m; std::condition_variable cv; int count, max; std::string name; int waiters = 0, multi = 0; };
 static int32_t sceKernelCreateSema(Sema** out, const char* name, uint32_t attr, int init, int max, void*) {
     auto* s = new Sema;
     s->count = init;
@@ -397,6 +401,16 @@ static int32_t sceKernelWaitSema(Sema* s, int need, uint32_t* timeout_us) {
     if (!s || need < 1 || need > s->max) return sce_err(22);
     std::unique_lock lk(s->m);
     auto ready = [&] { return s->count >= need; };
+    if (ready()) {
+        s->count -= need;  // available now (a timed wait used none of its time)
+        return SCE_OK;
+    }
+    ++s->waiters;
+    if (need > 1) ++s->multi;
+    struct Leave {
+        Sema* s; int need;
+        ~Leave() { --s->waiters; if (need > 1) --s->multi; }
+    } leave{s, need};
     if (timeout_us) {
         const auto start = std::chrono::steady_clock::now();
         if (!s->cv.wait_for(lk, std::chrono::microseconds(*timeout_us), ready)) {
@@ -414,6 +428,8 @@ static int32_t sceKernelWaitSema(Sema* s, int need, uint32_t* timeout_us) {
 HLE("sceKernelWaitSema", sceKernelWaitSema)
 static int32_t sceKernelSignalSema(Sema* s, int n) {
     if (!s || n < 1) return sce_err(22);
+    bool wake_all = false;
+    int wake = 0;
     {
         std::lock_guard lk(s->m);
         if (s->count + n > s->max) {
@@ -423,8 +439,11 @@ static int32_t sceKernelSignalSema(Sema* s, int n) {
             return sce_err(22);
         }
         s->count += n;
+        wake_all = s->multi > 0;
+        wake = std::min(n, s->waiters);
     }
-    s->cv.notify_all();
+    if (wake_all) s->cv.notify_all();
+    else for (int i = 0; i < wake; ++i) s->cv.notify_one();
     return SCE_OK;
 }
 HLE("sceKernelSignalSema", sceKernelSignalSema)

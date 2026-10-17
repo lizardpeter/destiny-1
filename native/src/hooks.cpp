@@ -1654,10 +1654,12 @@ static D1_SYSV bool flag_true() { return true; }
 // (`add rcx, [rsi+8]` at 0x594A3B), and the game-time update (0x591710, given the real
 // elapsed seconds) runs elapsed / period simulation ticks of one period each (0x593890
 // seconds, 0x5938B0 fps), so game time stays wall-clock correct and the tick rate equals
-// the target. `fps = N` sets the target. `fps = 0` (unlimited, the default) removes the wait
-// and, every frame, sets the period to that frame's real duration (1-33.4 ms) just before
-// the tick math: one simulation tick per rendered frame with dt = the frame time; below
-// 30 fps it falls back to several 33 ms ticks.
+// the target. But the tick count per frame is capped (about two), so with fixed short ticks
+// a frame slower than two periods loses game time (slow motion). So in both modes, every
+// frame, the period is set to that frame's real duration (1-33.4 ms) just before the tick
+// math: one simulation tick per rendered frame with dt = the frame time (below 30 fps
+// several 33 ms ticks). `fps = N` then puts the period back to 1/N for the limiter's wait;
+// `fps = 0` (unlimited) removes the wait.
 using TimeInitFn = D1_SYSV void (*)(void*);
 using GameTimeFn = D1_SYSV void (*)(float, float*, int32_t*, float*, int32_t*);
 static TimeInitFn g_time_init_orig = nullptr;
@@ -1672,12 +1674,21 @@ static D1_SYSV void time_init_hook(void* cfg) {
     log("hooks: frame rate target %d fps (period %d us)", fps, 1000000 / fps);
 }
 static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, float* dt2, int32_t* ticks2) {
-    if (auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08); tc && elapsed > 0.0f) {
+    auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08);
+    if (tc && elapsed > 0.0f) {
+        // one tick of the frame's real duration: the game runs at most about two ticks per
+        // frame (0x591710 caps the count), so fixed short ticks lose time whenever a frame
+        // takes longer than two periods (fps = 120 rendering at 50: slow motion)
         const int64_t period = std::clamp<int64_t>(int64_t(double(elapsed) * 1e6 + 0.5), 1000, 33366);
         *reinterpret_cast<int64_t*>(tc + 0x08) = period;
         *reinterpret_cast<int32_t*>(tc + 0x38) = int32_t(1000000 / period);
     }
     g_game_time_orig(elapsed, dt, ticks, dt2, ticks2);
+    static const int fps = settings().fps;
+    if (tc && fps > 0) {  // the limiter (0x594A3B) waits for the target period again
+        *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
+        *reinterpret_cast<int32_t*>(tc + 0x38) = fps;
+    }
 }
 
 // ---- current world-controller state (eboot+0x783AC0, the state manager's transition step)
@@ -1955,6 +1966,145 @@ static D1_SYSV uint32_t weapon_gear_request(uint32_t x, const uint8_t* desc) {
     return r;
 }
 
+// D1_DUMP_MEM=<state prefix>:<secs>:<file>:<global>[+off|*]...:<bytes> (research): that many
+// seconds after the game enters the state, write <bytes> bytes to <file>, starting at eboot
+// global <global> (hex offset) followed by a chain of steps: "*" loads the pointer at the
+// current address, "+off" adds a hex offset. E.g. the player records (0x2AF0 each):
+// activity:in_world:30:/tmp/p.bin:273ea80*+8*:0x2af0
+const char* game_state();
+static void dump_memory_tick() {
+    static const char* spec = getenv("D1_DUMP_MEM");
+    static bool done = false;
+    static std::chrono::steady_clock::time_point since{};
+    if (!spec || done) return;
+    std::string s = spec;
+    std::vector<std::string> f;
+    for (size_t a = 0, b; a <= s.size(); a = b + 1) {
+        b = s.find(':', a);
+        if (b == std::string::npos) b = s.size();
+        f.push_back(s.substr(a, b - a));
+    }
+    // the state prefix may itself contain ':' (setup:orbit): the last four fields are fixed
+    if (f.size() < 5) { done = true; log("dump: bad D1_DUMP_MEM"); return; }
+    const std::string bytes = f.back(), chain = f[f.size() - 2], file = f[f.size() - 3], secs = f[f.size() - 4];
+    std::string prefix;
+    for (size_t i = 0; i + 4 < f.size(); ++i) prefix += (i ? ":" : "") + f[i];
+    const char* gs = game_state();
+    if (!gs || std::strncmp(gs, prefix.c_str(), prefix.size()) != 0) { since = {}; return; }
+    const auto now = std::chrono::steady_clock::now();
+    if (since == std::chrono::steady_clock::time_point{}) since = now;
+    if (now - since < std::chrono::duration<double>(std::atof(secs.c_str()))) return;
+    done = true;
+    uint64_t a = rt().modules[0].base;
+    const char* p = chain.c_str();
+    char* end;
+    a += std::strtoull(p, &end, 16);
+    for (p = end; *p;) {
+        if (*p == '*') { a = a ? *reinterpret_cast<const uint64_t*>(a) : 0; ++p; }
+        else if (*p == '+') { a += std::strtoull(p + 1, &end, 16); p = end; }
+        else break;
+    }
+    const size_t n = std::strtoull(bytes.c_str(), nullptr, 0);
+    if (FILE* out = a ? std::fopen(file.c_str(), "wb") : nullptr) {
+        std::fwrite(reinterpret_cast<const void*>(a), 1, n, out);
+        std::fclose(out);
+        log("dump: %zu bytes at %#llx -> %s", n, (unsigned long long)a, file.c_str());
+    } else log("dump: failed (%#llx)", (unsigned long long)a);
+}
+
+// D1_FIND_MEM=<state prefix>:<secs>:<hex bytes> (research, Linux): that many seconds into
+// the state, log every address in the guest's writable memory (0x500000000..0x900000000)
+// holding those bytes (at most 32).
+static void find_memory_tick() {
+#if !defined(_WIN32)
+    static const char* spec = getenv("D1_FIND_MEM");
+    static bool done = false;
+    static std::chrono::steady_clock::time_point since{};
+    if (!spec || done) return;
+    std::string s = spec;
+    const size_t c2 = s.rfind(':'), c1 = s.rfind(':', c2 - 1);
+    if (c1 == std::string::npos || c2 == std::string::npos) { done = true; return; }
+    const std::string prefix = s.substr(0, c1), hex = s.substr(c2 + 1);
+    const double secs = std::atof(s.substr(c1 + 1, c2 - c1 - 1).c_str());
+    const char* gs = game_state();
+    if (!gs || std::strncmp(gs, prefix.c_str(), prefix.size()) != 0) { since = {}; return; }
+    const auto now = std::chrono::steady_clock::now();
+    if (since == std::chrono::steady_clock::time_point{}) since = now;
+    if (now - since < std::chrono::duration<double>(secs)) return;
+    done = true;
+    std::vector<uint8_t> pat;
+    for (size_t i = 0; i + 1 < hex.size(); i += 2) pat.push_back(uint8_t(std::strtoul(hex.substr(i, 2).c_str(), nullptr, 16)));
+    if (pat.empty()) return;
+    FILE* maps = std::fopen("/proc/self/maps", "r");
+    if (!maps) return;
+    char line[512];
+    int found = 0;
+    while (std::fgets(line, sizeof line, maps) && found < 32) {
+        unsigned long long lo, hi;
+        char perms[8];
+        if (std::sscanf(line, "%llx-%llx %7s", &lo, &hi, perms) != 3 || perms[0] != 'r' || perms[1] != 'w') continue;
+        if (hi <= 0x500000000ull || lo >= 0x900000000ull) continue;
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(lo);
+        for (unsigned long long o = 0; o + pat.size() <= hi - lo && found < 32; o += 4)
+            if (p[o] == pat[0] && std::memcmp(p + o, pat.data(), pat.size()) == 0) {
+                log("findmem: %#llx", lo + o);
+                ++found;
+            }
+    }
+    std::fclose(maps);
+    log("findmem: %d found", found);
+#endif
+}
+
+// D1_TRACE_LEVEL=1 (research): in setup:orbit, log the character level progression (index
+// from the definitions globals +0x166, 0x275B50; definition via definitions manager vtable
+// +0x478: i64 step count @+8, rel @+0x10, steps {i32 xp, i32} at +0x20) and the Light stat
+// index (globals +0x140, 0x282280).
+static void trace_level_once() {
+    static const bool on = getenv("D1_TRACE_LEVEL") != nullptr;
+    static bool done = false;
+    if (!on || done) return;
+    const char* gs = game_state();
+    if (!gs || std::strcmp(gs, "setup:orbit") != 0) return;
+    done = true;
+    const uint64_t b = rt().modules[0].base;
+    const int idx = reinterpret_cast<D1_SYSV int16_t (*)()>(b + 0x275B50)();
+    const int light = reinterpret_cast<D1_SYSV int8_t (*)()>(b + 0x282280)();
+    void* mgr = reinterpret_cast<D1_SYSV void* (*)()>(b + 0x25A550)();
+    const auto vt = *reinterpret_cast<const uint64_t* const*>(mgr);
+    const auto def = reinterpret_cast<D1_SYSV const uint8_t* (*)(void*, int)>(vt[0x478 / 8])(mgr, idx);
+    const auto scope = reinterpret_cast<D1_SYSV const uint8_t* (*)(void*, int)>(vt[0x470 / 8])(mgr, idx);
+    std::string steps;
+    int64_t n = 0;
+    if (def) {
+        n = *reinterpret_cast<const int64_t*>(def + 8);
+        const uint8_t* arr = def + 0x10 + *reinterpret_cast<const int64_t*>(def + 0x10) + 0x10;
+        for (int64_t i = 0; i < n && i < 64; ++i) {
+            char w[32];
+            std::snprintf(w, sizeof w, " %d/%d", reinterpret_cast<const int32_t*>(arr)[i * 2],
+                          reinterpret_cast<const int32_t*>(arr)[i * 2 + 1]);
+            steps += w;
+        }
+    }
+    log("level: progression %d (scope %d, repeat last %d), light stat %d, %lld steps:%s", idx,
+        scope ? scope[4] : -1, def ? def[5] : -1, light, (long long)n, steps.c_str());
+    // D1_TRACE_LEVEL=<i>,<i>,... also probes talent grids (definitions manager vtable +0x4E0)
+    const char* list = getenv("D1_TRACE_LEVEL");
+    for (const char* q = list; q && *q;) {
+        const int g = std::atoi(q);
+        const auto grid = reinterpret_cast<D1_SYSV const uint8_t* (*)(void*, int)>(vt[0x4E0 / 8])(mgr, g);
+        std::string hex;
+        for (int i = 0; grid && i < 0x40; i += 4) {
+            char w[12];
+            std::snprintf(w, sizeof w, " %08x", *reinterpret_cast<const uint32_t*>(grid + i));
+            hex += w;
+        }
+        log("level: talent grid %d -> %p%s", g, (const void*)grid, hex.c_str());
+        while (*q && *q != ',') ++q;
+        if (*q) ++q;
+    }
+}
+
 static D1_SYSV void state_step_hook(void* sm) {
     g_state_step_orig(sm);
     const int32_t st = *reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0);
@@ -1963,6 +2113,10 @@ static D1_SYSV void state_step_hook(void* sm) {
     // configuration (player data +0x1660, built by 0x912240): body tag, and per weapon
     // config (+0x368 / +0x688 / +0x9A8) its gear id (-1: none) and item index (@+0x22)
     trace_glyphs(st);
+    dump_memory_tick();
+    trace_level_once();
+    find_memory_tick();
+    find_memory_tick();
     static const bool trace = getenv("D1_TRACE_GEAR") != nullptr;
     static std::chrono::steady_clock::time_point since{};
     static bool done = false;
@@ -2395,6 +2549,31 @@ void install_game_hooks() {
         } else {
             log("hooks: render resolution patch FAILED (unexpected bytes)");
         }
+        // The 3D scene has its own size: 0x7ED1C0 returns the globals 0x18DCC58 / 0x18DCC5C
+        // (u16 1920, 1080) clamped to 320..1920 x 240..1080, and the scene's render targets
+        // are sized from it. Without this the world stays 1920x1080 and is scaled to the
+        // display size. The globals get the render size and the clamps' upper bounds (`mov cx,
+        // 1920` / `cmp ax, 1920` and the same for 1080) become it.
+        auto* clamp = reinterpret_cast<uint8_t*>(exe.base + 0x7ED1DA);
+        const uint8_t expect[] = {0x66, 0xB9, 0x80, 0x07, 0x66, 0x3D, 0x80, 0x07};
+        const uint8_t expect_h[] = {0x66, 0xB9, 0x38, 0x04, 0x66, 0x3D, 0x38, 0x04};
+        auto* clamp_h = reinterpret_cast<uint8_t*>(exe.base + 0x7ED200);
+        if (const char* v = getenv("D1_SCENE_RESOLUTION"); v && std::strcmp(v, "0") == 0) {
+            log("hooks: 3D scene resolution left at 1920x1080 (D1_SCENE_RESOLUTION=0)");
+        } else if (std::memcmp(clamp, expect, 8) == 0 && std::memcmp(clamp_h, expect_h, 8) == 0) {
+            // Above 1920x1080 the game crashes in a job at the title screen (eboot+0xFF000:
+            // something sized for at most 1080p, not found yet), so the scene stays at most
+            // 1920x1080; smaller render resolutions render the scene smaller too.
+            const uint16_t sw = uint16_t(std::min(settings().render_width, 1920));
+            const uint16_t sh = uint16_t(std::min(settings().render_height, 1080));
+            std::memcpy(clamp + 2, &sw, 2), std::memcpy(clamp + 6, &sw, 2);
+            std::memcpy(clamp_h + 2, &sh, 2), std::memcpy(clamp_h + 6, &sh, 2);
+            *reinterpret_cast<uint16_t*>(exe.base + 0x18DCC58) = sw;
+            *reinterpret_cast<uint16_t*>(exe.base + 0x18DCC5C) = sh;
+            log("hooks: 3D scene resolution %ux%u", sw, sh);
+        } else {
+            log("hooks: scene resolution patch FAILED (unexpected bytes)");
+        }
     }
     g_pc_orig = reinterpret_cast<PlayerControlFn>(hook_function(exe.base + 0x91B500, reinterpret_cast<const void*>(&player_control_hook)));
     if (!g_pc_orig) log("hooks: mouse look hook FAILED");
@@ -2406,7 +2585,8 @@ void install_game_hooks() {
     g_state_step_orig = reinterpret_cast<StateStepFn>(hook_function(exe.base + 0x783AC0, reinterpret_cast<const void*>(&state_step_hook)));
     if (settings().fps > 0) {
         g_time_init_orig = reinterpret_cast<TimeInitFn>(hook_function(exe.base + 0x593F00, reinterpret_cast<const void*>(&time_init_hook)));
-        if (!g_time_init_orig) log("hooks: frame-rate hook FAILED");
+        g_game_time_orig = reinterpret_cast<GameTimeFn>(hook_function(exe.base + 0x591710, reinterpret_cast<const void*>(&game_time_hook)));
+        if (!g_time_init_orig || !g_game_time_orig) log("hooks: frame-rate hook FAILED");
     } else {  // unlimited: no limiter wait, one simulation tick per rendered frame
         auto* wait = reinterpret_cast<uint8_t*>(exe.base + 0x594A3B);
         const uint8_t expect[4] = {0x48, 0x03, 0x4E, 0x08}, nop4[4] = {0x0F, 0x1F, 0x40, 0x00};

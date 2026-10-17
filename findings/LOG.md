@@ -1810,3 +1810,47 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   up to 16 eboot functions (six integer arguments, return value, caller) and can dump the
   memory an argument points at. A gdb watchpoint (Python breakpoint classes, armed from a
   breakpoint on `d1::install_game_hooks` once the eboot is mapped) found 0x54F840.
+
+## 2026-10-17 (night): frame timing, CPU use, aim, scene resolution, level / grimoire
+
+- **Slow motion above 30 fps**: the game-time update (0x591710) runs elapsed / period ticks
+  but caps the count per frame (about two: min(0xB9F400, 2 x time scale, ...)), keeping the
+  remainder only when not capped. With `fps = 120` (8.3 ms period) a 20-25 ms frame lost
+  time. The game_time_hook now runs in both modes: one tick of the frame's real length
+  (1-33.4 ms), then (capped mode) the period goes back to 1/N for the limiter's wait.
+- **CPU**: perf on the headless build (Linux, `perf record -g`, scratch tooling): 29% of
+  samples were context switches from sceKernelWaitSema / SignalSema (notify_all woke every
+  waiter per unit) and 11% the wake-ups themselves. Semaphores now notify one waiter per
+  unit unless a waiter wants more than one (context switches 29% -> 17%). Implemented
+  imports now jump straight to their code (the logging entry with two shared atomic
+  counters ran on every call; D1_CALL_STATS=1 keeps it). Windows sleep_us spun out every
+  sleep under 0.6 ms and the last 0.5 ms of longer ones; it now waits on a high-resolution
+  timer (long sleeps spin only their last 0.3 ms). Import counts in the world (headless,
+  per frame): ~150 semaphore waits and signals, 1560 sceGnmIsUserPaEnabled, 10 yields.
+- **Mouse buttons**: Mouse2 was SDL button 2 (middle); Mouse1-5 now map to left, right,
+  middle, X1, X2. `aim = toggle` (settings) makes the aim action a toggle.
+- **3D scene resolution**: 0x7ED1C0 returns the scene size from globals 0x18DCC58 /
+  0x18DCC5C (u16 1920, 1080) clamped to 320..1920 x 240..1080; the world's render targets
+  follow it, so `render_resolution` only resized display buffers and UI. Patched (globals
+  and clamp immediates at 0x7ED1DA / 0x7ED200): 960x540 renders a correct world at 960x540
+  (wrun.sh). Above 1920x1080 the game crashes in a job at the title screen (eboot+0xFF000,
+  job pointer 0x19C2F) - some per-frame buffer is sized for 1080p; the scene is capped at
+  1920x1080 until that is found.
+- **Level, Light, grimoire**: 0x80801923 {f32, i32, i16} is not {progress, level, light}:
+  checked on screen with distinct values, it is the nameplate's progress bar towards the
+  next level, the **grimoire score** (the stacked-cards number on the character screen) and
+  an index the game fills itself. The character level comes from the level progression
+  (definitions globals +0x166 = 117; scope 1 = active character member 8, 0x8080176B
+  {i32 total xp, i32, i32, i16 progression}); its 40 steps need 0, 900, 4100, 5000, 6000,
+  7000, 8000, 30 x 9000, 10000, 15000, 20000 xp (346000 for 40; 0x274AF0 walks them,
+  0x266520 / 0x265C50 recompute active character member 17 from it). The backend sends the
+  progression now; the screens still show level 0 (the value they read is not found yet).
+  Light is computed (0x2661E0) from the equipped items' stat 0 (definitions globals +0x140),
+  each item's value coming from its talent grid (instance data member 2, i16 @+0x20 ->
+  definitions vtable +0x4E0), the grid nodes' step states and the quality bytes
+  (instance +0x46 / +0x7E, 0x286CE0 interpolates min..max); items carry no instance data
+  yet, so Light is 0. Instance member 0 (0x8080176B) is the item's own progression (scope 2),
+  not a primary stat.
+- New research switches: D1_TRACE_LEVEL (level progression steps, talent grid probes),
+  D1_DUMP_MEM (write memory at a global pointer chain to a file at a time in a state),
+  D1_FIND_MEM (find a byte pattern in guest memory).
