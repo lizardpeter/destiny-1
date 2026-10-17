@@ -135,18 +135,23 @@ pub fn loadout(class: i64) -> Vec<i64> {
     out
 }
 
-/// A loadout value (0x80801855) with these items equipped; entry k names instance
-/// item_id(character, k) (the inventory item objects, item_values).
+/// A loadout value (0x80801855) with these items equipped, in equipment slot order; each
+/// entry names its inventory item (item_id, item_values).
 pub fn loadout_value(character: i64, items: &[i64]) -> Value {
     use Value::*;
-    let entries: Vec<Option<Value>> = (0..20)
-        .map(|k| {
-            let (id, index) = match items.get(k) {
-                Some(&i) => (item_id(character, k), i),
-                None => (0, -1),
-            };
-            Some(Struct(vec![Some(Int(id)), Some(Int(index)), Some(Int(0)), Some(Int(0))]))
-        })
+    // entry p is equipment slot p (EQUIPMENT_SLOTS): the player configuration (0x912240)
+    // reads the subclass, weapons, ... at fixed entries
+    let mut slot: Vec<(i64, i64)> = vec![(0, -1); 20];
+    for (k, &index) in items.iter().enumerate() {
+        if let Some(code) = crate::gear::items().get(index as usize).and_then(|it| it.slot) {
+            if let Some(p) = EQUIPMENT_SLOTS.iter().position(|&s| s == code) {
+                slot[p] = (item_id(character, k), index);
+            }
+        }
+    }
+    let entries: Vec<Option<Value>> = slot
+        .into_iter()
+        .map(|(id, index)| Some(Struct(vec![Some(Int(id)), Some(Int(index)), Some(Int(0)), Some(Int(0))])))
         .collect();
     let mut m = vec![None; 16];
     m[6] = Some(Array(entries));
