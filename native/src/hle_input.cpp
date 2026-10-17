@@ -76,11 +76,11 @@ static uint32_t scripted_buttons(uint64_t now_us) {
 // D1_STATE_PRESS=<state>:<letter>@<secs>[+<hold secs>],... (headless testing): once the game
 // reaches that state (exact name), press each button (letters as for D1_AUTOPRESS) at the
 // given time, once, for two seconds (several frames even with software rendering) or the
-// given hold (m Options, u / d D-pad up / down, q / e L1 / R1). h j k l push the left stick
-// left / down / up / right (moves the cursor). E.g.
+// given hold (m Options, u / d D-pad up / down, q / e L1 / R1, f R2 fire, a L2 aim). h j k l push the left stick
+// left / down / up / right (moves the cursor); y / g push the right stick right / up. E.g.
 // setup:orbit:h@5+1.5,j@7+0.8,x@9 moves the orbit cursor down-left onto a button and
 // presses Cross.
-struct StickPush { int8_t x, y; };
+struct StickPush { int8_t x, y, rx = 0, ry = 0; };
 static uint32_t state_buttons(uint64_t now_us, StickPush& stick) {
     static const char* env = getenv("D1_STATE_PRESS");
     if (!env) return 0;
@@ -122,9 +122,12 @@ static uint32_t state_buttons(uint64_t now_us, StickPush& stick) {
             case 'l': stick.x = 127; break;
             case 'k': stick.y = -127; break;
             case 'j': stick.y = 127; break;
+            case 'y': stick.rx = 127; break;  // right stick right (turn)
+            case 'g': stick.ry = -127; break;  // right stick up (look up)
             default:
                 b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u
                    : c == 'm' ? 0x8u /* Options */ : c == 'u' ? 0x10u : c == 'd' ? 0x40u : c == 'q' ? 0x400u : c == 'e' ? 0x800u
+                   : c == 'f' ? 0x200u /* R2 fire */ : c == 'a' ? 0x100u /* L2 aim */
                    : 0x4000u;
         }
         if (announced <= i) announced = i + 1, log("input: state press '%c' at %.1f s", c, at / 1e6);
@@ -144,11 +147,14 @@ static void fill(PadData* d) {
     StickPush stick{0, 0};
     d->buttons = scripted_buttons(d->timestamp) | state_buttons(d->timestamp, stick) | hooks_injected_buttons();
     d->lx = uint8_t(0x80 + stick.x), d->ly = uint8_t(0x80 + stick.y);
+    d->rx = uint8_t(0x80 + stick.rx), d->ry = uint8_t(0x80 + stick.ry);
+    if (d->buttons & 0x200u) d->r2 = 0xFF;  // triggers are analog too
+    if (d->buttons & 0x100u) d->l2 = 0xFF;
     render::PadState p;
     if (render::read_pad(p)) {  // window input (renderer build)
         d->buttons |= p.buttons;
         if (!stick.x && !stick.y) d->lx = p.lx, d->ly = p.ly;
-        d->rx = p.rx, d->ry = p.ry;
+        if (!stick.rx && !stick.ry) d->rx = p.rx, d->ry = p.ry;
         d->l2 = p.l2, d->r2 = p.r2;
     }
 }

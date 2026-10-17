@@ -238,9 +238,47 @@ static void select_weapon() {
     }
 }
 
+const char* game_state();
+// D1_TIMING_TRACE=1 (research): log every player control update in the world: wall time,
+// the update's dt, the summed dt (game time) and the desired facing (yaw, pitch), to compare
+// runs at different frame rates (with D1_STATE_PRESS scripting turns, fire, movement).
+using ImpulseFn = D1_SYSV uint64_t (*)(float, int32_t, float*, float*, void*);
+static ImpulseFn g_impulse_orig = nullptr;
+// Camera kick (recoil) samples (0x900AD0) are per-tick amounts tuned for 30 ticks a second,
+// scaled by t / nominal tick (both the tick length now): scale them by tick / (1/30) so a
+// kick moves the view by the same total at any tick rate.
+static D1_SYSV uint64_t impulse_hook(float t, int32_t slot, float* total, float* kick, void* c) {
+    const float nominal = reinterpret_cast<D1_SYSV float (*)()>(rt().modules[0].base + 0x591B80)();
+    const float scale = nominal > 0.0f ? std::min(nominal * 30.0f, 1.0f) : 1.0f;
+    const uint64_t r = g_impulse_orig(t * scale, slot, total, kick, c);
+    static const bool trace = getenv("D1_TIMING_TRACE") != nullptr;
+    if (!trace) return r;
+    if (slot == 0 && (total[0] != 0 || total[1] != 0 || kick[0] != 0 || kick[1] != 0))
+        log("timing: impulse t %.5f nominal %.5f total %.5f %.5f kick %.5f %.5f", t,
+            reinterpret_cast<D1_SYSV float (*)()>(rt().modules[0].base + 0x591B80)(), total[0], total[1], kick[0], kick[1]);
+    return r;
+}
+static void timing_trace(float dt, float f2, int32_t slot) {
+    static const bool on = getenv("D1_TIMING_TRACE") != nullptr;
+    if (!on || slot != 0) return;
+    const char* gs = game_state();
+    if (!gs || std::strcmp(gs, "activity:in_world") != 0) return;
+    static const auto t0 = std::chrono::steady_clock::now();
+    static double game = 0;
+    static int n = 0;
+    game += dt;
+    if (++n > 20000) return;
+    auto* globals = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x273EB28);
+    if (!globals) return;
+    const float* facing = reinterpret_cast<const float*>(globals + 0x20 + 0x18);
+    log("timing: wall %.4f dt %.5f f2 %.5f game %.4f facing %.5f %.5f", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(),
+        dt, f2, game, facing[0], facing[1]);
+}
+
 static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32_t player, void* state,
                                         int32_t* control, float* action) {
     g_pc_orig(dt, f2, slot, player, state, control, action);
+    timing_trace(dt, f2, slot);
     if (player != 0 || !action) return;
     trace_cameras();
     trace_references();
@@ -1659,7 +1697,10 @@ static D1_SYSV bool flag_true() { return true; }
 // frame, the period is set to that frame's real duration (1-33.4 ms) just before the tick
 // math: one simulation tick per rendered frame with dt = the frame time (below 30 fps
 // several 33 ms ticks). `fps = N` then puts the period back to 1/N for the limiter's wait;
-// `fps = 0` (unlimited) removes the wait.
+// `fps = 0` (unlimited) removes the wait. The integer rate (+0x38) stays the console's 30:
+// the game copies it into its nominal tick (game time globals +8 = 1/30, read by 0x591B80),
+// and per-tick effects scale by dt / nominal (camera kick 0x900AD0); a nominal that follows
+// the frame rate made recoil apply in full on every tick (5x at 144 fps, D1_TIMING_TRACE).
 using TimeInitFn = D1_SYSV void (*)(void*);
 using GameTimeFn = D1_SYSV void (*)(float, float*, int32_t*, float*, int32_t*);
 static TimeInitFn g_time_init_orig = nullptr;
@@ -1670,7 +1711,6 @@ static D1_SYSV void time_init_hook(void* cfg) {
     auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08);
     if (!tc || fps <= 0) return;
     *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
-    *reinterpret_cast<int32_t*>(tc + 0x38) = fps;
     log("hooks: frame rate target %d fps (period %d us)", fps, 1000000 / fps);
 }
 static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, float* dt2, int32_t* ticks2) {
@@ -1681,14 +1721,19 @@ static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, flo
         // takes longer than two periods (fps = 120 rendering at 50: slow motion)
         const int64_t period = std::clamp<int64_t>(int64_t(double(elapsed) * 1e6 + 0.5), 1000, 33366);
         *reinterpret_cast<int64_t*>(tc + 0x08) = period;
-        *reinterpret_cast<int32_t*>(tc + 0x38) = int32_t(1000000 / period);
     }
     g_game_time_orig(elapsed, dt, ticks, dt2, ticks2);
-    static const int fps = settings().fps;
-    if (tc && fps > 0) {  // the limiter (0x594A3B) waits for the target period again
-        *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
-        *reinterpret_cast<int32_t*>(tc + 0x38) = fps;
+    // the nominal tick (game time globals +4 ticks per second, +8 seconds; 0x591B80) follows
+    // the real tick too: timed effects advance by it every tick (camera kick curves), so a
+    // fixed 1/30 played them several times too fast at high frame rates
+    if (auto* gt = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BC880); gt && tc) {
+        const int64_t period = *reinterpret_cast<int64_t*>(tc + 0x08);
+        *reinterpret_cast<float*>(gt + 8) = float(double(period) * 1e-6);
+        *reinterpret_cast<int32_t*>(gt + 4) = int32_t(1000000 / period);
     }
+    static const int fps = settings().fps;
+    if (tc && fps > 0)  // the limiter (0x594A3B) waits for the target period again
+        *reinterpret_cast<int64_t*>(tc + 0x08) = 1000000 / fps;
 }
 
 // ---- current world-controller state (eboot+0x783AC0, the state manager's transition step)
@@ -2577,6 +2622,8 @@ void install_game_hooks() {
     }
     g_pc_orig = reinterpret_cast<PlayerControlFn>(hook_function(exe.base + 0x91B500, reinterpret_cast<const void*>(&player_control_hook)));
     if (!g_pc_orig) log("hooks: mouse look hook FAILED");
+    g_impulse_orig = reinterpret_cast<ImpulseFn>(hook_function(exe.base + 0x900AD0, reinterpret_cast<const void*>(&impulse_hook)));
+    if (!g_impulse_orig) log("hooks: camera kick hook FAILED");
     // PC button prompts (key names instead of DualShock 4 glyphs while on keyboard and mouse)
     g_run_alloc_orig = reinterpret_cast<RunAllocFn>(hook_function(exe.base + 0x8DA760, reinterpret_cast<const void*>(&run_alloc_hook)));
     if (g_run_alloc_orig) replace_function(exe.base + 0x8D5530, reinterpret_cast<const void*>(&string_part_decode));
