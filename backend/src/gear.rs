@@ -182,3 +182,24 @@ pub fn item_values(character: i64, items: &[i64]) -> Vec<(i64, Value)> {
         })
         .collect()
 }
+
+/// Equipment slot order (definitions manager vtable +0x100: 17 rows {bucket hash, item slot
+/// code @+5}): subclass, helmet, gauntlets, chest, legs, class item, primary, special, heavy,
+/// ship, sparrow, ghost, emblem, shader, emote, horn, artifact.
+pub const EQUIPMENT_SLOTS: [u8; 17] = [6, 7, 8, 9, 10, 11, 2, 3, 4, 12, 13, 14, 25, 27, 28, 30, 36];
+
+/// The active character's equipped item ids (0x80801714 member 5 at +0x2B80, 0x808045DA:
+/// 20 x i64 in equipment slot order; iterated by c_investment_character_equipment_const_iterator
+/// 0x269230, which resolves each id to its inventory item).
+pub fn equipment_value(character: i64, items: &[i64]) -> Value {
+    use Value::*;
+    let mut ids = vec![0i64; 20];
+    for (k, &index) in items.iter().enumerate() {
+        if let Some(code) = crate::gear::items().get(index as usize).and_then(|it| it.slot) {
+            if let Some(p) = EQUIPMENT_SLOTS.iter().position(|&s| s == code) {
+                ids[p] = item_id(character, k);
+            }
+        }
+    }
+    Array(ids.into_iter().map(|i| Some(Int(i))).collect())
+}

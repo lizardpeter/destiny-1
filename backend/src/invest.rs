@@ -853,6 +853,9 @@ pub fn profile_baseline() -> FamilyUpdate {
             .take(20)
             .map(|(f, st)| Some(Struct(vec![Some(Int(f)), Some(Int(st))])))
             .collect();
+        // member 5: equipped item ids in equipment slot order
+        let kit = crate::gear::loadout(character_class(&ch));
+        c[5] = Some(crate::gear::equipment_value(ch.id, &kit));
         // member 17 0x808016F8 {i32, i32, 0x80801923} (research: level, light)
         let (lv, light) = level();
         c[17] = Some(Struct(vec![Some(Int(lv)), Some(Int(light)), Some(level_value())]));

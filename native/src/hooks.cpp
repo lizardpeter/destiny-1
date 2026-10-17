@@ -1289,6 +1289,22 @@ static void dump_flag_scopes() {
             }
         }
     }
+    // equipment slots (vtable +0x100: {i32 count, i64 relative array}): the character's
+    // equipped item ids (member 5, +0x2B80) are in this order
+    {
+        using ListFn = D1_SYSV const int32_t* (*)(void*);
+        if (const int32_t* e = reinterpret_cast<ListFn>(vt[0x100 / 8])(defs)) {
+            const auto* a = reinterpret_cast<const uint8_t*>(e) + 8 + *reinterpret_cast<const int64_t*>(e + 2) + 0x10;
+            // rows of 0x38: {u32 bucket hash, u8, u8 item slot code @+5 (definition +0x88), ...}
+            std::string codes;
+            for (int k = 0; k < e[0]; ++k) {
+                char buf[24];
+                std::snprintf(buf, sizeof buf, " %d:%08x/%u", k, *reinterpret_cast<const uint32_t*>(a + k * 0x38), a[k * 0x38 + 5]);
+                codes += buf;
+            }
+            log("equipment: %d slots (index:bucket/item slot code):%s", e[0], codes.c_str());
+        }
+    }
     // item definitions by index (vtable +0x410): D1_ITEM_PEEK=<i>,<j>,... logs the first 64 bytes
     if (const char* pk = getenv("D1_ITEM_PEEK")) {
         using DefFn = D1_SYSV const uint8_t* (*)(void*, uint32_t);
