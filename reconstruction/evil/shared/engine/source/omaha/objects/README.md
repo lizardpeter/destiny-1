@@ -11,7 +11,14 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x7420f0` | sparrow_summon |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`7420f0_sparrow_summon.c`](decompiled/7420f0_sparrow_summon.c) | Sparrow summon path: crashes when the sparrow has no item instance (backend leaves the sparrow out of the kit). |
+| `0x910c60` | weapon_configuration_gear |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`910c60_weapon_configuration_gear.c`](decompiled/910c60_weapon_configuration_gear.c) | Takes a weapon's gear from the 0x54C7F0 pattern table using the loadout entry's weapon sandbox pattern index (i16 @+0xA). |
+| `0xbd5340` | unit_weapon_at_index |  | Static decompilation of the 01.33 eboot input and UI text paths plus d1-native headless traces (D1_TRACE_GLYPHS / D1_TRACE_PROMPTS / D1_TRACE_WEAPON), 2026-10-17; names are HYPOTHESIS | [`bd5340_unit_weapon_at_index.c`](decompiled/bd5340_unit_weapon_at_index.c) | The unit's weapon in slot index (0..3; -1 when empty), from its inventory (0xBD51E0, 0x353640, 0x6ED9F0). |
+| `0xbd5aa0` | unit_current_weapon_index |  | Static decompilation of the 01.33 eboot input and UI text paths plus d1-native headless traces (D1_TRACE_GLYPHS / D1_TRACE_PROMPTS / D1_TRACE_WEAPON), 2026-10-17; names are HYPOTHESIS | [`bd5aa0_unit_current_weapon_index.c`](decompiled/bd5aa0_unit_current_weapon_index.c) | The unit's current weapon index (0 primary, 1 special, 2 heavy) or -1, from its inventory (0xBD51E0, 0x355490). |
+| `0xbd7310` | unit_next_weapon_index |  | Static decompilation of the 01.33 eboot input and UI text paths plus d1-native headless traces (D1_TRACE_GLYPHS / D1_TRACE_PROMPTS / D1_TRACE_WEAPON), 2026-10-17; names are HYPOTHESIS | [`bd7310_unit_next_weapon_index.c`](decompiled/bd7310_unit_next_weapon_index.c) | Next usable weapon index after `from` in direction (mod 4), skipping empty or unusable slots (0xBD6A50, 0xBC9AF0); used when the switch-weapon action fires. |
+| `0xbd8040` | unit_pending_weapon_index |  | Static decompilation of the 01.33 eboot input and UI text paths plus d1-native headless traces (D1_TRACE_GLYPHS / D1_TRACE_PROMPTS / D1_TRACE_WEAPON), 2026-10-17; names are HYPOTHESIS | [`bd8040_unit_pending_weapon_index.c`](decompiled/bd8040_unit_pending_weapon_index.c) | First ready weapon of the unit's pending inventory list (0x668710 / 0x6687B0), -1 if none; player control adopts it as the desired weapon. |
 
 ## Classes (169)
 

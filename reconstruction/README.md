@@ -64,11 +64,60 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
 - 9 Bungie source files named in the binary (all placeholders, nothing reconstructed yet).
 - ~2,350 RTTI classes placed across 37 folders; the renderer is mostly invisible
   to RTTI, so `engine/graphics` is thin until functions are traced.
-- 33 decompiled functions: TFX VM and extern ABI, Frame extern, auto-exposure,
-  Engine Configuration snapshot, the global channel store (alloc / defaults /
-  get / set / find / per-frame copy into the render context), and
-  `c_sun_manager` (3 virtual slots + 3 non-virtual updates).
-- Class attachment: only `c_sun_manager` methods are attached so far. The other
+- 419 decompiled functions with a role in `functions.json`, plus 1165 unattributed
+  decompiles in `unsorted/` (unedited Ghidra output, see `unsorted/README.md`):
+  - 33 from the graphics work: the TFX VM and extern ABI, the Frame extern, auto-exposure, the
+    Engine Configuration snapshot, the global channel store, and `c_sun_manager`.
+  - 81 from the online work (2026-10-13), spread across `omaha/networking/bap`,
+    `omaha/networking`, `omaha/world_controller`, `omaha/simulation`, `omaha/game`,
+    `engine/core`, `engine/resourcerer` and `spasaha/investment`:
+    - the BAP transport and message routing
+    - the activity client's handling of every activity-host message the backend emulates
+      (join, entity indices, membership, instance state, keep-alive)
+    - engine-type bitstream decode
+    - activity manager timeouts, the world transition, slice-set loading and its task graph
+    - the simulation queue and player/unit assignment
+    - the unlock-expression VM
+  - 104 backfilled from the earlier native-runtime and backend sessions (2026-10-12/13):
+    - BAP channel crypto and handshake, response matching, and the message codecs
+    - investment world-server bitstreams, queuez replication and the object manager
+    - account slot, unlock-flag sources, the trial check
+    - sign-on and content manifest, package registration
+    - bootflow state handlers, world-controller states and modes, prerequisites
+  - 24 from the input path (2026-10-13), in `omaha/platform`, `omaha/game` and `omaha/camera`:
+    the pad poll and engine gamepad state, the input abstraction game system (dead zones,
+    per-player state, look rate) and the player control game system down to the per-frame
+    yaw/pitch deltas, plus weapon zoom scaling and camera impulses
+  - 16 from timing, cinematics, the host acknowledgement and the GPU device init
+    (2026-10-13/14): the frame limiter and game time, the intro and loading-cinematic
+    paths, BLOCK_DETECT, and the hardcoded display size
+  - 24 from the spawn path (2026-10-14), in `omaha/simulation`, `omaha/world_controller`
+    and `spasaha/investment`: player spawning and its gates, the player simulation entity
+    and its client-reference definition, the type-0xC and lifetime reference classes,
+    the activity host's client-reference message, the player configuration build, the
+    character data cache and the investment peer subscription roster
+    - main loop timing, job system, logging, the engine heap
+    - NP toolkit and DemonWare entry points
+  - 137 from the co-op, Director, unlock and gear work (2026-10-15/16), mostly in
+    `omaha/simulation`, `omaha/world_controller`, `spasaha/investment` and `omaha/networking`:
+    - the PSN session-invitation join path, the join manager and the joinability check
+    - simulation player updates (tracker diff against the session membership), simulation
+      peers, views, the domain watcher, the entity database and entity replication
+    - host incidents, world cinematics, the world globals and claim-abandoned host messages,
+      the client_authoritative_data_update delta encoding
+    - public regions: matchmaking configuration, the region ambassador and citizen join,
+      the matchmaking composition check
+    - Director activity and destination states, activity permission and availability,
+      unlock flag storage scopes and the schedule time
+    - items and gear: the item and weapon pattern tables, investment object lookup, the
+      equipment iterator, the can-equip check and loadout gear caching
+    - engine-type kinds (quantized, point3d, vector3d, type handle, 8-byte identifier)
+- The online protocol (every BAP message class, activity-host message types and handlers,
+  payload types, replication families, unlock flags, the prologue scenario, rejected
+  hypotheses and open questions) is in
+  `knowledge/records/d1_online_protocol_2026-10-13.json`.
+- Class attachment: `c_sun_manager` methods and two `c_activity_client_messaging_interface_bap`
+  slots are attached so far. The other
   decompiled functions do not appear in any RTTI vtable, so they are free
   functions or non-virtual methods whose class is not yet known.
 - Global channel names (FNV-1 32 preimages) are in
