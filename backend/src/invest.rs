@@ -876,6 +876,10 @@ pub fn profile_baseline() -> FamilyUpdate {
         for (id, v) in crate::gear::item_values(ch.id, &crate::gear::loadout(character_class(&ch))) {
             objects.push(Object { ty: crate::gear::TYPE_ITEM, soid: id, value: v });
         }
+        // unequipped items in the character's buckets
+        for (id, v) in crate::gear::backpack_values(ch.id, &crate::gear::backpack(character_class(&ch))) {
+            objects.push(Object { ty: crate::gear::TYPE_ITEM, soid: id, value: v });
+        }
     }
     FamilyUpdate { family: FAMILY_PROFILE, root: account_id(), version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
 }

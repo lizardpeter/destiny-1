@@ -1852,6 +1852,40 @@ static D1_SYSV void string_part_decode(const uint8_t* part, uint16_t* out, int64
     }
 }
 
+// D1_TRACE_RESOURCES=1 (research): 0x349C10(?, handle) is the "is this tag loaded" query
+// (0xE2280(loaded set 0x2693C10, *(u16*)0x2693C0C, handle) * 2: 2 = loaded). Reimplemented to
+// log each (handle, caller) once while in the world, with whether it was loaded, and again
+// when it becomes loaded.
+static D1_SYSV int resource_status_hook(void*, uint32_t handle) {
+    const uint64_t b = rt().modules[0].base;
+    using BitFn = D1_SYSV uint8_t (*)(void*, uint32_t, uint32_t);
+    const int r = reinterpret_cast<BitFn>(b + 0xE2280)(reinterpret_cast<void*>(b + 0x2693C10),
+                                                    *reinterpret_cast<const uint16_t*>(b + 0x2693C0C), handle) * 2;
+    if (g_state.load(std::memory_order_relaxed) == 0x24) {
+        static std::mutex m;
+        static std::map<std::pair<uint32_t, uint64_t>, int> seen;
+        const uint64_t caller = reinterpret_cast<uint64_t>(__builtin_return_address(0));
+        std::lock_guard lk(m);
+        auto [it, fresh] = seen.try_emplace({handle, caller}, r);
+        if ((fresh || it->second != r) && seen.size() < 4000) {
+            it->second = r;
+            log("resource: %08x %s <- %s", handle, r == 2 ? "loaded" : "NOT loaded", describe_addr(caller).c_str());
+        }
+    }
+    return r;
+}
+
+// D1_TRACE_VEHICLE=1 (research): 0x7420F0(player?, ...) is the vehicle (sparrow) summon path
+// that crashed without a sparrow item; log each call and its result.
+using VehicleFn = D1_SYSV uint64_t (*)(void*, void*, float*);
+static VehicleFn g_vehicle_orig = nullptr;
+static D1_SYSV uint64_t vehicle_hook(void* a, void* b, float* c) {
+    log("vehicle: 0x7420F0(%p, %p, %p) <- %s", a, b, (void*)c, describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str());
+    const uint64_t r = g_vehicle_orig(a, b, c);
+    log("vehicle: -> %#llx", (unsigned long long)r);
+    return r;
+}
+
 static D1_SYSV void state_step_hook(void* sm) {
     g_state_step_orig(sm);
     const int32_t st = *reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0);
@@ -2175,6 +2209,9 @@ void install_game_hooks() {
         g_comp_orig = reinterpret_cast<CompFn>(hook_function(exe.base + 0xB0C6D0, reinterpret_cast<const void*>(&comp_hook)));
     if (getenv("D1_TRACE_EQUIP"))
         g_equip_orig = reinterpret_cast<EquipFn>(hook_function(exe.base + 0x269A50, reinterpret_cast<const void*>(&equip_hook)));
+    if (getenv("D1_TRACE_VEHICLE"))
+        g_vehicle_orig = reinterpret_cast<VehicleFn>(hook_function(exe.base + 0x7420F0, reinterpret_cast<const void*>(&vehicle_hook)));
+    if (getenv("D1_TRACE_RESOURCES")) replace_function(exe.base + 0x349C10, reinterpret_cast<const void*>(&resource_status_hook));
     if (const char* t = getenv("D1_TRACE_LOOKUP")) {
         g_trace_lookup_type = atoi(t);
         replace_function(exe.base + 0x56DC00, reinterpret_cast<const void*>(&lookup_replacement));

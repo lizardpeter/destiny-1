@@ -76,7 +76,8 @@ static uint32_t scripted_buttons(uint64_t now_us) {
 // D1_STATE_PRESS=<state>:<letter>@<secs>[+<hold secs>],... (headless testing): once the game
 // reaches that state (exact name), press each button (letters as for D1_AUTOPRESS) at the
 // given time, once, for two seconds (several frames even with software rendering) or the
-// given hold. h j k l push the left stick left / down / up / right (moves the cursor). E.g.
+// given hold (m Options, u / d D-pad up / down, q / e L1 / R1). h j k l push the left stick
+// left / down / up / right (moves the cursor). E.g.
 // setup:orbit:h@5+1.5,j@7+0.8,x@9 moves the orbit cursor down-left onto a button and
 // presses Cross.
 struct StickPush { int8_t x, y; };
@@ -122,7 +123,9 @@ static uint32_t state_buttons(uint64_t now_us, StickPush& stick) {
             case 'k': stick.y = -127; break;
             case 'j': stick.y = 127; break;
             default:
-                b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u : 0x4000u;
+                b |= c == 'o' ? 0x2000u : c == 't' ? 0x1000u : c == 's' ? 0x8000u : c == 'p' ? 0x100000u
+                   : c == 'm' ? 0x8u /* Options */ : c == 'u' ? 0x10u : c == 'd' ? 0x40u : c == 'q' ? 0x400u : c == 'e' ? 0x800u
+                   : 0x4000u;
         }
         if (announced <= i) announced = i + 1, log("input: state press '%c' at %.1f s", c, at / 1e6);
     }

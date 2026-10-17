@@ -1718,3 +1718,28 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   and 0x910C60 fills the weapon config's 20 stat slots from them. Before, those were zero:
   special and heavy had no ammo (user test). D1_TRACE_GEAR now shows each config's slots
   (Fatebringer 60 90 ... 95, Praedyth's 80 60 ..., Gjallarhorn 40 100 ...).
+
+## 2026-10-17 (afternoon): back to inventory
+
+- **Item lookups** (D1_TRACE_LOOKUP=3, headless, orbit + character screen): the 14 equipped
+  items are found in context 4 (profile) by 0x5751AA; the loadout gear cache 0x556C70 also
+  looks each one up in contexts 3 (account summary) and 0 (peer view), where there are no
+  item objects (it then loads only the item's own resources, 0x5568C0: the item strings tag
+  0x54D110 and definitions vtable +0x558, plus the 8 sub-item indices at item +0x26).
+- **Resources** (D1_TRACE_RESOURCES=1, 0x349C10 reimplemented: 0xE2280 on the loaded set
+  0x2693C10): opening the character screen loads the kit's definitions (0x25B07E) and item
+  strings tags (0x54B220); all of them load. So the slot spinners are not definitions or
+  strings: the item strings tag +0x60 is the icon record (e.g. 0x80A59CBE in
+  investment_globals: {name hash, two texture tags, ...}), loaded by the UI's own path.
+- **Item object 0x80801732** members: 0 id, 1 {owner, location: 2 bits, bias 1 (-1..2)},
+  2 {i32, i32, i16}, 3 item index, 4 eight sub-item indices (i16), 5 instance data
+  0x80801846 {0x8080176b {i32, i32, i32, i16}, 5 x {...}, i16, 36 bytes, 8 bytes, u8},
+  6 eight i16, 7 eight i32. Every member has a presence bit; absent = client default.
+- **Active character member 8** (+0x3660, 0x808047A7): {u7 count, up to 127 x 0x8080176b}
+  - the list 0x273E40/0x273EF0 iterates (entries with an item index at +0xC); 0x551400 reads
+  it with the item table 0x54C020. Probably stackables (materials, consumables).
+- The backend now also sends a backpack of unequipped items (D1B_BACKPACK, default a set
+  of exotic weapons) as item objects owned by the character, and the sparrow again
+  (D1B_NO_SPARROW=1 leaves it out): the user's test showed "no vehicles available" because
+  the kit had none. The headless Ghost-menu summon (touch pad + Square) did not reach
+  0x7420F0, so the old crash is not re-checked yet.

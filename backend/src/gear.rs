@@ -123,8 +123,13 @@ pub fn loadout(class: i64) -> Vec<i64> {
             None => tracing::warn!("gear: no item named {n:?}"),
         }
     }
-    // no sparrow (13): summoning one crashes (0x7420F0) while it has no item instance
-    for s in [6u8, 2, 3, 4, 7, 8, 9, 10, 11, 14, 12, 25, 27] {
+    // the sparrow (13) used to crash on summoning (0x7420F0) when items had no instances;
+    // D1B_NO_SPARROW=1 leaves it out again
+    let no_sparrow = std::env::var("D1B_NO_SPARROW").map(|v| v == "1").unwrap_or(false);
+    for s in [6u8, 2, 3, 4, 7, 8, 9, 10, 11, 14, 12, 13, 25, 27] {
+        if s == 13 && no_sparrow {
+            continue;
+        }
         if slots.contains(&s) {
             continue;
         }
@@ -139,6 +144,57 @@ pub fn loadout(class: i64) -> Vec<i64> {
     }
     out.truncate(20);
     out
+}
+
+/// Unequipped items carried in the character's buckets (the inventory screen and the
+/// character screen's slot pickers): D1B_BACKPACK=<name>;<name>;... or a default set of
+/// exotic weapons. Instance ids continue after the equipped ones (backpack_id).
+pub fn backpack(class: i64) -> Vec<i64> {
+    let class = class_name(class);
+    let names: Vec<String> = match std::env::var("D1B_BACKPACK") {
+        Ok(v) => v.split(';').map(|s| s.to_string()).filter(|s| !s.trim().is_empty()).collect(),
+        _ => [
+            "Thorn", "The Last Word", "Red Death", "Hawkmoon", "Ice Breaker", "Plan C", "Black Hammer",
+            "Truth", "Thunderlord", "Super Good Advice",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
+    };
+    names
+        .iter()
+        .filter_map(|n| {
+            let i = find(n, Some(class));
+            if i.is_none() {
+                tracing::warn!("gear: no item named {n:?}");
+            }
+            i
+        })
+        .collect()
+}
+
+/// Instance id of the character's k-th backpack item.
+pub fn backpack_id(character: i64, k: usize) -> i64 {
+    item_id(character, 0x100 + k)
+}
+
+/// Item objects for the backpack (same layout as item_values).
+pub fn backpack_values(character: i64, items: &[i64]) -> Vec<(i64, Value)> {
+    item_values(character, items)
+        .into_iter()
+        .enumerate()
+        .map(|(k, (_, v))| {
+            let id = backpack_id(character, k);
+            let v = match v {
+                Value::Struct(mut m) => {
+                    m[0] = Some(Value::Int(id));
+                    Value::Struct(m)
+                }
+                v => v,
+            };
+            (id, v)
+        })
+        .collect()
 }
 
 /// A loadout value (0x80801855) with these items equipped, in equipment slot order; each
