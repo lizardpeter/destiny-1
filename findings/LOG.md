@@ -1608,3 +1608,38 @@ solar system (Earth, Moon, Venus, Mars, Reef, Saturn, Tower, Vanguard, Crucible;
 
 Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 2539,
 2549, 2566, 3850, 3916 true.
+
+## 2026-10-16 (night): unlocks, ownership, the Tower, and gear
+
+- **Content ownership.** 623 of 653 activities failed their world-transition purchase
+  prerequisites (0x5505C0; D1_DUMP_PREREQS runs it for every activity). The ownership flags
+  are profile-extra account flags: 833 (base game; 407 activities test `834 or (833 and not
+  830)`), 2668-2670, 5021, 6029. The backend sets them (D1B_OWN_ALL=0 to disable); 3 fail now.
+- **Activity permission** (0x2648D0 via 0x547EF0): availability from a provider (*0x26527D8,
+  vtable +0x40 -> 0x528C50, answers 7 "unavailable" for e.g. Moon missions) plus two
+  requirement lists. The active character's member 15 member 7 (+0x714C) bypasses the lists
+  (D1B_ALL_ACTIVITIES); d1-native D1_BYPASS=activities passes the check, shows Director nodes
+  in state 2 (locked) as 3, and passes the matchmaking composition check 0xB0C6D0's
+  big-party-count-exceeds-teams (settings +0xC4 = 0, source not found) that kept the Tower
+  restarting matchmaking. The Tower and Moon missions load.
+- **Tower zones.** Walking into a private zone (PRV72.72) starts a z-leg slice-set transition
+  (token 2) that precaches and then waits for the host-tabulated region table to carry the
+  region with the player's new token. The client reports where it goes in
+  client_authoritative_data_update (21), which is delta-encoded and not decoded yet.
+- **Item table.** tools/d1_item_table.py -> backend/data/items.json: client item index = row
+  of the inventory item map 80A5FFBE (vtable +0x168/+0x410), names from 80A5FF9C (= the
+  client's 0x549570 table) and the string banks 80A5E21A, slot/level/tier at definition
+  +0x88..+0x8A, class from the equip flag at +0x164 (Hunter 2488-2492, Titan 2510-2514,
+  Warlock 2517-2521; weapon types 2523-2531, 3228, 5001: granted by class, scope 11).
+- **Gear.** Equipment slot order (vtable +0x100, 17 rows {bucket hash, slot code @+5}):
+  subclass, helmet, gauntlets, chest, legs, class item, primary, special, heavy, ship,
+  sparrow, ghost, emblem, shader, emote, horn, artifact. A character's gear lives in: the
+  loadout 0x80801855 (peer character member 3, summary member 4; entries in slot order, the
+  player configuration 0x912240 reads fixed entries), inventory items 0x80801732 (family 4
+  slot 3, id lookup 0x56DC00 by (family, type)), and the active character's member 5
+  (20 equipped ids). The can-equip check 0x269A50 (D1_TRACE_EQUIP) failed the weapons on the
+  weapon-slot flags 2502-2504 and ship/emblem/shader on 2090/2075/2544; with those set every
+  item passes, the character screen shows the full Hunter kit and level 40 (0x80801923
+  {f32, i32 level, i16 light} works). Still open: the in-world Guardian is unarmed (Ghost in
+  hand), item icons spin (not loaded), light 0 (items carry no stats), sparrow crashes when
+  summoned without an instance (0x7420F0; left out of the kit).
