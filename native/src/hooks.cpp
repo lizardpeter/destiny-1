@@ -1271,6 +1271,28 @@ static void dump_flag_scopes() {
             }
         }
     }
+    // item definitions by index (vtable +0x410): D1_ITEM_PEEK=<i>,<j>,... logs the first 64 bytes
+    if (const char* pk = getenv("D1_ITEM_PEEK")) {
+        using DefFn = D1_SYSV const uint8_t* (*)(void*, uint32_t);
+        for (const char* p = pk; *p;) {
+            const int i = atoi(p);
+            const uint8_t* d = reinterpret_cast<DefFn>(vt[0x410 / 8])(defs, uint32_t(i));
+            std::string hex;
+            for (int k = 0; d && k < 64; k += 4) {
+                char buf[16];
+                std::snprintf(buf, sizeof buf, " %08x", *reinterpret_cast<const uint32_t*>(d + k));
+                hex += buf;
+            }
+            using TblFn = D1_SYSV const int32_t* (*)(void*);
+            const int32_t* t = reinterpret_cast<TblFn>(vt[0x168 / 8])(defs);
+            const auto* row = t && i < t[0] ? reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(t) + 8 +
+                                                 *reinterpret_cast<const int64_t*>(t + 2) + 0x10 + i * 0x18) : nullptr;
+            log("items: definition %d at %p:%s (map row: hash %08x file %08x)", i, (const void*)d, hex.c_str(),
+                row ? row[0] : 0, row ? row[4] : 0);
+            while (*p && *p != ',') ++p;
+            if (*p) ++p;
+        }
+    }
     // scope 12: {i64 count, i64 relative array @+8} of 16-byte {i16 flag, i16 state, i64
     // threshold @+8}: flag = state once the character's value reaches the threshold
     using List64Fn = D1_SYSV const int64_t* (*)(void*);
@@ -1331,10 +1353,16 @@ static D1_SYSV void flag_apply_hook(void* a1, void* a2, void* a3, void* a4, void
     }
 }
 
+static bool g_director_unlock = false;  // D1_BYPASS=activities: locked nodes (2) show as available (3)
 static D1_SYSV int32_t activity_state_hook(void* c, const uint8_t* list) {
-    static std::once_flag scopes;
-    std::call_once(scopes, dump_flag_scopes);
-    const int32_t r = g_activity_state_orig(c, list);
+    static const bool trace = getenv("D1_TRACE_DIRECTOR") != nullptr;
+    if (trace) {
+        static std::once_flag scopes;
+        std::call_once(scopes, dump_flag_scopes);
+    }
+    int32_t r = g_activity_state_orig(c, list);
+    if (g_director_unlock && r == 2) r = 3;
+    if (!trace) return r;
     static std::mutex m;
     static std::map<const void*, int> seen;
     std::lock_guard lk(m);
@@ -1750,7 +1778,8 @@ void install_game_hooks() {
     }
     if (getenv("D1_TRACE_DIRECTOR"))
         replace_function(exe.base + 0x265100, reinterpret_cast<const void*>(&flag_time_hook));
-    if (getenv("D1_TRACE_DIRECTOR"))
+    g_director_unlock = getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "activities");
+    if (getenv("D1_TRACE_DIRECTOR") || g_director_unlock)
         g_activity_state_orig = reinterpret_cast<ActivityStateFn>(hook_function(exe.base + 0x264360, reinterpret_cast<const void*>(&activity_state_hook)));
     if (getenv("D1_TRACE_UNLOCK"))
         g_unlock_orig = reinterpret_cast<UnlockFn>(hook_function(exe.base + 0x28E590, reinterpret_cast<const void*>(&unlock_hook)));
