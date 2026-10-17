@@ -615,7 +615,10 @@ const PROFILE_FLAG_OVERRIDES: &[(i64, i64)] = &[(836, 1), (0x1A3, 2), (0x1B8, 2)
 /// and destination lists, D1_TRACE_DIRECTOR / D1_TRACE_UNLOCK): destinations and story nodes
 /// stay hidden while these are false. Release-dated flags (430/434/435/5998: expansions) come
 /// from the schedule and the server time instead.
-const VETERAN_FLAGS: &[i64] = &[98, 2539, 2549, 2566, 3850, 3916];
+const VETERAN_FLAGS: &[i64] = &[98, 2539, 2549, 2566, 3850, 3916,
+    // weapon equipment slots (primary, special, heavy: the slot unlock lists the can-equip check
+    // 0x269A50 tests, D1_TRACE_EQUIP) and the default ship / emblem / shader items' unlocks
+    2502, 2503, 2504, 2090, 2075, 2544];
 
 /// Content ownership flags (profile extra slots; found by running every activity's purchase
 /// prerequisite check, D1_DUMP_PREREQS, against an account owning nothing; 407 activities

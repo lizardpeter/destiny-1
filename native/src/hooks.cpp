@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <map>
+#include <set>
 #include <mutex>
 #include "hle.h"
 #include "os.h"
@@ -759,6 +760,55 @@ static D1_SYSV int32_t comp_hook(const uint8_t* st, const uint8_t* pr) {
             *reinterpret_cast<const int32_t*>(st + 0x9C), *reinterpret_cast<const int32_t*>(st + 0xA0),
             *reinterpret_cast<const int32_t*>(st + 0xC4), *reinterpret_cast<const int32_t*>(pr + 0x14),
             *reinterpret_cast<const int32_t*>(pr + 0x28), *reinterpret_cast<const int32_t*>(pr + 0x16C));
+    return r;
+}
+
+// Investment object lookup (0x56DC00(manager, context, type, &id) -> object or 0; replaced,
+// same logic): per (context, type) a table at manager +0x4FD90 + context*0x60 + type*0x10
+// {u32 storage offset, i16 count, i32 stride} into manager +0x40A0. D1_TRACE_LOOKUP=<type>
+// (research) logs lookups of that type (3 = inventory item) once per (context, id).
+static int g_trace_lookup_type = -1;
+static D1_SYSV const uint8_t* lookup_replacement(uint8_t* mgr, int32_t ctx, int32_t type, const int64_t* id) {
+    const uint8_t* t = mgr + int64_t(ctx) * 0x60 + int64_t(type) * 0x10 + 0x4FD90;
+    const uint32_t off = *reinterpret_cast<const uint32_t*>(t);
+    const uint8_t* found = nullptr;
+    int16_t count = 0;
+    if (off != 0xFFFFFFFF) {
+        count = *reinterpret_cast<const int16_t*>(t + 4);
+        const int32_t stride = *reinterpret_cast<const int32_t*>(t + 8);
+        const uint8_t* p = mgr + 0x40A0 + off;
+        for (int i = 0; i < count; ++i, p += stride)
+            if (*reinterpret_cast<const int64_t*>(p) == *id) { found = p; break; }
+    }
+    if (type == g_trace_lookup_type) {
+        static std::mutex m;
+        static std::set<std::pair<int, int64_t>> seen;
+        std::lock_guard lk(m);
+        if (seen.insert({ctx, *id}).second)
+            log("lookup: type %d context %d id %llx -> %s (table %s, %d objects) <- %s", type, ctx, (long long)*id,
+                found ? "found" : "missing", off == 0xFFFFFFFF ? "none" : "set", count,
+                describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str());
+    }
+    return found;
+}
+
+// Can-equip check (0x269A50(flags, values, equipped ids, item provider, item, &why) -> bool):
+// needs the item's definition loaded (definitions vtable +0x410), its equipment slot open and
+// its requirements met; `why` collects reasons (1 no definition/slot, 0x20/0x40 unlock lists,
+// 8 values, 2 slot conflict, 4 final unlock). D1_TRACE_EQUIP=1 (research) logs each item.
+using EquipFn = D1_SYSV bool (*)(void*, void*, void*, void*, const uint8_t*, uint8_t*);
+static EquipFn g_equip_orig = nullptr;
+static D1_SYSV bool equip_hook(void* a, void* b, void* c, void* d, const uint8_t* item, uint8_t* why) {
+    uint8_t local = 0;
+    const bool r = g_equip_orig(a, b, c, d, item, why ? why : &local);
+    static std::mutex m;
+    static std::map<std::pair<int64_t, int>, int> seen;
+    std::lock_guard lk(m);
+    const int64_t id = item ? *reinterpret_cast<const int64_t*>(item) : 0;
+    const int index = item ? *reinterpret_cast<const int16_t*>(item + 0x24) : -1;
+    const int w = why ? *why : local;
+    auto [it, fresh] = seen.try_emplace({id, r}, w);
+    if (fresh) log("equip: item %llx (index %d) -> %d, reasons %#x", (long long)id, index, int(r), w);
     return r;
 }
 
@@ -1805,6 +1855,12 @@ void install_game_hooks() {
     g_comp_bypass = getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "activities");
     if (getenv("D1_TRACE_COMPOSITION") || g_comp_bypass)
         g_comp_orig = reinterpret_cast<CompFn>(hook_function(exe.base + 0xB0C6D0, reinterpret_cast<const void*>(&comp_hook)));
+    if (getenv("D1_TRACE_EQUIP"))
+        g_equip_orig = reinterpret_cast<EquipFn>(hook_function(exe.base + 0x269A50, reinterpret_cast<const void*>(&equip_hook)));
+    if (const char* t = getenv("D1_TRACE_LOOKUP")) {
+        g_trace_lookup_type = atoi(t);
+        replace_function(exe.base + 0x56DC00, reinterpret_cast<const void*>(&lookup_replacement));
+    }
     if (const char* w = getenv("D1_WATCH_FLAGS")) {
         for (const char* p = w; *p;) {
             g_watch_flags.push_back(atoi(p));
