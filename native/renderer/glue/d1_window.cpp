@@ -214,6 +214,9 @@ bool window_active() {
     return g_window != nullptr;
 }
 
+int take_weapon_request() { return -1; }  // weapon keys and key prompts: native frontend only
+bool keyboard_prompts() { return false; }
+int prompt_label(uint32_t, char16_t*, int) { return 0; }
 bool take_mouse_motion(int32_t& dx, int32_t& dy) {
     if (!g_window || !g_captured.load(std::memory_order_relaxed)) return false;
     dx = g_mouse_dx.exchange(0, std::memory_order_relaxed);

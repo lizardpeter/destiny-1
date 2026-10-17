@@ -184,28 +184,41 @@ libpng and SDL2. With a display (X11 or Wayland) the game opens in a resizable
 window; without one (or with `D1_WINDOW=0`) it renders offscreen, and
 `D1_FRAMES` saves frames either way.
 
-Keyboard and mouse play natively: clicking in the window captures the mouse (F2 or
-switching away releases it), and mouse motion goes straight into the game's aim as raw
-counts, without stick emulation (see "Mouse look" below).
+Keyboard and mouse play natively with PC key bindings (Destiny 2's PC defaults), and the
+game's button prompts show the bound keys ("Hold [E]", "[Space] Continue") while you play
+on keyboard and mouse; they switch back to controller buttons when a controller is used.
+Clicking in the window captures the mouse (F2 or switching away releases it), and mouse
+motion goes straight into the game's aim as raw counts, without stick emulation (see
+"Mouse look" below).
 
-| input | action (PS4 button) |
+| key | action (what the game sees) |
 |---|---|
-| WASD | move (left stick) |
+| W A S D | move (left stick) |
 | mouse | look (raw, see below) |
 | left / right mouse | fire (R2) / aim (L2) |
-| Space, Enter | jump, confirm (Cross) |
-| Left Ctrl, C | crouch (Circle) |
-| Backspace | back (Circle) |
-| Esc | menu (Options) |
-| R, E | reload, interact (Square) |
-| 1, 2, 3, mouse wheel | switch weapon (Triangle) |
-| Q / F / X | grenade (L1) / melee (R1) / super (L1+R1) |
-| mouse 4 / mouse 5 | grenade (L1) / melee (R1) |
+| Space | jump (Cross) |
+| Left Ctrl | crouch (Circle) |
 | Left Shift | sprint (L3) |
-| Z, middle mouse | R3 |
-| arrows | D-pad |
-| IJKL | right stick (menus) |
-| Tab / G | map, ghost (touch pad) |
+| R | reload (Square, tapped) |
+| E | interact (Square, held) |
+| C / Q / F | melee (R1) / grenade (L1) / super (L1+R1) |
+| 1 / 2 / 3 | primary / special / heavy weapon (direct: d1-native taps or holds Triangle until the weapon is out) |
+| mouse wheel, ` | switch weapon (Triangle tapped) |
+| Tab / M | Ghost (touch pad held) / Director (touch pad tapped) |
+| I | Character screen (Options) |
+| Esc | menu (Options) |
+| Backspace / Enter | back (Circle) / confirm (Cross) |
+| arrows | emotes (D-pad) |
+
+Every binding can be changed in `d1-native.cfg` (`bind_<action> = <key>, <key>`; the
+commented list in the file has all actions, their defaults, and raw `pad_*` buttons;
+`none` unbinds). `prompts = auto | keyboard | controller` picks the prompt style.
+
+How it works: the game's text is built from localized string parts, and button glyphs are
+private-use characters (U+E000..U+E021) in parts of their own, drawn by the UI font as
+DualShock 4 buttons. d1-native reimplements the part decoder (eboot 0x8D5530) and swaps a
+glyph part for the key bound to the matching action, growing the text run it decodes into
+(findings/LOG.md, 2026-10-17).
 
 ### Mouse look
 

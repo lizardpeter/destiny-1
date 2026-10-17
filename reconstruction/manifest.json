@@ -34,7 +34,14 @@
     "0xfc520",
     "0xfc540",
     "0xfad30",
-    "0x1009cb0"
+    "0x1009cb0",
+    "0x2c9d20",
+    "0x2c7fa0",
+    "0x72c20",
+    "0x72d90",
+    "0x2ca900",
+    "0x102c1d0",
+    "0x102d280"
    ],
    "classes": [
     {
@@ -6191,7 +6198,22 @@
    "path_evidence": "HYPOTHESIS",
    "role": "cui:: screens, widgets, event-handler components",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0xa2dc20",
+    "0x950620",
+    "0x9ce1d0",
+    "0x94b0f0",
+    "0x94c350",
+    "0x94af70",
+    "0x8da890",
+    "0x8da9d0",
+    "0x8da760",
+    "0x8d5530",
+    "0x8d5220",
+    "0xac5e40",
+    "0x8d9820",
+    "0x8dd4c0"
+   ],
    "classes": [
     {
      "name": "c_activity_hud_client_game_system",
@@ -15749,7 +15771,18 @@
     "0xb49210",
     "0x2a0840",
     "0x2a53a0",
-    "0x2a5390"
+    "0x2a5390",
+    "0x78c210",
+    "0x59b510",
+    "0x59a500",
+    "0xb0dd60",
+    "0xb0c6d0",
+    "0x29d620",
+    "0x2a5490",
+    "0x2d2b20",
+    "0x1018d00",
+    "0x10190f0",
+    "0xaf8d60"
    ],
    "classes": [
     {
@@ -19062,7 +19095,39 @@
     "0x795da0",
     "0x76b060",
     "0x76b390",
-    "0x29d7e0"
+    "0x29d7e0",
+    "0x3430b0",
+    "0x3455e0",
+    "0x345610",
+    "0x77b920",
+    "0x7680f0",
+    "0x57a220",
+    "0x57a260",
+    "0x57aa70",
+    "0x57a970",
+    "0x580840",
+    "0x955ef0",
+    "0x57b160",
+    "0x579ea0",
+    "0x774f50",
+    "0x574dc0",
+    "0x783ed0",
+    "0x7a9b40",
+    "0x7ac910",
+    "0x75f130",
+    "0x75d330",
+    "0x75d200",
+    "0x78f6b0",
+    "0x752150",
+    "0x769da0",
+    "0x772bd0",
+    "0x77c3d0",
+    "0x77cd20",
+    "0x78e950",
+    "0x79d800",
+    "0x79d840",
+    "0x79d860",
+    "0x79a730"
    ],
    "classes": [
     {
@@ -20334,7 +20399,42 @@
     "0x100cb80",
     "0x912240",
     "0x911850",
-    "0x66ae90"
+    "0x66ae90",
+    "0x73dac0",
+    "0x52b090",
+    "0x12d730",
+    "0x240840",
+    "0x240880",
+    "0x3d5f30",
+    "0x3f3ce0",
+    "0x3f3de0",
+    "0x4044b0",
+    "0xbb2170",
+    "0xbb26a0",
+    "0x353340",
+    "0x2409e0",
+    "0xb9fac0",
+    "0x906e00",
+    "0xbb6080",
+    "0xba6760",
+    "0xba6830",
+    "0xba6470",
+    "0xba6510",
+    "0x906750",
+    "0x913a90",
+    "0xba3090",
+    "0xba35e0",
+    "0xba32d0",
+    "0xba3770",
+    "0xbb3ea0",
+    "0xbb31d0",
+    "0xbb3280",
+    "0xb53bb0",
+    "0xb5a220",
+    "0xb5eba0",
+    "0xb5c530",
+    "0xb5e000",
+    "0x300230"
    ],
    "classes": [
     {
@@ -22302,7 +22402,9 @@
    "path_evidence": "HYPOTHESIS",
    "role": "incident metadata, announcement, heat",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x2a20c0"
+   ],
    "classes": [
     {
      "name": "c_accumulated_incident_metadata_interface",
@@ -23299,7 +23401,14 @@
    "path_evidence": "HYPOTHESIS",
    "role": "object components, players, weapons, vehicles, perks",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x910c60",
+    "0x7420f0",
+    "0xbd5aa0",
+    "0xbd5340",
+    "0xbd7310",
+    "0xbd8040"
+   ],
    "classes": [
     {
      "name": "(anonymous namespace)::c_input_value_converter_object_space_vector",
@@ -25857,7 +25966,13 @@
    "source_files": [],
    "functions": [
     "0x900ad0",
-    "0x33e110"
+    "0x33e110",
+    "0x7652e0",
+    "0x4e3d50",
+    "0x354400",
+    "0x33e0d0",
+    "0x33e140",
+    "0x8e4ee0"
    ],
    "classes": [
     {
@@ -26322,7 +26437,24 @@
     "0x8a040",
     "0xae1e0",
     "0xae0c0",
-    "0xadc00"
+    "0xadc00",
+    "0x295460",
+    "0x2b4270",
+    "0x2b4600",
+    "0x2b4af0",
+    "0x2bcc70",
+    "0x2e9b10",
+    "0x2e9a70",
+    "0x2e94f0",
+    "0xacef0",
+    "0xacf80",
+    "0xad160",
+    "0xad300",
+    "0xad3a0",
+    "0xad670",
+    "0xad6a0",
+    "0xad6c0",
+    "0xad490"
    ],
    "classes": [
     {
@@ -27098,7 +27230,13 @@
    "path_evidence": "CONFIRMED_BINARY",
    "role": "Destiny-specific game layer; Jam target engine_source_spasaha_spasaha -> tiger_release_final.elf",
    "source_files": [],
-   "functions": [],
+   "functions": [
+    "0x58fd40",
+    "0x5909b0",
+    "0x528c50",
+    "0x25a550",
+    "0x25a6e0"
+   ],
    "classes": [
     {
      "name": "c_achievements_spasaha_game_system",
@@ -27330,7 +27468,34 @@
     "0x58d940",
     "0x57d1d0",
     "0x58b570",
-    "0x104a290"
+    "0x104a290",
+    "0x264360",
+    "0x28e0c0",
+    "0x28cfe0",
+    "0x28d160",
+    "0x28cfb0",
+    "0x2601f0",
+    "0x546f20",
+    "0x265100",
+    "0x2648d0",
+    "0x547ef0",
+    "0x2680a0",
+    "0x267bc0",
+    "0x2679e0",
+    "0x263c20",
+    "0x549570",
+    "0x549510",
+    "0x54d110",
+    "0x54c7f0",
+    "0x54c7b0",
+    "0x56dc00",
+    "0x269230",
+    "0x269a50",
+    "0x556c70",
+    "0x5568c0",
+    "0x587520",
+    "0x58dc90",
+    "0x2b82d0"
    ],
    "classes": [
     {

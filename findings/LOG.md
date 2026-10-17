@@ -1643,3 +1643,53 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
   {f32, i32 level, i16 light} works). Still open: the in-world Guardian is unarmed (Ghost in
   hand), item icons spin (not loaded), light 0 (items carry no stats), sparrow crashes when
   summoned without an instance (0x7420F0; left out of the kit).
+
+## 2026-10-17: the input stack, PC key bindings, key names in button prompts
+
+- **Backfill**: every decompile since 2026-10-14 is now in the repo: 137 more named functions
+  in reconstruction/functions.json (plus 24 below, 443 in all) and 1165 unedited decompiles
+  in reconstruction/unsorted/decompiled/ (README there: how to reproduce them; Ghidra
+  scripts in tools/ghidra/). The graph (uregraph) has the same function nodes.
+- **Input globals** 0x1AD40D0 (0xD30 bytes; init 0xACEF0, per-frame 0xACF80, reset
+  0xAD160): two 0x3B0-byte pad buffers (index 0x1AD4840) of four 0xC0-byte engine pad
+  states (0xAD490), and a **developer keyboard and mouse** block that nothing on the PS4
+  fills: keys at 0x1AD4878 + k*4 {u16 held time, u8 down frames} in Bungie's key enum
+  (0 Esc, 1-12 F1-F12, 17-26 digits, 31 Q, 32 W, 33 E, 34 R, 45 A, 46 S, 47 D, 57 left
+  shift, 68 right shift, 69 left ctrl, 71 left alt, 72 space, 77-80 arrows; 0x69-0x6C = either
+  shift / ctrl / win / alt), mouse at 0x1AD4860 {i32 dx, i32 dy, ...} when 0x1AD40D3.
+- **input_abstraction_update** 0x926910 for player 0 uses that block while the pad is idle:
+  W-S / A-D -> left stick floats (+0x2A0 / +0x2A4), arrows -> look, mouse dx/dy * -pi/1000
+  / turn speed -> +0x2A8 / +0x2B0 with +0x280 = 1 (the per-frame "external" look mode), and
+  fixed developer keys for the 21 abstract buttons. Abstract button k (0x273EFE0 + k*0x14
+  per player 0x300) is engine pad button k: 0 L2, 1 R2 (analog), 2 up, 3 down, 4 left,
+  5 right, 6 Options, 7 touch pad, 8 L3, 9 R3, 10 Cross, 11 Circle, 12 Square, 13 Triangle,
+  14 L1, 15 R1, 16 touch pad (pad mask table 0x15B5AB0); 17-20 only through remapping.
+- **Weapons**: 0xBD5AA0(unit) = current weapon index (0 primary, 1 special, 2 heavy),
+  0xBD5340(unit, i) the weapon in slot i, 0xBD7310 the next usable index. The player
+  control record's +0x64 / +0x68 (current / desired) cannot select a weapon: 0x91EE90 resets
+  them from the unit (0xBD5B80) each update (traced: a write of +0x68 = 1 is gone the next
+  update). The weapon keys therefore tap Triangle (primary <-> special) or hold it ~1 s
+  (heavy) until 0xBD5AA0 reports the weapon; headless traces show 0 -> 1, 0 -> 2, 2 -> 0,
+  0 -> 1, 1 -> 0 (D1_WEAPON_TEST, D1_TRACE_WEAPON).
+- **Button prompts**: text is built from localized string parts (0x94AF70 -> 0x8DA890 ->
+  0x8DA9D0 per part: a run from 0x8DA760 {+0x30 pool, +0x38 UTF-16 buffer, +0x40 length},
+  text decoded by 0x8D5530: UTF-8 (flag +0x1B bit 2) or UTF-16, every unit + the part's
+  cipher shift). Button glyphs are private-use characters in parts of their own: Cross
+  U+E020 U+E000, Circle E020 E001, Square E020 E002, Triangle E020 E003, touch pad E021
+  E005, R2 E006, L2 E007, L1 E008, R1 E009, R3 E010, L3 E012, D-pad up/right/down/left
+  E013-E016, Options E017. Button variables ({f2:<hash>} parts, 20 in the English strings)
+  resolve through 0x94B0F0: action -> the controller layout's button -> glyph name hash
+  (0x2744880.., set by 0x94C350) -> glyph string in tag 0x80AA949E (217 glyph strings,
+  12 languages; English 0x80AB0EE2) via 0x8D5220. Charm's decoder keeps only the low byte of
+  shifted single-byte characters, which turned these into control characters;
+  tools/d1_global_strings_resolve.py now decodes like the game.
+- **d1-native**: PC key bindings (Destiny 2 PC defaults, bind_* in d1-native.cfg) become
+  DualShock 4 input (held / tapped buttons, stick directions, weapon keys). 0x8D5530 is
+  reimplemented (hooks.cpp string_part_decode) and, while the keyboard and mouse were used
+  last (prompts = auto), a glyph-only part becomes the bound key's name ("[E]") in a run
+  grown from the same pool (0x8D9820; old buffer freed with 0x8DD4C0(&pool, ptr) - passing
+  only a {pool, ptr} pair, as Ghidra's signature suggests, corrupts the pool and hangs the
+  boot). Headless check: the title screen's Cross prompt becomes "[Space]", interact
+  "[E]", the touch pad "[M]"; the game boots and plays as before.
+- Not done yet: the menu cursor (Director, character screen) still moves with the left stick
+  (WASD); a mouse-driven cursor needs the UI cursor code found.

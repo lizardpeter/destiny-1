@@ -64,7 +64,8 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
 - 9 Bungie source files named in the binary (all placeholders, nothing reconstructed yet).
 - ~2,350 RTTI classes placed across 37 folders; the renderer is mostly invisible
   to RTTI, so `engine/graphics` is thin until functions are traced.
-- 282 decompiled functions:
+- 419 decompiled functions with a role in `functions.json`, plus 1165 unattributed
+  decompiles in `unsorted/` (unedited Ghidra output, see `unsorted/README.md`):
   - 33 from the graphics work: the TFX VM and extern ABI, the Frame extern, auto-exposure, the
     Engine Configuration snapshot, the global channel store, and `c_sun_manager`.
   - 81 from the online work (2026-10-13), spread across `omaha/networking/bap`,
@@ -97,6 +98,20 @@ with `INHERITS_FROM` edges) and `FunctionOccurrence` nodes. Subsystem keys in
     character data cache and the investment peer subscription roster
     - main loop timing, job system, logging, the engine heap
     - NP toolkit and DemonWare entry points
+  - 137 from the co-op, Director, unlock and gear work (2026-10-15/16), mostly in
+    `omaha/simulation`, `omaha/world_controller`, `spasaha/investment` and `omaha/networking`:
+    - the PSN session-invitation join path, the join manager and the joinability check
+    - simulation player updates (tracker diff against the session membership), simulation
+      peers, views, the domain watcher, the entity database and entity replication
+    - host incidents, world cinematics, the world globals and claim-abandoned host messages,
+      the client_authoritative_data_update delta encoding
+    - public regions: matchmaking configuration, the region ambassador and citizen join,
+      the matchmaking composition check
+    - Director activity and destination states, activity permission and availability,
+      unlock flag storage scopes and the schedule time
+    - items and gear: the item and weapon pattern tables, investment object lookup, the
+      equipment iterator, the can-equip check and loadout gear caching
+    - engine-type kinds (quantized, point3d, vector3d, type handle, 8-byte identifier)
 - The online protocol (every BAP message class, activity-host message types and handlers,
   payload types, replication families, unlock flags, the prologue scenario, rejected
   hypotheses and open questions) is in

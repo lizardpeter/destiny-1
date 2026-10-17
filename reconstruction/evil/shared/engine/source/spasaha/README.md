@@ -17,7 +17,13 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x25a550` | definitions_manager |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`25a550_definitions_manager.c`](decompiled/25a550_definitions_manager.c) | Definitions manager accessor. Vtable +0x290 / +0x298 / +0x2A0 list the master flag index of each stored unlock-flag slot (profile 3100 at +0x383C, profile extra 274 at +0x5430, character 2189 at +0x53C0; {i32 count, i64 relative array @+8} of 8-byte entries, i16 master index @+0x14); +0x100 the equipment slot order; +0x168 the inventory item map; +0x410 item definitions by index. |
+| `0x25a6e0` | activity_definitions |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`25a6e0_activity_definitions.c`](decompiled/25a6e0_activity_definitions.c) | Activity definitions: content globals (*0x26527E8) vtable +0x38 -> block {count @0, relptr @8 -> 16-byte entries, relptr @+8 -> 0x100-byte definition}; definition +0 activity hash, +0x58 scenario name, +0x88 type tag, +0xA4 matchmaking content hash. 653 definitions. |
+| `0x528c50` | activity_availability_provider_query |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`528c50_activity_availability_provider_query.c`](decompiled/528c50_activity_availability_provider_query.c) | Availability provider (*0x26527D8) vtable +0x40: answers an activity's availability; 7 = unavailable, seen for e.g. Moon missions. |
+| `0x58fd40` | director_show_activity_nodes |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`58fd40_director_show_activity_nodes.c`](decompiled/58fd40_director_show_activity_nodes.c) | Director: shows an activity node when its state (0x264360) is 3 or higher (4 = newly available); d1-native D1_BYPASS=activities reports locked nodes (2) as 3. |
+| `0x5909b0` | director_destination_state |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`5909b0_director_destination_state.c`](decompiled/5909b0_director_destination_state.c) | Director destinations: each destination has two more unlock expressions besides its activity state list; the solar-system gates are flags 3850, 98, 2539 and 170\|2549. |
 
 ## Classes (13)
 

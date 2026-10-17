@@ -2,6 +2,8 @@
 // overridden by environment variables for quick experiments.
 #pragma once
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace d1 {
 
@@ -44,6 +46,12 @@ struct Settings {
     double mouse_zoom_scale = 1.0;
     // skip the new-character intro cinematic
     bool skip_intro = true;
+    // button prompts: "auto" (key names while on keyboard and mouse, glyphs on a controller),
+    // "keyboard" or "controller"
+    std::string prompts = "auto";
+    // key bindings: "bind_<action> = <key>, <key>" lines, in file order (frontend_sdl.cpp
+    // has the actions and the PC defaults; an action listed here replaces its defaults)
+    std::vector<std::pair<std::string, std::string>> binds;
 };
 
 void load_settings(const std::string& path);

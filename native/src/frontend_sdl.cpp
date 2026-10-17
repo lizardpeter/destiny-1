@@ -1,11 +1,7 @@
 // SDL2 window, event loop, input and audio for builds with the native renderer (no
-// shadPS4). Same controls as the temporary renderer's window:
-//   WASD move · mouse look (raw counts, fed straight into the game's aim; see hooks.cpp)
-//   Space/Enter Cross (jump) · Left Ctrl/C Circle (crouch, back) · Backspace Circle (back)
-//   R/E Square (reload, interact) · 1/2/3/mouse wheel Triangle (switch weapon)
-//   Q L1 (grenade) · F R1 (melee) · X L1+R1 (super) · Left Shift L3 (sprint) · Z R3
-//   left mouse R2 (fire) · right mouse L2 (aim) · middle mouse R3 · mouse 4/5 L1/R1
-//   Esc Options (menu) · Tab/G touch pad (map, ghost) · arrows D-pad · IJKL right stick (menus)
+// shadPS4). Controls are PC key bindings (Destiny 2 defaults, bind_* in d1-native.cfg; the
+// table is kActions below) turned into the DualShock 4 input the game reads, plus raw
+// mouse look fed straight into the game's aim (hooks.cpp) and direct weapon selection.
 // Clicking in the window captures the mouse; F2 or losing focus releases it. F11 or
 // Alt+Enter toggles borderless fullscreen. Controllers use SDL's game-controller mapping.
 #include <SDL.h>
@@ -15,9 +11,13 @@
 #include <atomic>
 #include <cstdlib>
 #include <mutex>
+#include <cctype>
+#include <cstring>
 #include <string>
+#include <vector>
 
 #include "frontend.h"
+#include "settings.h"
 #include "render_bridge.h"
 #include "../gfx/nrender.h"
 
@@ -48,7 +48,6 @@ PadState g_state{0, 0x80, 0x80, 0x80, 0x80, 0, 0};
 // aim hook, so a count reaches the game at most ~1 ms after SDL sees it.
 std::atomic<bool> g_captured{false};
 std::atomic<int32_t> g_mouse_dx{0}, g_mouse_dy{0};
-std::atomic<uint32_t> g_wheel_until{0};  // SDL tick until which a wheel notch holds Triangle
 
 void set_capture(bool on) {
     if (on == g_captured.load()) return;
@@ -69,38 +68,219 @@ void update_drawable_size() {
     g_w = uint32_t(std::max(w, 0)), g_h = uint32_t(std::max(h, 0));
 }
 
+// ---- key bindings (PC defaults as in Destiny 2; bind_<action> lines in d1-native.cfg)
+// Each action turns into the DualShock 4 input the game reads: a held button, a short tap
+// (reload is Square tapped, interact Square held), a stick direction, or a direct weapon
+// selection (weapon_1..3, see select_weapon in hooks.cpp).
+enum class Kind { hold, tap, stick, weapon };
+enum Stick { kLeftX, kLeftY };
+struct Action {
+    const char* name;
+    const char* defaults;
+    Kind kind;
+    uint32_t buttons;  // hold / tap: button bits; stick: axis (kLeftX / kLeftY) and sign; weapon: index
+    int sign;
+};
+constexpr Action kActions[] = {
+    {"move_forward", "W", Kind::stick, kLeftY, -1},
+    {"move_back", "S", Kind::stick, kLeftY, +1},
+    {"move_left", "A", Kind::stick, kLeftX, -1},
+    {"move_right", "D", Kind::stick, kLeftX, +1},
+    {"jump", "Space", Kind::hold, kCross, 0},
+    {"crouch", "Left Ctrl", Kind::hold, kCircle, 0},
+    {"sprint", "Left Shift", Kind::hold, kL3, 0},
+    {"fire", "Mouse1", Kind::hold, kR2, 0},
+    {"aim", "Mouse2", Kind::hold, kL2, 0},
+    {"reload", "R", Kind::tap, kSquare, 0},
+    {"interact", "E", Kind::hold, kSquare, 0},
+    {"melee", "C", Kind::hold, kR1, 0},
+    {"grenade", "Q", Kind::hold, kL1, 0},
+    {"super", "F", Kind::hold, kL1 | kR1, 0},
+    {"weapon_1", "1", Kind::weapon, 0, 0},
+    {"weapon_2", "2", Kind::weapon, 1, 0},
+    {"weapon_3", "3", Kind::weapon, 2, 0},
+    {"swap_weapon", "`", Kind::tap, kTriangle, 0},
+    {"next_weapon", "WheelUp", Kind::tap, kTriangle, 0},
+    {"prev_weapon", "WheelDown", Kind::tap, kTriangle, 0},
+    {"ghost", "Tab", Kind::hold, kTouchPad, 0},
+    {"director", "M", Kind::tap, kTouchPad, 0},
+    {"character", "I", Kind::tap, kOptions, 0},
+    {"menu", "Escape", Kind::hold, kOptions, 0},
+    {"back", "Backspace", Kind::hold, kCircle, 0},
+    {"confirm", "Return", Kind::hold, kCross, 0},
+    {"emote_up", "Up", Kind::hold, kUp, 0},
+    {"emote_down", "Down", Kind::hold, kDown, 0},
+    {"emote_left", "Left", Kind::hold, kLeft, 0},
+    {"emote_right", "Right", Kind::hold, kRight, 0},
+    {"pad_cross", "", Kind::hold, kCross, 0},
+    {"pad_circle", "", Kind::hold, kCircle, 0},
+    {"pad_square", "", Kind::hold, kSquare, 0},
+    {"pad_triangle", "", Kind::hold, kTriangle, 0},
+    {"pad_l1", "", Kind::hold, kL1, 0},
+    {"pad_r1", "", Kind::hold, kR1, 0},
+    {"pad_l2", "", Kind::hold, kL2, 0},
+    {"pad_r2", "", Kind::hold, kR2, 0},
+    {"pad_l3", "", Kind::hold, kL3, 0},
+    {"pad_r3", "", Kind::hold, kR3, 0},
+    {"pad_options", "", Kind::hold, kOptions, 0},
+    {"pad_touchpad", "", Kind::hold, kTouchPad, 0},
+    {"pad_up", "", Kind::hold, kUp, 0},
+    {"pad_down", "", Kind::hold, kDown, 0},
+    {"pad_left", "", Kind::hold, kLeft, 0},
+    {"pad_right", "", Kind::hold, kRight, 0},
+};
+constexpr int kActionCount = int(sizeof kActions / sizeof kActions[0]);
+constexpr uint32_t kTapMs = 120;  // long enough for the game to see a press, short of a hold
+
+// An input: a keyboard scancode, a mouse button (1-5) or a wheel direction.
+struct Input {
+    enum { key, mouse, wheel_up, wheel_down } type;
+    int code;
+};
+std::vector<Input> g_binds[kActionCount];
+std::atomic<uint32_t> g_wheel_up_until{0}, g_wheel_down_until{0};
+std::atomic<int> g_weapon_request{-1};
+
+bool parse_input(std::string name, Input& out) {
+    name.erase(0, name.find_first_not_of(" \t"));
+    name.erase(name.find_last_not_of(" \t") + 1);
+    if (name.empty()) return false;
+    std::string lower;
+    for (char c : name) lower += char(std::tolower(static_cast<unsigned char>(c)));
+    if (lower == "wheelup") return out = {Input::wheel_up, 0}, true;
+    if (lower == "wheeldown") return out = {Input::wheel_down, 0}, true;
+    if (lower.size() == 6 && lower.rfind("mouse", 0) == 0 && lower[5] >= '1' && lower[5] <= '5')
+        return out = {Input::mouse, lower[5] - '0'}, true;
+    const SDL_Scancode sc = SDL_GetScancodeFromName(name.c_str());
+    if (sc == SDL_SCANCODE_UNKNOWN) return false;
+    return out = {Input::key, int(sc)}, true;
+}
+
+std::once_flag g_binds_once;
+void load_binds_once() {
+    const auto& user = d1::settings().binds;
+    for (int a = 0; a < kActionCount; ++a) {
+        std::string spec = kActions[a].defaults;
+        for (const auto& [name, keys] : user)
+            if (name == kActions[a].name) spec = keys;
+        std::string lower;
+        for (char c : spec) lower += char(std::tolower(static_cast<unsigned char>(c)));
+        if (lower == "none") continue;
+        size_t pos = 0;
+        while (pos <= spec.size()) {
+            size_t comma = spec.find(',', pos);
+            if (comma == std::string::npos) comma = spec.size();
+            const std::string one = spec.substr(pos, comma - pos);
+            Input in;
+            if (parse_input(one, in)) g_binds[a].push_back(in);
+            else if (one.find_first_not_of(" \t") != std::string::npos)
+                d1::log("input: bind_%s: unknown key '%s'", kActions[a].name, one.c_str());
+            pos = comma + 1;
+        }
+    }
+    for (const auto& [name, keys] : user) {
+        bool known = false;
+        for (const auto& a : kActions) known |= name == a.name;
+        if (!known) d1::log("input: unknown action bind_%s", name.c_str());
+    }
+}
+
+// Last input device: key names in prompts while the keyboard and mouse are in use, button
+// glyphs once a controller is (settings "prompts": auto, keyboard or controller).
+std::atomic<bool> g_kbm_last{true};
+
+std::string input_name(const Input& in) {
+    switch (in.type) {
+    case Input::mouse: {
+        static const char* names[] = {"", "LMB", "RMB", "MMB", "Mouse 4", "Mouse 5"};
+        return names[in.code];
+    }
+    case Input::wheel_up:
+        return "Wheel Up";
+    case Input::wheel_down:
+        return "Wheel Down";
+    case Input::key:
+        break;
+    }
+    std::string n = SDL_GetScancodeName(SDL_Scancode(in.code));
+    for (const char* side : {"Left ", "Right "})
+        if (n.rfind(side, 0) == 0 && n.size() > std::strlen(side) + 1) n = n.substr(std::strlen(side));
+    if (n == "Escape") n = "Esc";
+    if (n == "Return") n = "Enter";
+    if (n == "Backspace") n = "Bksp";
+    return n;
+}
+
+// The action a DualShock 4 glyph stands for in prompts (what the player presses on PC).
+const char* glyph_action(uint32_t glyph) {
+    switch (glyph) {
+    case 0xE000: return "jump";         // Cross
+    case 0xE001: return "crouch";       // Circle
+    case 0xE002: return "interact";     // Square (prompts are mostly "hold to interact")
+    case 0xE003: return "swap_weapon";  // Triangle
+    case 0xE005: return "director";     // touch pad
+    case 0xE006: return "fire";         // R2
+    case 0xE007: return "aim";          // L2
+    case 0xE008: return "grenade";      // L1
+    case 0xE009: return "melee";        // R1
+    case 0xE010: return "pad_r3";       // R3
+    case 0xE012: return "sprint";       // L3
+    case 0xE013: return "emote_up";     // D-pad
+    case 0xE014: return "emote_right";
+    case 0xE015: return "emote_down";
+    case 0xE016: return "emote_left";
+    case 0xE017: return "character";    // Options
+    }
+    return nullptr;
+}
+
 void poll_input() {
+    std::call_once(g_binds_once, load_binds_once);
     PadState s{0, 0x80, 0x80, 0x80, 0x80, 0, 0};
     const uint8_t* k = SDL_GetKeyboardState(nullptr);
-    struct { SDL_Scancode sc; uint32_t bit; } keys[] = {
-        {SDL_SCANCODE_SPACE, kCross},     {SDL_SCANCODE_RETURN, kCross},    {SDL_SCANCODE_LCTRL, kCircle},
-        {SDL_SCANCODE_C, kCircle},        {SDL_SCANCODE_ESCAPE, kOptions},   {SDL_SCANCODE_BACKSPACE, kCircle},
-        {SDL_SCANCODE_R, kSquare},        {SDL_SCANCODE_E, kSquare},        {SDL_SCANCODE_1, kTriangle},
-        {SDL_SCANCODE_2, kTriangle},      {SDL_SCANCODE_3, kTriangle},      {SDL_SCANCODE_Q, kL1},
-        {SDL_SCANCODE_F, kR1},            {SDL_SCANCODE_X, kL1 | kR1},      {SDL_SCANCODE_LSHIFT, kL3},
-        {SDL_SCANCODE_Z, kR3},            {SDL_SCANCODE_TAB, kTouchPad},     {SDL_SCANCODE_G, kTouchPad},
-        {SDL_SCANCODE_UP, kUp},           {SDL_SCANCODE_DOWN, kDown},       {SDL_SCANCODE_LEFT, kLeft},
-        {SDL_SCANCODE_RIGHT, kRight},
-    };
+    const uint32_t now = SDL_GetTicks();
+    const uint32_t mouse = g_captured ? SDL_GetMouseState(nullptr, nullptr) : 0;
     const bool alt = k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT];  // Alt+Enter is the fullscreen toggle
-    for (auto& [sc, bit] : keys)
-        if (k[sc] && !(alt && sc == SDL_SCANCODE_RETURN)) s.buttons |= bit;
-    auto stick = [&](SDL_Scancode neg, SDL_Scancode pos) -> uint8_t {
-        return k[neg] && !k[pos] ? 0x00 : k[pos] && !k[neg] ? 0xFF : 0x80;
+    auto down = [&](const Input& in) {
+        switch (in.type) {
+        case Input::key:
+            return k[in.code] != 0 && !(alt && in.code == SDL_SCANCODE_RETURN);
+        case Input::mouse:
+            return (mouse & SDL_BUTTON(in.code)) != 0;
+        case Input::wheel_up:
+            return g_captured && int32_t(g_wheel_up_until.load() - now) > 0;
+        case Input::wheel_down:
+            return g_captured && int32_t(g_wheel_down_until.load() - now) > 0;
+        }
+        return false;
     };
-    s.lx = stick(SDL_SCANCODE_A, SDL_SCANCODE_D);
-    s.ly = stick(SDL_SCANCODE_W, SDL_SCANCODE_S);
-    s.rx = stick(SDL_SCANCODE_J, SDL_SCANCODE_L);
-    s.ry = stick(SDL_SCANCODE_I, SDL_SCANCODE_K);
-    if (g_captured) {
-        const uint32_t m = SDL_GetMouseState(nullptr, nullptr);
-        if (m & SDL_BUTTON_LMASK) s.buttons |= kR2;
-        if (m & SDL_BUTTON_RMASK) s.buttons |= kL2;
-        if (m & SDL_BUTTON_MMASK) s.buttons |= kR3;
-        if (m & SDL_BUTTON_X1MASK) s.buttons |= kL1;
-        if (m & SDL_BUTTON_X2MASK) s.buttons |= kR1;
-        if (int32_t(g_wheel_until.load() - SDL_GetTicks()) > 0) s.buttons |= kTriangle;
+    static bool was[kActionCount] = {};
+    static uint32_t tap_until[kActionCount] = {};
+    int lx = 0, ly = 0;
+    for (int a = 0; a < kActionCount; ++a) {
+        bool on = false;
+        for (const Input& in : g_binds[a]) on |= down(in);
+        const bool pressed = on && !was[a];
+        was[a] = on;
+        const Action& act = kActions[a];
+        switch (act.kind) {
+        case Kind::hold:
+            if (on) s.buttons |= act.buttons;
+            break;
+        case Kind::tap:
+            if (pressed) tap_until[a] = now + kTapMs;
+            if (int32_t(tap_until[a] - now) > 0) s.buttons |= act.buttons;
+            break;
+        case Kind::stick:
+            if (on) (act.buttons == kLeftX ? lx : ly) += act.sign;
+            break;
+        case Kind::weapon:
+            if (pressed) g_weapon_request = int(act.buttons);
+            break;
+        }
     }
+    s.lx = lx < 0 ? 0x00 : lx > 0 ? 0xFF : 0x80;
+    s.ly = ly < 0 ? 0x00 : ly > 0 ? 0xFF : 0x80;
     if (s.buttons & kL2) s.l2 = 0xFF;
     if (s.buttons & kR2) s.r2 = 0xFF;
 
@@ -145,6 +325,33 @@ void open_first_controller() {
 
 bool window_active() {
     return g_window != nullptr;
+}
+
+int take_weapon_request() {
+    return g_weapon_request.exchange(-1, std::memory_order_relaxed);
+}
+
+bool keyboard_prompts() {
+    const std::string& mode = d1::settings().prompts;
+    if (mode == "controller") return false;
+    if (mode == "keyboard") return true;
+    return g_kbm_last.load(std::memory_order_relaxed);
+}
+
+int prompt_label(uint32_t glyph, char16_t* out, int max) {
+    const char* action = glyph_action(glyph);
+    if (!action) return 0;
+    std::call_once(g_binds_once, load_binds_once);
+    for (int a = 0; a < kActionCount; ++a) {
+        if (std::strcmp(kActions[a].name, action) != 0 || g_binds[a].empty()) continue;
+        const std::string text = "[" + input_name(g_binds[a][0]) + "]";
+        int n = 0;
+        for (char c : text)
+            if (n < max - 1) out[n++] = char16_t(static_cast<unsigned char>(c));
+        out[n] = 0;
+        return n;
+    }
+    return 0;
 }
 
 bool take_mouse_motion(int32_t& dx, int32_t& dy) {
@@ -208,7 +415,14 @@ void run_window_loop() {
                     update_drawable_size();
                 if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) set_capture(false);
                 break;
+            case SDL_CONTROLLERBUTTONDOWN:
+                g_kbm_last = false;
+                break;
+            case SDL_CONTROLLERAXISMOTION:
+                if (std::abs(int(e.caxis.value)) > 16000) g_kbm_last = false;
+                break;
             case SDL_MOUSEMOTION:
+                if (g_captured && (std::abs(e.motion.xrel) > 2 || std::abs(e.motion.yrel) > 2)) g_kbm_last = true;
                 if (g_captured) {
                     g_mouse_dx.fetch_add(e.motion.xrel, std::memory_order_relaxed);
                     g_mouse_dy.fetch_add(e.motion.yrel, std::memory_order_relaxed);
@@ -217,10 +431,12 @@ void run_window_loop() {
             case SDL_MOUSEBUTTONDOWN:
                 if (!g_captured && e.button.button == SDL_BUTTON_LEFT) set_capture(true);
                 break;
-            case SDL_MOUSEWHEEL:
-                if (g_captured && e.wheel.y != 0) g_wheel_until = SDL_GetTicks() + 80;
+            case SDL_MOUSEWHEEL:  // a notch reads as a press for 80 ms (bindings see its edge)
+                if (g_captured && e.wheel.y > 0) g_wheel_up_until = SDL_GetTicks() + 80;
+                if (g_captured && e.wheel.y < 0) g_wheel_down_until = SDL_GetTicks() + 80;
                 break;
             case SDL_KEYDOWN:
+                g_kbm_last = true;
                 if (!e.key.repeat && e.key.keysym.sym == SDLK_F2) set_capture(!g_captured);
                 if (!e.key.repeat && e.key.keysym.sym == SDLK_F9) d1::hooks_request_launch();   // co-op test keys
                 if (!e.key.repeat && e.key.keysym.sym == SDLK_F10) d1::hooks_request_join();

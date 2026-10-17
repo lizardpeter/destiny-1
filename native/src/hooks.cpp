@@ -157,12 +157,92 @@ static void roster_tick();
 static std::atomic<int32_t> g_spawn_entity{-1};
 static int client_references(uint64_t b, int type, uint8_t** out, int max);
 static int32_t g_mouse_test_dx = 0, g_mouse_test_dy = 0;  // D1_MOUSE_TEST=dx,dy (headless)
+
+// ---- direct weapon selection (PC keys 1 / 2 / 3)
+// The console has no "weapon n" button: Triangle tapped toggles primary and special, held
+// draws the heavy weapon. The player control record (*0x273EB28, one local player) keeps the
+// unit at +0x20, and 0xBD5AA0(unit) gives the unit's current weapon index (0 primary,
+// 1 special, 2 heavy; 0xBD5340(unit, index) != -1 when it has one there). The record's
+// +0x64/+0x68 (current / desired index, copied into the unit action) are not a way in:
+// 0x91EE90 resets +0x68 from the unit (0xBD5B80) every update, so writing it changes nothing.
+// A weapon key therefore drives Triangle the way a player would - a tap, or a hold for the
+// heavy weapon - until the unit holds the wanted weapon (or 6 s pass), reading the result
+// every update from the post-0x91B500 hook; the pad read (hle_input.cpp) adds the presses.
+// D1_WEAPON_TEST=<index>@<secs>,... (headless): request weapons at those times after the
+// first player control update; D1_TRACE_WEAPON logs the state every 2 s.
+using UnitWeaponFn = D1_SYSV int32_t (*)(int32_t unit, int16_t index);
+using UnitCurrentWeaponFn = D1_SYSV int32_t (*)(int32_t unit);
+static std::atomic<uint32_t> g_injected_buttons{0};
+uint32_t hooks_injected_buttons() { return g_injected_buttons.load(std::memory_order_relaxed); }
+static void select_weapon() {
+    using clock = std::chrono::steady_clock;
+    const uint64_t b = rt().modules[0].base;
+    auto* pc = *reinterpret_cast<uint8_t**>(b + 0x273EB28);
+    if (!pc) return;
+    const int32_t unit = *reinterpret_cast<int32_t*>(pc + 0x20);
+    if (unit == -1) { g_injected_buttons = 0; return; }
+    int want = render::take_weapon_request();
+    static const char* test = getenv("D1_WEAPON_TEST");
+    static const auto t0 = clock::now();
+    const auto now = clock::now();
+    if (test && want < 0) {
+        static size_t done = 0;
+        const double secs = std::chrono::duration<double>(now - t0).count();
+        size_t n = 0;
+        for (const char* q = test; *q; ++n) {
+            int idx = 0;
+            double at = 0;
+            std::sscanf(q, "%d@%lf", &idx, &at);
+            if (n == done && secs >= at) want = idx, ++done;
+            while (*q && *q != ',') ++q;
+            if (*q) ++q;
+        }
+    }
+    const int32_t current = reinterpret_cast<UnitCurrentWeaponFn>(b + 0xBD5AA0)(unit);
+    static int target = -1, phase = 0, pressed_from = -1;
+    static clock::time_point phase_until, deadline;
+    constexpr uint32_t kTriangle = 0x1000;
+    if (want >= 0 && want < 3) {
+        const bool has = reinterpret_cast<UnitWeaponFn>(b + 0xBD5340)(unit, int16_t(want)) != -1;
+        log("input: weapon %d requested (current %d%s)", want, current, has ? "" : ", none in that slot");
+        if (has && want != current) target = want, phase = 0, deadline = now + std::chrono::seconds(6);
+    }
+    if (target >= 0) {
+        if (current == target || now >= deadline) {
+            if (current != target) log("input: weapon %d not reached (still %d)", target, current);
+            target = -1, g_injected_buttons = 0;
+        } else if (phase == 0) {  // press: a tap toggles primary / special, a hold draws the heavy
+            g_injected_buttons = kTriangle;
+            phase_until = now + std::chrono::milliseconds(target == 2 ? 1000 : 200);
+            phase = 1;
+        } else if (phase == 1 && now >= phase_until) {  // release, give the switch time to start
+            g_injected_buttons = 0;
+            phase_until = now + std::chrono::milliseconds(2500);  // the switch reports when done
+            pressed_from = current;
+            phase = 2;
+        } else if (phase == 2 && (now >= phase_until || current != pressed_from)) {
+            phase = 0;  // not there yet (e.g. heavy -> special goes via primary): press again
+        }
+    }
+    if (getenv("D1_TRACE_WEAPON")) {
+        static auto next = clock::now();
+        if (now >= next) {
+            next = now + std::chrono::milliseconds(500);
+            int32_t w[4];
+            for (int i = 0; i < 4; ++i) w[i] = reinterpret_cast<UnitWeaponFn>(b + 0xBD5340)(unit, int16_t(i));
+            log("weapon: unit %#x current %d target %d phase %d; slots %d %d %d %d", unit, current, target, phase,
+                w[0] != -1, w[1] != -1, w[2] != -1, w[3] != -1);
+        }
+    }
+}
+
 static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32_t player, void* state,
                                         int32_t* control, float* action) {
     g_pc_orig(dt, f2, slot, player, state, control, action);
     if (player != 0 || !action) return;
     trace_cameras();
     trace_references();
+    select_weapon();
     if (getenv("D1_TRACE_SPAWN")) {  // research: why the local player gets no unit
         static auto next = std::chrono::steady_clock::now();
         if (std::chrono::steady_clock::now() >= next) {
@@ -1602,6 +1682,170 @@ static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, flo
 using StateStepFn = D1_SYSV void (*)(void*);
 static StateStepFn g_state_step_orig = nullptr;
 static std::atomic<int> g_state{-1};
+
+// D1_TRACE_GLYPHS=1 (research): 20 s into activity:in_world, log how button prompts resolve.
+// Text variables naming a button ({f2:<hash>} parts of a localized string) go through
+// 0x94B0F0(&hash, &out): variable -> action -> the controller layout's button (0x748FE0,
+// 0x745650) -> one of 21 glyph name hashes (0x2744880..0x27448DC, set by 0x94C350) -> an
+// entry of the glyph table tag (0xAC5E40, global 0x279D158) for the current language
+// (0x8D5220(tag, &hash, 0x752A40())). out = {u32 variable, u32, entry pointer @+8}.
+static void hexdump(const char* what, const void* p, int n) {
+    if (!p) { log("glyph: %s: null", what); return; }
+    std::string hex;
+    for (int i = 0; i < n; ++i) {
+        char buf[4];
+        std::snprintf(buf, sizeof buf, "%02x ", static_cast<const uint8_t*>(p)[i]);
+        hex += buf;
+    }
+    log("glyph: %s @%p: %s", what, p, hex.c_str());
+}
+static void trace_glyphs(int st) {
+    static const bool on = getenv("D1_TRACE_GLYPHS") != nullptr;
+    static std::chrono::steady_clock::time_point since{};
+    static bool done = false;
+    if (!on || done) return;
+    if (st != 0x24) { since = {}; return; }
+    const auto now = std::chrono::steady_clock::now();
+    if (since == std::chrono::steady_clock::time_point{}) since = now;
+    if (now - since < std::chrono::seconds(20)) return;
+    done = true;
+    const uint64_t b = rt().modules[0].base;
+    using TagFn = D1_SYSV const uint8_t* (*)();
+    const uint8_t* tag = reinterpret_cast<TagFn>(b + 0xAC5E40)();
+    hexdump("glyph table tag", tag, 0x60);
+    const int lang = reinterpret_cast<D1_SYSV int (*)()>(b + 0x752A40)();
+    log("glyph: language %d", lang);
+    using FindFn = D1_SYSV const uint8_t* (*)(const uint8_t*, const uint32_t*, int);
+    for (int i = 0; tag && i < 26; ++i) {
+        const uint32_t h = *reinterpret_cast<const uint32_t*>(b + 0x2744880 + 4 * i);
+        const uint8_t* e = reinterpret_cast<FindFn>(b + 0x8D5220)(tag, &h, lang);
+        char what[64];
+        std::snprintf(what, sizeof what, "glyph %#x (hash %08x)", 0x2744880 + 4 * i, h);
+        hexdump(what, e, 0x30);
+    }
+    using ResolveFn = D1_SYSV bool (*)(const uint32_t*, uint32_t*);
+    for (uint32_t v : {0xEABFE990u, 0xBE22697Bu, 0xCED69A4Eu, 0xCC517DBEu, 0x8FEB4850u, 0x9CD0EF5Eu, 0x6FEBE322u}) {
+        alignas(8) uint32_t out[4] = {};
+        const bool ok = reinterpret_cast<ResolveFn>(b + 0x94B0F0)(&v, out);
+        char what[64];
+        std::snprintf(what, sizeof what, "variable %08x -> %d", v, int(ok));
+        hexdump(what, ok ? reinterpret_cast<const void*>(*reinterpret_cast<uint64_t*>(out + 2)) : nullptr, 0x30);
+    }
+}
+
+// ---- PC button prompts: key names in place of the controller's button glyphs
+// Every piece of UI text is built from localized string parts (0x20 bytes: +0x08 relative
+// pointer to the bytes, +0x14 u16 byte count, +0x16 u16 character count, +0x18 u16 cipher
+// shift added to every character, +0x1B flags: bit 2 = UTF-8 source, bits 0-1 = part kind,
+// 2 = variable). A string's parts become text runs (0x8DA9D0): 0x8DA760(chars) allocates a
+// run (0x50 bytes: +0x30 pool, +0x38 UTF-16 buffer of chars + 1, +0x40 i32 length) and
+// 0x8D5530(part, buffer, chars + 1) decodes the part into it. Button glyphs are private-use
+// characters U+E000..U+E021 the UI font draws as DualShock 4 buttons, each in a part of its
+// own (one cipher shift per part): inline in the text, or substituted for a button variable
+// (0x94B0F0 above: the 21 glyph strings of tag 0x80AA949E / English 0x80AB0EE2). Cross is
+// U+E020 U+E000 (a backdrop glyph, then the button), circle E001, square E002, triangle
+// E003, touch pad E021 E005, R2 E006, L2 E007, L1 E008, R1 E009, R3 E010, L3 E012, D-pad
+// up E013 / right E014 / down E015 / left E016, Options E017.
+// d1-native reimplements 0x8D5530 (same decode) and, while the keyboard and mouse are in
+// use, replaces a glyph-only part with the bound key's name ("[E]"), growing the run it was
+// allocated for (0x8DA760 hook remembers the last run per thread); backdrop glyphs vanish.
+using RunAllocFn = D1_SYSV uint8_t* (*)(int64_t chars);
+static RunAllocFn g_run_alloc_orig = nullptr;
+static thread_local uint8_t* t_last_run = nullptr;
+static D1_SYSV uint8_t* run_alloc_hook(int64_t chars) {
+    uint8_t* run = g_run_alloc_orig(chars);
+    t_last_run = run;
+    return run;
+}
+static bool is_glyph(uint16_t c) { return c >= 0xE000 && c <= 0xE021; }
+static bool is_backdrop(uint16_t c) { return c == 0xE020 || c == 0xE021; }
+static D1_SYSV void string_part_decode(const uint8_t* part, uint16_t* out, int64_t cap) {
+    uint16_t* const start = out;
+    const int64_t rel = *reinterpret_cast<const int64_t*>(part + 8);
+    const uint8_t* src = rel ? part + 8 + rel : nullptr;
+    const uint16_t bytes = *reinterpret_cast<const uint16_t*>(part + 0x14);
+    const uint16_t shift = *reinterpret_cast<const uint16_t*>(part + 0x18);
+    if (!(part[0x1B] & 4)) {  // UTF-16 source: `bytes` units, at most cap - 1
+        for (int64_t i = 0; bytes && cap != 1 && i < bytes && i < cap - 1; ++i)
+            *out++ = uint16_t(shift + reinterpret_cast<const uint16_t*>(src)[i]);
+    } else if (bytes && cap != 1) {  // UTF-8 source (as the game decodes it: 16-bit result)
+        uint16_t* const last = start + cap - 1;
+        const uint8_t* end = src + bytes;
+        do {
+            const uint8_t b = *src;
+            uint16_t c = b;
+            int n = 1;
+            if (b & 0x80) {
+                if ((b & 0xE0) == 0xC0) c = b & 0x1F, n = 2;
+                else if ((b & 0xF0) == 0xE0) c = b & 0x0F, n = 3;
+                else if ((b & 0xF8) == 0xF0) c = b & 7, n = 4;
+                else c = 0, n = 0;  // a stray continuation byte: the game writes 0 and stays put
+                for (int k = 1; k < n; ++k) c = uint16_t(c << 6 | (src[k] & 0x3F));
+            }
+            *out++ = uint16_t(c + shift);
+            src += n;
+        } while (src != end && out != last);
+    }
+    *out = 0;
+    // glyph-only part?
+    const int64_t len = out - start;
+    static const bool trace = getenv("D1_TRACE_PROMPTS") != nullptr;
+    if (trace) {  // research: every part with a private-use character
+        static std::atomic<int> traced{0};
+        bool any = false;
+        for (int64_t i = 0; i < len; ++i) any |= start[i] >= 0xE000 && start[i] < 0xF900;
+        if (any && traced.fetch_add(1) < 80) {
+            std::string hex;
+            for (int64_t i = 0; i < len && i < 24; ++i) {
+                char buf[8];
+                std::snprintf(buf, sizeof buf, start[i] < 0x80 && start[i] >= 0x20 ? "%c" : "<%04x>", start[i]);
+                hex += buf;
+            }
+            log("prompt: part shift %04x flags %02x: %s", shift, part[0x1B], hex.c_str());
+        }
+    }
+    if (len == 0 || !render::keyboard_prompts()) return;
+    uint32_t button = 0;
+    for (int64_t i = 0; i < len; ++i) {
+        if (!is_glyph(start[i])) return;
+        if (!is_backdrop(start[i]) && !button) button = start[i];
+    }
+    char16_t label[32];
+    const int n = button ? render::prompt_label(button, label, 32) : 0;
+    if (button && n <= 0) return;  // a button with no key bound: keep the glyph
+    uint8_t* run = t_last_run;
+    static std::atomic<int> traced{0};
+    if (trace && traced.fetch_add(1) < 60) {
+        std::string l;
+        for (int i = 0; i < n; ++i) l += char(label[i]);
+        log("prompt: glyph %04x (%lld chars) -> '%s'%s", button, (long long)len, l.c_str(),
+            run && *reinterpret_cast<uint16_t**>(run + 0x38) == start ? " (run resized)" : "");
+    }
+    static const bool noresize = getenv("D1_PROMPT_NORESIZE") != nullptr;  // research
+    if (!noresize && run && *reinterpret_cast<uint16_t**>(run + 0x38) == start) {
+        const uint64_t b = rt().modules[0].base;
+        using PoolAllocFn = D1_SYSV uint16_t* (*)(void* pool, int64_t size, int64_t align);
+        using PoolFreeFn = D1_SYSV void (*)(void* const* pool, void* ptr);  // 0x8DD4C0: frees ptr (if any) from *pool
+        uint16_t* buf = start;
+        if (n > *reinterpret_cast<int32_t*>(run + 0x40)) {
+            void* pool = *reinterpret_cast<void**>(run + 0x30);
+            buf = reinterpret_cast<PoolAllocFn>(b + 0x8D9820)(pool, int64_t(n) * 2 + 2, 2);
+            if (!buf) return;
+            *reinterpret_cast<uint16_t**>(run + 0x38) = buf;
+            reinterpret_cast<PoolFreeFn>(b + 0x8DD4C0)(&pool, start);
+        }
+        for (int i = 0; i < n; ++i) buf[i] = uint16_t(label[i]);
+        buf[n] = 0;
+        *reinterpret_cast<int32_t*>(run + 0x40) = n;
+        t_last_run = nullptr;
+    } else if (n == 0) {  // a backdrop on its own, in a buffer we cannot resize: a space
+        start[0] = u' ', start[1] = 0;
+    } else if (n <= len) {
+        for (int i = 0; i < n; ++i) start[i] = uint16_t(label[i]);
+        start[n] = 0;
+    }
+}
+
 static D1_SYSV void state_step_hook(void* sm) {
     g_state_step_orig(sm);
     const int32_t st = *reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0);
@@ -1609,6 +1853,7 @@ static D1_SYSV void state_step_hook(void* sm) {
     // D1_TRACE_GEAR=1 (research): 20 s into activity:in_world (0x24), log the local player's
     // configuration (player data +0x1660, built by 0x912240): body tag, and per weapon
     // config (+0x368 / +0x688 / +0x9A8) its gear id (-1: none) and item index (@+0x22)
+    trace_glyphs(st);
     static const bool trace = getenv("D1_TRACE_GEAR") != nullptr;
     static std::chrono::steady_clock::time_point since{};
     static bool done = false;
@@ -1956,6 +2201,10 @@ void install_game_hooks() {
     }
     g_pc_orig = reinterpret_cast<PlayerControlFn>(hook_function(exe.base + 0x91B500, reinterpret_cast<const void*>(&player_control_hook)));
     if (!g_pc_orig) log("hooks: mouse look hook FAILED");
+    // PC button prompts (key names instead of DualShock 4 glyphs while on keyboard and mouse)
+    g_run_alloc_orig = reinterpret_cast<RunAllocFn>(hook_function(exe.base + 0x8DA760, reinterpret_cast<const void*>(&run_alloc_hook)));
+    if (g_run_alloc_orig) replace_function(exe.base + 0x8D5530, reinterpret_cast<const void*>(&string_part_decode));
+    else log("hooks: text run hook FAILED (controller prompts stay)");
     if (const char* t = getenv("D1_MOUSE_TEST")) std::sscanf(t, "%d,%d", &g_mouse_test_dx, &g_mouse_test_dy);
     g_state_step_orig = reinterpret_cast<StateStepFn>(hook_function(exe.base + 0x783AC0, reinterpret_cast<const void*>(&state_step_hook)));
     if (settings().fps > 0) {

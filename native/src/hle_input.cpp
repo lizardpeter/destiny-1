@@ -12,6 +12,8 @@
 
 namespace d1 {
 
+uint32_t hooks_injected_buttons();  // hooks.cpp: Triangle presses for the weapon keys
+
 struct PadTouch { uint16_t x, y; uint8_t id, reserve[3]; };
 struct PadData {
     uint32_t buttons;
@@ -137,7 +139,7 @@ static void fill(PadData* d) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     d->timestamp = uint64_t(ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
     StickPush stick{0, 0};
-    d->buttons = scripted_buttons(d->timestamp) | state_buttons(d->timestamp, stick);
+    d->buttons = scripted_buttons(d->timestamp) | state_buttons(d->timestamp, stick) | hooks_injected_buttons();
     d->lx = uint8_t(0x80 + stick.x), d->ly = uint8_t(0x80 + stick.y);
     render::PadState p;
     if (render::read_pad(p)) {  // window input (renderer build)

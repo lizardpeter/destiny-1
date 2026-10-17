@@ -68,6 +68,48 @@ sensitivity = 1.5              # [D1_SENSITIVITY]
 mouse_invert = false           # [D1_MOUSE_INVERT=1]
 mouse_zoom_scale = 1.0         # [D1_MOUSE_ZOOM_SCALE]
 
+# Button prompts: auto (key names while you play on keyboard and mouse, controller buttons
+# once you pick up a controller), keyboard, or controller.
+prompts = auto                 # [D1_PROMPTS]
+
+# Key bindings. Defaults follow Destiny 2 on PC; uncomment a line to change it. Several
+# keys are separated by commas; "none" unbinds. Keys use SDL names (W, Space, Left Ctrl,
+# Left Shift, Tab, Escape, Backspace, Return, `, F1, Up, Keypad 1, ...) plus Mouse1-Mouse5,
+# WheelUp and WheelDown. A controller always works alongside.
+# bind_move_forward = W
+# bind_move_back = S
+# bind_move_left = A
+# bind_move_right = D
+# bind_jump = Space
+# bind_crouch = Left Ctrl
+# bind_sprint = Left Shift
+# bind_fire = Mouse1
+# bind_aim = Mouse2
+# bind_reload = R
+# bind_interact = E
+# bind_melee = C
+# bind_grenade = Q
+# bind_super = F
+# bind_weapon_1 = 1           # kinetic / primary
+# bind_weapon_2 = 2           # special
+# bind_weapon_3 = 3           # heavy
+# bind_swap_weapon = `        # the console's Triangle tap
+# bind_next_weapon = WheelUp
+# bind_prev_weapon = WheelDown
+# bind_ghost = Tab            # hold: Ghost
+# bind_director = M           # the map (Director)
+# bind_character = I          # Character screen
+# bind_menu = Escape
+# bind_back = Backspace
+# bind_confirm = Return
+# bind_emote_up = Up
+# bind_emote_down = Down
+# bind_emote_left = Left
+# bind_emote_right = Right
+# Raw controller buttons can be bound too: pad_cross, pad_circle, pad_square, pad_triangle,
+# pad_l1, pad_r1, pad_l2, pad_r2, pad_l3, pad_r3, pad_options, pad_touchpad, pad_up,
+# pad_down, pad_left, pad_right (e.g. bind_pad_r3 = G).
+
 # Skip the opening cinematic (Mars, the Traveler) that plays before the first mission.
 skip_intro = true              # [D1_SKIP_INTRO=0]
 
@@ -109,6 +151,8 @@ static void apply_setting(const std::string& key, const std::string& v) {
     }
     else if (key == "mouse_invert") s.mouse_invert = truthy(v);
     else if (key == "mouse_zoom_scale") s.mouse_zoom_scale = std::atof(v.c_str());
+    else if (key == "prompts") s.prompts = v;
+    else if (key.rfind("bind_", 0) == 0) s.binds.emplace_back(key.substr(5), v);
     else if (key.rfind("D1_", 0) == 0 || key.rfind("D1B_", 0) == 0) {  // any D1_* environment setting (testing
         // switches) or D1B_* backend setting (the local backend inherits the environment), unless already set
         if (!std::getenv(key.c_str())) {
@@ -161,6 +205,7 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_DISCORD_APP_ID")) s.discord_app_id = v;
     if (const char* v = getenv("D1_NAME")) s.name = v;
     if (const char* v = getenv("D1_SKIP_INTRO")) s.skip_intro = truthy(v);
+    if (const char* v = getenv("D1_PROMPTS")) s.prompts = v;
     if (const char* v = getenv("D1_SENSITIVITY")) s.mouse_sensitivity = std::atof(v);
     if (const char* v = getenv("D1_MOUSE_INVERT")) s.mouse_invert = truthy(v);
     if (const char* v = getenv("D1_MOUSE_ZOOM_SCALE")) s.mouse_zoom_scale = std::atof(v);
