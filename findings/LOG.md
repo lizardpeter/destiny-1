@@ -1710,3 +1710,11 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
 - **Still controller icons**: HUD prompts such as the Ghost's "summon vehicle" /
   "go to orbit" do not go through localized text (no call of 0x748FE0 / 0x745650 outside
   0x94B0F0), so they are icon widgets with fixed images; not replaced yet.
+- **Weapon stats / ammo**: item definitions keep their investment stats at +0x130 (one
+  0x80801776) +0x30: {u32 stat index, i32 value} (tools/d1_item_table.py -> items.json
+  "stats"; weapons carry indices 0, 11-23, 26-28). The loadout's members 13-15 (0x80804703 at
+  +0x888/+0x908/+0x988) hold the primary / special / heavy weapon's list; the character data
+  copies them to +0x14E0/+0x1560/+0x15E0 (loadout + 0xC58, as the perk lists 9-11 -> +0x1400)
+  and 0x910C60 fills the weapon config's 20 stat slots from them. Before, those were zero:
+  special and heavy had no ammo (user test). D1_TRACE_GEAR now shows each config's slots
+  (Fatebringer 60 90 ... 95, Praedyth's 80 60 ..., Gjallarhorn 40 100 ...).

@@ -162,6 +162,18 @@ def main() -> int:
                 pat = struct.unpack_from('<h', d, 0x60 + rel + 0x60)[0]
                 if pat >= 0:
                     row['pattern'] = pat
+            # +0x130 one-element array (class 0x80801776) whose +0x30 array (class 0x8080190C)
+            # is the item's investment stats: {u32 stat index, i32 value}. A loadout's weapon
+            # stat lists (0x80801855 members 12-14, 0x80804703: 16 x {u8 index, i32 value})
+            # carry them into the player configuration (0x910C60: magazine, reserve, ...).
+            if i32(d, 0x130) == 1:
+                _, base = dyn(d, 0x130)
+                if 0 <= base and base + 0x40 <= len(d):
+                    sn2, sa = dyn(d, base + 0x30)
+                    if 0 < sn2 <= 64 and 0 <= sa and sa + sn2 * 8 <= len(d):
+                        st = [[u32(d, sa + k * 8), i32(d, sa + k * 8 + 4)] for k in range(sn2)]
+                        if all(k < 64 and -100000 < v < 100000 for k, v in st):
+                            row['stats'] = st
             flag = i32(d, 0x164)
             for cls, lo in CLASS_EQUIP_FLAGS.items():
                 if lo <= flag <= lo + 4:

@@ -30,6 +30,9 @@ pub struct Item {
     /// weapon sandbox pattern index (0x54C7F0 table), for weapons
     #[serde(default)]
     pub pattern: Option<i64>,
+    /// investment stats from the definition: [stat index, value]
+    #[serde(default)]
+    pub stats: Vec<[i64; 2]>,
 }
 
 pub fn items() -> &'static [Item] {
@@ -163,6 +166,27 @@ pub fn loadout_value(character: i64, items: &[i64]) -> Value {
         .collect();
     let mut m = vec![None; 16];
     m[6] = Some(Array(entries));
+    // members 13-15 (0x80804703 at +0x888 / +0x908 / +0x988: 16 x {i8 stat index, i32 value},
+    // -1 = unused): the primary, special and heavy weapon's stats. The character data keeps
+    // them at +0x14E0 / +0x1560 / +0x15E0 (loadout + 0xC58, like the perk lists, members 9-11
+    // -> +0x1400) and the player configuration (0x910C60) turns them into the weapon's
+    // numbers (magazine, reserve ammo, ...). Traced with D1_TRACE_GEAR: the weapon configs'
+    // stat slots carry these values. Member 12 (+0x808) is another list, left empty.
+    for (member, code) in [(13usize, 2u8), (14, 3), (15, 4)] {
+        let stats = items
+            .iter()
+            .filter_map(|&i| crate::gear::items().get(i as usize))
+            .find(|it| it.slot == Some(code))
+            .map(|it| it.stats.clone())
+            .unwrap_or_default();
+        let mut list: Vec<Option<Value>> = stats
+            .iter()
+            .take(16)
+            .map(|[k, v]| Some(Struct(vec![Some(Int(*k)), Some(Int(*v))])))
+            .collect();
+        list.resize(16, Some(Struct(vec![Some(Int(-1)), Some(Int(0))])));
+        m[member] = Some(Array(list));
+    }
     Struct(m)
 }
 

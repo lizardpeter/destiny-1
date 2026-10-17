@@ -1877,6 +1877,17 @@ static D1_SYSV void state_step_hook(void* sm) {
         log("gear: player config body %08x; weapons gear %d %d %d, items %d %d %d, slots %d %d %d", uint32_t(i32(0)),
             i32(0x368), i32(0x688), i32(0x9A8), i16(0x368 + 0x22), i16(0x688 + 0x22), i16(0x9A8 + 0x22),
             cfg[0x368 + 0x20], cfg[0x688 + 0x20], cfg[0x9A8 + 0x20]);
+        // per weapon config: the stat-derived value at +0x318 (0x910C60: 0x282210 of one stat)
+        // and the 20 stat curve slots from +0x58 (8 bytes each)
+        for (int w : {0x368, 0x688, 0x9A8}) {
+            std::string v;
+            for (int k = 0; k < 20; ++k) {
+                char buf[24];
+                std::snprintf(buf, sizeof buf, " %.3g", *reinterpret_cast<const float*>(cfg + w + 0x58 + k * 0x20));
+                v += buf;
+            }
+            log("gear: weapon config +%#x: +0x318 = %d; stat slots:%s", w, i32(w + 0x318), v.c_str());
+        }
         // the gear table 0x54C7B0 indexes (0x54C7F0: {i32 count, i64 rel}, 0x20 rows) and the
         // loaded definitions of D1_GEAR_ITEMS=<i>,... (definitions vtable +0x410)
         using TblFn = D1_SYSV const int32_t* (*)();
