@@ -117,7 +117,8 @@ pub fn loadout(class: i64) -> Vec<i64> {
             None => tracing::warn!("gear: no item named {n:?}"),
         }
     }
-    for s in [6u8, 2, 3, 4, 7, 8, 9, 10, 11, 14, 12, 13, 25, 27] {
+    // no sparrow (13): summoning one crashes (0x7420F0) while it has no item instance
+    for s in [6u8, 2, 3, 4, 7, 8, 9, 10, 11, 14, 12, 25, 27] {
         if slots.contains(&s) {
             continue;
         }
