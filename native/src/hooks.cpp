@@ -125,8 +125,11 @@ static D1_SYSV uint32_t task9_bypass(void* h) {
         auto* players = *reinterpret_cast<uint8_t**>(exe.base + 0x273EB80);
         if (players && *reinterpret_cast<int32_t*>(players + 0xC0) != -1) {
             static bool logged = false;
-            if (!logged) { logged = true; log("bypass: slice-set loading task 9 forced complete (player exists, unit %d)",
-                                    *reinterpret_cast<int32_t*>(players + 0xC4)); }
+            if (!logged) {
+                logged = true;
+                log("bypass: slice-set loading task 9 forced complete (player exists, unit %d)",
+                    *reinterpret_cast<int32_t*>(players + 0xC4));
+            }
             return 2;
         }
     }
@@ -1601,7 +1604,55 @@ static StateStepFn g_state_step_orig = nullptr;
 static std::atomic<int> g_state{-1};
 static D1_SYSV void state_step_hook(void* sm) {
     g_state_step_orig(sm);
-    g_state.store(*reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0), std::memory_order_relaxed);
+    const int32_t st = *reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0);
+    g_state.store(st, std::memory_order_relaxed);
+    // D1_TRACE_GEAR=1 (research): 20 s into activity:in_world (0x24), log the local player's
+    // configuration (player data +0x1660, built by 0x912240): body tag, and per weapon
+    // config (+0x368 / +0x688 / +0x9A8) its gear id (-1: none) and item index (@+0x22)
+    static const bool trace = getenv("D1_TRACE_GEAR") != nullptr;
+    static std::chrono::steady_clock::time_point since{};
+    static bool done = false;
+    if (trace && !done) {
+        if (st != 0x24) { since = {}; return; }
+        const auto now = std::chrono::steady_clock::now();
+        if (since == std::chrono::steady_clock::time_point{}) since = now;
+        if (now - since < std::chrono::seconds(20)) return;
+        done = true;
+        const uint64_t b = rt().modules[0].base;
+        const uint64_t pd = *reinterpret_cast<const uint64_t*>(*reinterpret_cast<const uint64_t*>(b + 0x273EA80) + 8);
+        const auto* cfg = reinterpret_cast<const uint8_t*>(pd + 0x1660);
+        auto i32 = [&](int o) { return *reinterpret_cast<const int32_t*>(cfg + o); };
+        auto i16 = [&](int o) { return int(*reinterpret_cast<const int16_t*>(cfg + o)); };
+        log("gear: player config body %08x; weapons gear %d %d %d, items %d %d %d, slots %d %d %d", uint32_t(i32(0)),
+            i32(0x368), i32(0x688), i32(0x9A8), i16(0x368 + 0x22), i16(0x688 + 0x22), i16(0x9A8 + 0x22),
+            cfg[0x368 + 0x20], cfg[0x688 + 0x20], cfg[0x9A8 + 0x20]);
+        // the gear table 0x54C7B0 indexes (0x54C7F0: {i32 count, i64 rel}, 0x20 rows) and the
+        // loaded definitions of D1_GEAR_ITEMS=<i>,... (definitions vtable +0x410)
+        using TblFn = D1_SYSV const int32_t* (*)();
+        if (const int32_t* t = reinterpret_cast<TblFn>(b + 0x54C7F0)()) {
+            const auto* r = reinterpret_cast<const uint8_t*>(t) + 8 + *reinterpret_cast<const int64_t*>(t + 2) + 0x10;
+            log("gear: table 0x54C7F0 has %d rows; row 0: %08x %08x %08x %08x", t[0], *reinterpret_cast<const uint32_t*>(r),
+                *reinterpret_cast<const uint32_t*>(r + 4), *reinterpret_cast<const uint32_t*>(r + 8), *reinterpret_cast<const uint32_t*>(r + 12));
+        }
+        if (const char* gi = getenv("D1_GEAR_ITEMS")) {
+            void* defs = reinterpret_cast<void* (*)()>(b + 0x25A550)();
+            const auto vt = *reinterpret_cast<const uint64_t* const*>(defs);
+            using DefFn = D1_SYSV const uint8_t* (*)(void*, uint32_t);
+            for (const char* q = gi; *q;) {
+                const int i = atoi(q);
+                const uint8_t* d = reinterpret_cast<DefFn>(vt[0x410 / 8])(defs, uint32_t(i));
+                std::string hex;
+                for (int k = 0; d && k < 0x2B8; k += 2) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, " %04x", *reinterpret_cast<const uint16_t*>(d + k));
+                    hex += buf;
+                }
+                log("gear: definition %d at %p:%s", i, (const void*)d, hex.c_str());
+                while (*q && *q != ',') ++q;
+                if (*q) ++q;
+            }
+        }
+    }
 }
 const char* game_state() {
     int s = g_state.load(std::memory_order_relaxed);

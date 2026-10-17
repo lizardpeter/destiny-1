@@ -27,6 +27,9 @@ pub struct Item {
     pub tier: Option<u8>,
     #[serde(default)]
     pub class: Option<String>,
+    /// weapon sandbox pattern index (0x54C7F0 table), for weapons
+    #[serde(default)]
+    pub pattern: Option<i64>,
 }
 
 pub fn items() -> &'static [Item] {
@@ -151,7 +154,12 @@ pub fn loadout_value(character: i64, items: &[i64]) -> Value {
     }
     let entries: Vec<Option<Value>> = slot
         .into_iter()
-        .map(|(id, index)| Some(Struct(vec![Some(Int(id)), Some(Int(index)), Some(Int(0)), Some(Int(0))])))
+        // {i64 instance, i16 item index @8, i16 weapon sandbox pattern index @0xA (0x910C60 takes
+        // the weapon's gear from the 0x54C7F0 pattern table; 0 elsewhere), i16 @0xC}
+        .map(|(id, index)| {
+            let pattern = crate::gear::items().get(index.max(0) as usize).and_then(|it| it.pattern).unwrap_or(0);
+            Some(Struct(vec![Some(Int(id)), Some(Int(index)), Some(Int(if index < 0 { 0 } else { pattern })), Some(Int(0))]))
+        })
         .collect();
     let mut m = vec![None; 16];
     m[6] = Some(Array(entries));

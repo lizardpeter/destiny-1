@@ -155,6 +155,13 @@ def main() -> int:
             # +0x89 u8 required level (0xFF none), +0x8A u8 tier (1 basic .. 4 legendary,
             # 5 exotic), +0x164 i32 unlock flag required to equip (per class and armor slot)
             row['slot'], row['level'], row['tier'] = d[0x88], d[0x89], d[0x8A]
+            # +0x60 relative pointer to the arrangement block (class 0x80801020); its i16 @+0x60
+            # is the weapon's sandbox pattern index (0x54C7F0 table, the loadout entry's +0xA)
+            rel = i64(d, 0x60)
+            if rel:
+                pat = struct.unpack_from('<h', d, 0x60 + rel + 0x60)[0]
+                if pat >= 0:
+                    row['pattern'] = pat
             flag = i32(d, 0x164)
             for cls, lo in CLASS_EQUIP_FLAGS.items():
                 if lo <= flag <= lo + 4:
