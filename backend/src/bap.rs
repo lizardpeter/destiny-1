@@ -442,7 +442,16 @@ async fn session(sock: TcpStream, role: Role) -> std::io::Result<()> {
                 // region has 0 slots and matchmaking refuses ("too-many-parties").
                 let record = pb::Msg::new().uint(3, PUBLIC_SLICE_SET_PLAYERS).uint(4, PUBLIC_SLICE_SET_PLAYERS)
                     .uint(5, PUBLIC_SLICE_SET_PLAYERS);
-                let config = pb::Msg::new().msg(2, pb::Msg::new().msg(1, record));
+                // research: D1B_MM_GENERAL=<v1>,<v2>,... fills the general block's fields 1..11
+                let mut general = pb::Msg::new();
+                if let Ok(v) = std::env::var("D1B_MM_GENERAL") {
+                    for (i, x) in v.split(',').enumerate() {
+                        if let Ok(x) = x.trim().parse::<u64>() {
+                            general = general.uint(i as u32 + 1, x);
+                        }
+                    }
+                }
+                let config = pb::Msg::new().msg(1, general).msg(2, pb::Msg::new().msg(1, record));
                 let body = pb::Msg::new().uint(1, get(1).unwrap_or(0)).uint(2, nonce).msg(4, config).into_bytes();
                 info!("bap: matchmaking configuration (seq {sequence}, nonce {nonce:#x})");
                 send(&mut sock, &mut chan, &response(43, sequence, STATUS_OK, &body)).await?;

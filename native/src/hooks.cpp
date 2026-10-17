@@ -744,6 +744,24 @@ static D1_SYSV void perm_hook(void* prov, uint32_t act, uint8_t* a, uint8_t* b, 
     if (g_perm_bypass) *a = *b = *c = 1;
 }
 
+// Matchmaking composition check (0xB0C6D0(settings, session properties) -> 0x12 success, else
+// a reason: 0xB too many parties, 0xC "big-party-count-exceeds-teams" when properties +0x14
+// exceed settings +0xC4, ...). D1_TRACE_COMPOSITION=1 (research) logs each failure.
+using CompFn = D1_SYSV int32_t (*)(const uint8_t*, const uint8_t*);
+static CompFn g_comp_orig = nullptr;
+static bool g_comp_bypass = false;  // D1_BYPASS=activities: 0xC (settings +0xC4 unset, e.g. the Tower) passes
+static D1_SYSV int32_t comp_hook(const uint8_t* st, const uint8_t* pr) {
+    int32_t r = g_comp_orig(st, pr);
+    if (g_comp_bypass && r == 0xC) r = 0x12;
+    static const bool trace = getenv("D1_TRACE_COMPOSITION") != nullptr;
+    if (trace && r != 0x12 && st && pr)
+        log("composition: %d (settings +0x9C %d +0xA0 %d +0xC4 %d; properties +0x14 %d +0x28 %d +0x16C %d)", r,
+            *reinterpret_cast<const int32_t*>(st + 0x9C), *reinterpret_cast<const int32_t*>(st + 0xA0),
+            *reinterpret_cast<const int32_t*>(st + 0xC4), *reinterpret_cast<const int32_t*>(pr + 0x14),
+            *reinterpret_cast<const int32_t*>(pr + 0x28), *reinterpret_cast<const int32_t*>(pr + 0x16C));
+    return r;
+}
+
 static std::atomic<int> g_prereq_activity{-1};  // set while prereq_dump runs a check
 static void prereq_dump(uint64_t b) {
     static bool done = false;
@@ -1768,6 +1786,9 @@ void install_game_hooks() {
     g_perm_bypass = getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "activities");
     if (getenv("D1_TRACE_PERMISSION") || g_perm_bypass)
         g_perm_orig = reinterpret_cast<PermFn>(hook_function(exe.base + 0x2648D0, reinterpret_cast<const void*>(&perm_hook)));
+    g_comp_bypass = getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "activities");
+    if (getenv("D1_TRACE_COMPOSITION") || g_comp_bypass)
+        g_comp_orig = reinterpret_cast<CompFn>(hook_function(exe.base + 0xB0C6D0, reinterpret_cast<const void*>(&comp_hook)));
     if (const char* w = getenv("D1_WATCH_FLAGS")) {
         for (const char* p = w; *p;) {
             g_watch_flags.push_back(atoi(p));
