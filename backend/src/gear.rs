@@ -135,16 +135,50 @@ pub fn loadout(class: i64) -> Vec<i64> {
     out
 }
 
-/// A loadout value (0x80801855) with these items equipped (no item instances).
-pub fn loadout_value(items: &[i64]) -> Value {
+/// A loadout value (0x80801855) with these items equipped; entry k names instance
+/// item_id(character, k) (the inventory item objects, item_values).
+pub fn loadout_value(character: i64, items: &[i64]) -> Value {
     use Value::*;
     let entries: Vec<Option<Value>> = (0..20)
         .map(|k| {
-            let index = items.get(k).copied().unwrap_or(-1);
-            Some(Struct(vec![Some(Int(0)), Some(Int(index)), Some(Int(0)), Some(Int(0))]))
+            let (id, index) = match items.get(k) {
+                Some(&i) => (item_id(character, k), i),
+                None => (0, -1),
+            };
+            Some(Struct(vec![Some(Int(id)), Some(Int(index)), Some(Int(0)), Some(Int(0))]))
         })
         .collect();
     let mut m = vec![None; 16];
     m[6] = Some(Array(entries));
     Struct(m)
+}
+
+/// Inventory item 0x80801732 (family 4 slot 3): {i64 instance id, {i64 owner character, i2
+/// location}, {i32 quantity, i32, i16}, i16 item index @+0x24, ...}. The game finds a
+/// loadout entry's item through its instance id (0x56DC00).
+pub const TYPE_ITEM: &str = "0x80801732";
+
+/// Instance id of the character's k-th equipped item.
+pub fn item_id(character: i64, k: usize) -> i64 {
+    character.wrapping_add(0x1_0000 + k as i64)
+}
+
+/// The item objects for a character's equipped items (instance ids from item_id). Location:
+/// D1B_ITEM_LOCATION (research; default 1).
+pub fn item_values(character: i64, items: &[i64]) -> Vec<(i64, Value)> {
+    use Value::*;
+    let location = std::env::var("D1B_ITEM_LOCATION").ok().and_then(|v| v.parse().ok()).unwrap_or(1i64);
+    items
+        .iter()
+        .enumerate()
+        .map(|(k, &index)| {
+            let id = item_id(character, k);
+            let mut m = vec![None; 8];
+            m[0] = Some(Int(id));
+            m[1] = Some(Struct(vec![Some(Int(character)), Some(Int(location))]));
+            m[2] = Some(Struct(vec![Some(Int(1)), Some(Int(0)), Some(Int(0))]));
+            m[3] = Some(Int(index));
+            (id, Struct(m))
+        })
+        .collect()
 }

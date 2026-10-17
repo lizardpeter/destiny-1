@@ -749,9 +749,24 @@ fn character_with_loadout(ch: &crate::account::Character, at: usize) -> Value {
         crate::gear::class_name(class),
         items.iter().map(|&i| crate::gear::items()[i as usize].name.clone().unwrap_or_default()).collect::<Vec<_>>()
     );
-    f.resize(at + 1, None);
-    f[at] = Some(crate::gear::loadout_value(&items));
+    f.resize(at + 2, None);
+    f[at] = Some(crate::gear::loadout_value(ch.id, &items));
+    // next member: 0x80801923 {f32, i32, i16}, read as {progress, level, light} (research)
+    f[at + 1] = Some(level_value());
     Value::Struct(f)
+}
+
+/// Character level and light for test characters: D1B_LEVEL (default 40) and D1B_LIGHT
+/// (default 400) as 0x80801923 {f32 progress, i32 level, i16 light} (layout guessed).
+fn level() -> (i64, i64) {
+    let get = |k: &str, d: i64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+    (get("D1B_LEVEL", 40), get("D1B_LIGHT", 400))
+}
+
+fn level_value() -> Value {
+    use Value::*;
+    let (lv, light) = level();
+    Struct(vec![Some(Float(0.0)), Some(Int(lv)), Some(Int(light))])
 }
 
 /// Character creation (0x1F5): store it and return its id.
@@ -816,7 +831,7 @@ pub fn profile_baseline() -> FamilyUpdate {
             Struct(f) => f,
             _ => vec![],
         };
-        c.resize(16, None);
+        c.resize(18, None);
         c[7] = stored_state(ch.client_state.clone(), TYPE_CHARACTER_CLIENT_STATE);
         // +0x3E58 (0x80801755) member 7 (+0x3E80, 0x808017B4 {present, i64 seconds}): the
         // server time the scheduled unlock flags (scope 12: expansions, events, weekly
@@ -838,6 +853,9 @@ pub fn profile_baseline() -> FamilyUpdate {
             .take(20)
             .map(|(f, st)| Some(Struct(vec![Some(Int(f)), Some(Int(st))])))
             .collect();
+        // member 17 0x808016F8 {i32, i32, 0x80801923} (research: level, light)
+        let (lv, light) = level();
+        c[17] = Some(Struct(vec![Some(Int(lv)), Some(Int(light)), Some(level_value())]));
         let mut st = vec![None; 8];
         st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));
         // member 7 (+0x714C): every activity passes its requirement checks (0x2648D0: the
@@ -848,6 +866,10 @@ pub fn profile_baseline() -> FamilyUpdate {
         }
         c[15] = Some(Struct(st));
         objects.push(Object { ty: TYPE_ACTIVE_CHARACTER, soid: ch.id, value: Struct(vec![Some(Struct(c))]) });
+        // the equipped items as inventory items (slot 3)
+        for (id, v) in crate::gear::item_values(ch.id, &crate::gear::loadout(character_class(&ch))) {
+            objects.push(Object { ty: crate::gear::TYPE_ITEM, soid: id, value: v });
+        }
     }
     FamilyUpdate { family: FAMILY_PROFILE, root: account_id(), version: crate::account::next_version(FAMILY_PROFILE), flags: 1, objects }
 }
