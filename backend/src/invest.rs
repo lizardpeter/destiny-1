@@ -617,6 +617,11 @@ const PROFILE_FLAG_OVERRIDES: &[(i64, i64)] = &[(836, 1), (0x1A3, 2), (0x1B8, 2)
 /// from the schedule and the server time instead.
 const VETERAN_FLAGS: &[i64] = &[98, 2539, 2549, 2566, 3850, 3916];
 
+/// Content ownership flags (profile extra slots; found by running every activity's purchase
+/// prerequisite check, D1_DUMP_PREREQS, against an account owning nothing; 407 activities
+/// test `834 or (833 and not 830)`).
+const OWNERSHIP_FLAGS: &[i64] = &[833, 2668, 2669, 2670, 5021, 6029];
+
 /// Where a master flag index is stored (data/unlock_flag_slots.json, dumped from the client).
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum FlagSlot {
@@ -678,6 +683,14 @@ fn flag_settings() -> Vec<(i64, i64)> {
         None => ov.push((flag, state)),
     };
     set(2838, 2);
+    // content ownership (account flags the server derives from purchased offers; the world
+    // transition's purchase prerequisites 0x5505C0 test them, e.g. Moon missions need 2668):
+    // everything is owned unless D1B_OWN_ALL=0
+    if std::env::var("D1B_OWN_ALL").map_or(true, |v| v != "0") {
+        for &f in OWNERSHIP_FLAGS {
+            set(f, 2);
+        }
+    }
     if env_on("D1B_PROLOGUE_DONE") {
         set(836, 2);
         set(2838, 1);
@@ -797,8 +810,14 @@ pub fn profile_baseline() -> FamilyUpdate {
             .take(20)
             .map(|(f, st)| Some(Struct(vec![Some(Int(f)), Some(Int(st))])))
             .collect();
-        let mut st = vec![None; 6];
+        let mut st = vec![None; 8];
         st[5] = Some(Struct(vec![Some(Int(overrides.len() as i64)), Some(Array(overrides))]));
+        // member 7 (+0x714C): every activity passes its requirement checks (0x2648D0: the
+        // unlock lists 0x267BC0 / 0x2679E0 and 0x2680A0 all yield when it is set; the director
+        // lists every activity, 0x263C20). D1B_ALL_ACTIVITIES=1 (research / test characters).
+        if std::env::var("D1B_ALL_ACTIVITIES").is_ok_and(|v| v == "1") {
+            st[7] = Some(Bool(true));
+        }
         c[15] = Some(Struct(st));
         objects.push(Object { ty: TYPE_ACTIVE_CHARACTER, soid: ch.id, value: Struct(vec![Some(Struct(c))]) });
     }

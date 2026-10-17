@@ -725,18 +725,61 @@ void hooks_request_join() {
     log("keys: F10, join requested (runs once a friend is listed and we are in orbit or the world)");
 }
 
+// D1_DUMP_PREREQS=1 (research): once in orbit, run the world transition's purchase
+// prerequisite check (0x5505C0(activity index) -> -1 or the failing requirement) for every
+// activity and log the ones that fail; with D1_TRACE_UNLOCK the expressions show up too.
+// Activity permission (0x2648D0(provider, activity, &a, &b, &c); 0x547EF0 needs a and b, or
+// c when b alone is not enough). a is the activity's availability (0x2680A0: definition +0x8C
+// through the availability provider *0x26527D8, vtable +0x40; 7 = unavailable), b and c its
+// requirement lists (0x267BC0 / 0x2679E0). The Director's lock state and the world transition
+// both use it. D1_BYPASS=activities (research / test characters) passes every activity;
+// D1_TRACE_PERMISSION=1 logs each check.
+using PermFn = D1_SYSV void (*)(void*, uint32_t, uint8_t*, uint8_t*, uint8_t*);
+static PermFn g_perm_orig = nullptr;
+static bool g_perm_bypass = false;
+static D1_SYSV void perm_hook(void* prov, uint32_t act, uint8_t* a, uint8_t* b, uint8_t* c) {
+    g_perm_orig(prov, act, a, b, c);
+    static const bool trace = getenv("D1_TRACE_PERMISSION") != nullptr;
+    if (trace) log("permission: activity %u -> %d %d %d%s", act, *a, *b, *c, g_perm_bypass ? " (bypassed)" : "");
+    if (g_perm_bypass) *a = *b = *c = 1;
+}
+
+static std::atomic<int> g_prereq_activity{-1};  // set while prereq_dump runs a check
+static void prereq_dump(uint64_t b) {
+    static bool done = false;
+    if (done || !getenv("D1_DUMP_PREREQS")) return;
+    done = true;
+    using PrereqFn = D1_SYSV int32_t (*)(int32_t);
+    auto check = reinterpret_cast<PrereqFn>(b + 0x5505C0);
+    int fails = 0;
+    std::string line;
+    for (int i = 0; i < 653; ++i) {
+        g_prereq_activity = i;
+        const int32_t r = check(i);
+        g_prereq_activity = -1;
+        if (r == -1) continue;
+        ++fails;
+        char buf[32];
+        std::snprintf(buf, sizeof buf, " %d:%x", i, r);
+        line += buf;
+    }
+    log("prereq: %d of 653 activities fail their purchase prerequisites:%s", fails, line.c_str());
+}
+
 static void launch_tick() {
     static const char* spec = getenv("D1_LAUNCH_ACTIVITY");
     static bool done = false;
     static std::chrono::steady_clock::time_point since{};
     const bool key = g_launch_key.load();
-    if ((!spec || done) && !key) return;
+    if ((!spec || done) && !key && !getenv("D1_DUMP_PREREQS")) return;
     const uint64_t b = rt().modules[0].base;
     const uint64_t st = *reinterpret_cast<const uint64_t*>(b + 0x26CA078);
     if (!st || *reinterpret_cast<const int32_t*>(st + 0x1B0) != 0x1B) {
         since = {};
         return;
     }
+    prereq_dump(b);
+    if ((!spec || done) && !key) return;
     int index;
     if (key) {  // F9: now (Earth patrol unless D1_KEY_ACTIVITY names another index)
         g_launch_key = false;
@@ -1127,6 +1170,17 @@ using UnlockFn = D1_SYSV uint64_t (*)(void*, const int64_t*);
 static UnlockFn g_unlock_orig = nullptr;
 static D1_SYSV uint64_t unlock_hook(void* c, const int64_t* expr) {
     const uint64_t r = g_unlock_orig(c, expr);
+    if (const int a = g_prereq_activity.load(); a >= 0 && !(r & 1)) {
+        std::string ops;
+        const int64_t n = expr[0];
+        const uint8_t* base = reinterpret_cast<const uint8_t*>(expr + 1) + expr[1] + 0x10;
+        for (int64_t i = 0; i < n && i < 24; ++i) {
+            char buf[32];
+            std::snprintf(buf, sizeof buf, " %u:%u", base[i * 8], *reinterpret_cast<const uint32_t*>(base + i * 8 + 4));
+            ops += buf;
+        }
+        log("prereq: activity %d fails [%s ]", a, ops.c_str());
+    }
     static std::mutex m;
     static std::map<const void*, int> seen;
     std::lock_guard lk(m);
@@ -1185,6 +1239,7 @@ static void dump_flag_scopes() {
     void* defs = reinterpret_cast<GetFn>(rt().modules[0].base + 0x25A550)();
     if (!defs) return;
     const auto vt = *reinterpret_cast<const uint64_t* const*>(defs);
+    log("flagscope: definitions manager %p vtable %s", defs, describe_addr(reinterpret_cast<uint64_t>(vt)).c_str());
     for (auto [scope, off] : {std::pair{4, 0x290}, std::pair{3, 0x298}, std::pair{7, 0x2A0}}) {
         const int32_t* lst = reinterpret_cast<ListFn>(vt[off / 8])(defs);
         if (!lst) continue;
@@ -1194,6 +1249,24 @@ static void dump_flag_scopes() {
             line += " " + std::to_string(*reinterpret_cast<const int16_t*>(base + i * 8 + 0x14));
             if (line.size() > 900 || i + 1 == lst[0]) {
                 log("flagscope: %d up to slot %d:%s", scope, i, line.c_str());
+                line.clear();
+            }
+        }
+    }
+    // inventory item definitions (0x549570: {i32 count, i64 relative array @+8} of 16-byte
+    // rows; 0x54D110 reads the u32 at +8 as the item's gear resource): "items: <index> <row>"
+    using TableFn = D1_SYSV const int32_t* (*)();
+    if (const int32_t* it = reinterpret_cast<TableFn>(rt().modules[0].base + 0x549570)()) {
+        const auto* rows = reinterpret_cast<const uint8_t*>(it) + 8 + *reinterpret_cast<const int64_t*>(it + 2) + 0x10;
+        log("items: %d definitions", it[0]);
+        std::string line;
+        for (int32_t i = 0; i < it[0]; ++i) {
+            char buf[64];
+            const auto* r = reinterpret_cast<const uint32_t*>(rows + i * 16);
+            std::snprintf(buf, sizeof buf, " %d:%08x.%08x.%08x.%08x", i, r[0], r[1], r[2], r[3]);
+            line += buf;
+            if (line.size() > 900 || i + 1 == it[0]) {
+                log("items:%s", line.c_str());
                 line.clear();
             }
         }
@@ -1664,6 +1737,9 @@ void install_game_hooks() {
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))
         g_ui_notify_orig = reinterpret_cast<UiNotifyFn>(hook_function(exe.base + 0x950620, reinterpret_cast<const void*>(&ui_notify_hook)));
+    g_perm_bypass = getenv("D1_BYPASS") && std::strstr(getenv("D1_BYPASS"), "activities");
+    if (getenv("D1_TRACE_PERMISSION") || g_perm_bypass)
+        g_perm_orig = reinterpret_cast<PermFn>(hook_function(exe.base + 0x2648D0, reinterpret_cast<const void*>(&perm_hook)));
     if (const char* w = getenv("D1_WATCH_FLAGS")) {
         for (const char* p = w; *p;) {
             g_watch_flags.push_back(atoi(p));
