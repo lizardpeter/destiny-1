@@ -9,6 +9,7 @@ mod account;
 mod ah;
 mod bap;
 mod content;
+mod gear;
 mod invest;
 mod npwebapi;
 mod pb;

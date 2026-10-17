@@ -726,6 +726,34 @@ fn character_head(ch: &crate::account::Character) -> Value {
     Struct(vec![Some(Int(ch.id)), Some(rgc.unwrap_or(Struct(vec![Some(Int(0)), Some(Int(0)), Some(Int(0))]))), look])
 }
 
+/// The character's class value (creation {race, gender, class} member 2).
+fn character_class(ch: &crate::account::Character) -> i64 {
+    match creation(ch).0 {
+        Some(Value::Struct(f)) => f.get(2).cloned().flatten().map(|v| v.int()).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// Head plus the equipped loadout at member `at` (peer character 0x808017FD member 3,
+/// character summary 0x80801954 member 4): what the game dresses the character in.
+fn character_with_loadout(ch: &crate::account::Character, at: usize) -> Value {
+    let mut f = match character_head(ch) {
+        Value::Struct(f) => f,
+        v => return v,
+    };
+    let class = character_class(ch);
+    let items = crate::gear::loadout(class);
+    tracing::info!(
+        "gear: character {} ({}) equips {:?}",
+        ch.id,
+        crate::gear::class_name(class),
+        items.iter().map(|&i| crate::gear::items()[i as usize].name.clone().unwrap_or_default()).collect::<Vec<_>>()
+    );
+    f.resize(at + 1, None);
+    f[at] = Some(crate::gear::loadout_value(&items));
+    Value::Struct(f)
+}
+
 /// Character creation (0x1F5): store it and return its id.
 pub fn create_character(req: &Request) -> i64 {
     let mut w = BitWriter::default();
@@ -744,7 +772,7 @@ pub fn account_baseline() -> FamilyUpdate {
     let account = Struct(vec![Some(Int(account_id())), Some(character_list()), None, None]);
     let mut objects = vec![Object { ty: TYPE_ACCOUNT, soid: account_id(), value: account }];
     for ch in characters() {
-        objects.push(Object { ty: TYPE_CHARACTER_SUMMARY, soid: ch.id, value: character_head(&ch) });
+        objects.push(Object { ty: TYPE_CHARACTER_SUMMARY, soid: ch.id, value: character_with_loadout(&ch, 4) });
     }
     FamilyUpdate { family: FAMILY_ACCOUNT, root: account_id(), version: crate::account::next_version(FAMILY_ACCOUNT), flags: 1, objects }
 }
@@ -844,7 +872,7 @@ pub fn peer_baseline() -> FamilyUpdate {
         value: Struct(vec![Some(Int(account_id())), active.as_ref().map(|c| Int(c.id))]),
     }];
     if let Some(ch) = active {
-        objects.push(Object { ty: TYPE_PEER_CHARACTER, soid: ch.id, value: character_head(&ch) });
+        objects.push(Object { ty: TYPE_PEER_CHARACTER, soid: ch.id, value: character_with_loadout(&ch, 3) });
     }
     FamilyUpdate { family: FAMILY_PEER, root: account_id(), version: crate::account::next_version(FAMILY_PEER), flags: 1, objects }
 }
