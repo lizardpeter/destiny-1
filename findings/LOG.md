@@ -1756,3 +1756,30 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
 - **Fast rendered checks**: D1_NG_EVERY=100000 D1_NG_EVERY_WORLD=<s> D1_NG_EVERY_STATE=
   setup:orbit draws nothing until orbit, which then renders after ~2.5 min instead of
   ~11 min. Attached in the world the first frames stay black (llvmpipe at 0.5 fps).
+
+## 2026-10-17 (afternoon): seeing the world here; the invisible weapon
+
+- **Rendered checks in the world** without the user: a fresh test character, orbit,
+  `D1_LAUNCH_ACTIVITY=93` (Earth patrol), nothing drawn until 45 s into the world
+  (`D1_NG_EVERY=100000 D1_NG_EVERY_WORLD=45`), then drawing at a 640x360 internal resolution
+  with frames and render targets dumped (`D1_NG_FRAMES`, `D1_NG_DUMP_EVERY`, `D1_NG_SNAP`,
+  `D1_NG_TARGETS`): about 8 minutes from start to an in-world frame on llvmpipe. (Earlier
+  attempts showed black frames because the X screenshot was taken, not the frame; auto
+  exposure also needs ~40 s of world time.) User test-16 reproduced: HUD Fatebringer 10/44,
+  special 6, heavy 0, hands in the holding pose, no weapon.
+- **Not drawn at all**: the frame's depth targets contain the hands but no weapon, so the
+  game submits no weapon draws (not a shading problem).
+- **Weapon gear** (D1_TRACE_GEARCACHE): the weapon gear cache (registry *0x26BEA80, made by
+  0x63F0E0 with the player/ship/ghost/vehicle registries) gets one request per weapon from
+  0x914A80 (0x672B60 builds the description from the weapon config) via 0x63FB20 ->
+  0x63BB10. Entry states (0x639D30 / 0x639E00): 1 load the tags, 2-5 build, 6 done, 7
+  failed; all three weapons reach 6. Their descriptions were all -1: a loadout entry's
+  member 6 (0x808046BC, 6 x {i8 key, i16 index}) holds the item's gear parts, which the
+  weapon config (0x9109B0) looks up for keys 5-7 in the investment gear table (0x54C6B0:
+  investment globals +0x320). Those parts are the definition arrangement's second list
+  (+0x20, class 0x8080101C: weapons keys 5/6, armor 0/1/2) - and they are **dyes**
+  (gear tags 0x80801AF4 such as content\sandbox\shared\weapon_dyes\weapon_slot_0_raid_1
+  .gear_dye). The backend now sends them (items.json "gear"); the requests carry the dye
+  tags, but the weapon is still not drawn. The weapon's art comes from the sandbox pattern
+  row (weapon config +0: gear 0x80A6A02E etc., type 0x80800734, ~20 KB, in
+  investment_assets) and is loaded too. Open.

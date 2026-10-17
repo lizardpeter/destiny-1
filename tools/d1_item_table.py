@@ -162,6 +162,21 @@ def main() -> int:
                 pat = struct.unpack_from('<h', d, 0x60 + rel + 0x60)[0]
                 if pat >= 0:
                     row['pattern'] = pat
+                # arrangement +0x20: the default gear parts {u8 part key, u8, i16 gear index}
+                # (class 0x8080101C; weapons: keys 5, 6; armor: 0, 1, 2). A loadout entry's
+                # member 6 (0x808046BC, 6 x {i8 key, i16 index}) carries them into the
+                # weapon config (0x9109B0 -> gear table 0x54C6B0): without them the gear
+                # request is empty and the weapon in hand is invisible.
+                ab = 0x60 + rel
+                if ab + 0x30 <= len(d):
+                    gn, ga = dyn(d, ab + 0x20)
+                    if 0 < gn <= 6 and 0 <= ga and ga + gn * 4 <= len(d):
+                        row['gear'] = [[d[ga + k * 4], struct.unpack_from('<h', d, ga + k * 4 + 2)[0]] for k in range(gn)]
+                    # arrangement +0x00: one {u8 0xFF, u8, i16 gear index} (class 0x8080101A),
+                    # per item (Fatebringer 0x562, Praedyth's 0x568): research, kept as 'base'
+                    bn, ba = dyn(d, ab)
+                    if bn == 1 and 0 <= ba and ba + 4 <= len(d):
+                        row['base'] = struct.unpack_from('<h', d, ba + 2)[0]
             # +0x130 one-element array (class 0x80801776) whose +0x30 array (class 0x8080190C)
             # is the item's investment stats: {u32 stat index, i32 value}. A loadout's weapon
             # stat lists (0x80801855 members 12-14, 0x80804703: 16 x {u8 index, i32 value})

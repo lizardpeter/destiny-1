@@ -174,6 +174,7 @@ using UnitWeaponFn = D1_SYSV int32_t (*)(int32_t unit, int16_t index);
 using UnitCurrentWeaponFn = D1_SYSV int32_t (*)(int32_t unit);
 static std::atomic<uint32_t> g_injected_buttons{0};
 uint32_t hooks_injected_buttons() { return g_injected_buttons.load(std::memory_order_relaxed); }
+static void trace_gear_states();
 static void select_weapon() {
     using clock = std::chrono::steady_clock;
     const uint64_t b = rt().modules[0].base;
@@ -243,6 +244,7 @@ static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32
     trace_cameras();
     trace_references();
     select_weapon();
+    if (getenv("D1_TRACE_GEARCACHE")) trace_gear_states();
     if (getenv("D1_TRACE_SPAWN")) {  // research: why the local player gets no unit
         static auto next = std::chrono::steady_clock::now();
         if (std::chrono::steady_clock::now() >= next) {
@@ -1886,6 +1888,72 @@ static D1_SYSV uint64_t vehicle_hook(void* a, void* b, float* c) {
     return r;
 }
 
+// D1_TRACE_GEARCACHE=1 (research): the weapon gear cache (registry *0x26BEA80, made by
+// 0x63F0E0 with player / weapon / ship / ghost / vehicle registries). 0x63FB20(x, desc)
+// requests a weapon's gear (0x63BB10(registry, 1, x, desc, 0) -> handle); 0x914190 calls it
+// for a weapon slot unless the gear is already cached (0x63B470). Reimplemented to log each
+// request with its caller and the first bytes of the description.
+static std::set<uint32_t> g_gear_handles;
+// every 5 s while D1_TRACE_GEARCACHE: each requested handle's registry entry state
+// (0x63BEF0(registry, handle) -> entry, i32 state @+0; 0x63FF50 calls 6/7 "not ready")
+static void trace_gear_states() {
+    static auto next = std::chrono::steady_clock::now();
+    if (std::chrono::steady_clock::now() < next) return;
+    next = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const uint64_t b = rt().modules[0].base;
+    void* reg = *reinterpret_cast<void**>(b + 0x26BEA80);
+    using EntryFn = D1_SYSV const int32_t* (*)(void*, uint32_t);
+    std::string line;
+    for (uint32_t h : g_gear_handles) {
+        if (h == 0xFFFFFFFFu) continue;
+        const int32_t* e = reinterpret_cast<EntryFn>(b + 0x63BEF0)(reg, h);
+        char buf[96];
+        std::snprintf(buf, sizeof buf, " %#x:state %d [%d %d %d %d]", h, e[0], e[1], e[2], e[3], e[4]);
+        line += buf;
+    }
+    if (!line.empty()) log("gearcache: states%s", line.c_str());
+}
+// D1_GEAR_TABLE=<i>,<i>,... (research, with D1_TRACE_GEARCACHE): log the gear table
+// (0x54C6B0: investment globals +0x320 -> {count, rel u32 hashes}) rows and their handles
+static void dump_gear_table() {
+    static bool done = false;
+    const char* list = getenv("D1_GEAR_TABLE");
+    if (done || !list) return;
+    done = true;
+    const uint64_t b = rt().modules[0].base;
+    using RowFn = D1_SYSV const uint32_t* (*)(void*, int16_t);
+    using ResFn = D1_SYSV int32_t (*)(void*, const uint32_t*);
+    void* res = reinterpret_cast<D1_SYSV void* (*)()>(b + 0x33FA20)();
+    for (const char* q = list; *q;) {
+        const int i = atoi(q);
+        const uint32_t* row = reinterpret_cast<RowFn>(b + 0x54C6B0)(nullptr, int16_t(i));
+        const int32_t h = row ? reinterpret_cast<ResFn>(b + 0x33FC20)(res, row) : -1;
+        log("geartable: [%d] hash %08x -> handle %08x", i, row ? *row : 0u, uint32_t(h));
+        while (*q && *q != ',') ++q;
+        if (*q) ++q;
+    }
+}
+static D1_SYSV uint32_t weapon_gear_request(uint32_t x, const uint8_t* desc) {
+    dump_gear_table();
+    const uint64_t b = rt().modules[0].base;
+    using ReqFn = D1_SYSV uint32_t (*)(void*, uint32_t, uint32_t, const uint8_t*, int);
+    const uint32_t r = reinterpret_cast<ReqFn>(b + 0x63BB10)(*reinterpret_cast<void**>(b + 0x26BEA80), 1, x, desc, 0);
+    std::string hex;
+    for (int i = 0; desc && i < 48; i += 4) {
+        char buf[12];
+        std::snprintf(buf, sizeof buf, " %08x", *reinterpret_cast<const uint32_t*>(desc + i));
+        hex += buf;
+    }
+    {
+        static std::mutex m;
+        std::lock_guard lk(m);
+        g_gear_handles.insert(r);
+    }
+    log("gearcache: weapon request %#x -> %#x <- %s;%s", x, r,
+        describe_addr(reinterpret_cast<uint64_t>(__builtin_return_address(0))).c_str(), hex.c_str());
+    return r;
+}
+
 static D1_SYSV void state_step_hook(void* sm) {
     g_state_step_orig(sm);
     const int32_t st = *reinterpret_cast<const int32_t*>(static_cast<uint8_t*>(sm) + 0x1B0);
@@ -2209,6 +2277,7 @@ void install_game_hooks() {
         g_comp_orig = reinterpret_cast<CompFn>(hook_function(exe.base + 0xB0C6D0, reinterpret_cast<const void*>(&comp_hook)));
     if (getenv("D1_TRACE_EQUIP"))
         g_equip_orig = reinterpret_cast<EquipFn>(hook_function(exe.base + 0x269A50, reinterpret_cast<const void*>(&equip_hook)));
+    if (getenv("D1_TRACE_GEARCACHE")) replace_function(exe.base + 0x63FB20, reinterpret_cast<const void*>(&weapon_gear_request));
     if (getenv("D1_TRACE_VEHICLE"))
         g_vehicle_orig = reinterpret_cast<VehicleFn>(hook_function(exe.base + 0x7420F0, reinterpret_cast<const void*>(&vehicle_hook)));
     if (getenv("D1_TRACE_RESOURCES")) replace_function(exe.base + 0x349C10, reinterpret_cast<const void*>(&resource_status_hook));

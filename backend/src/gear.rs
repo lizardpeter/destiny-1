@@ -33,6 +33,12 @@ pub struct Item {
     /// investment stats from the definition: [stat index, value]
     #[serde(default)]
     pub stats: Vec<[i64; 2]>,
+    /// default gear parts from the arrangement: [part key, gear index]
+    #[serde(default)]
+    pub gear: Vec<[i64; 2]>,
+    /// the arrangement's other gear index (research)
+    #[serde(default)]
+    pub base: Option<i64>,
 }
 
 pub fn items() -> &'static [Item] {
@@ -216,8 +222,21 @@ pub fn loadout_value(character: i64, items: &[i64]) -> Value {
         // {i64 instance, i16 item index @8, i16 weapon sandbox pattern index @0xA (0x910C60 takes
         // the weapon's gear from the 0x54C7F0 pattern table; 0 elsewhere), i16 @0xC}
         .map(|(id, index)| {
-            let pattern = crate::gear::items().get(index.max(0) as usize).and_then(|it| it.pattern).unwrap_or(0);
-            Some(Struct(vec![Some(Int(id)), Some(Int(index)), Some(Int(if index < 0 { 0 } else { pattern })), Some(Int(0))]))
+            let item = crate::gear::items().get(index.max(0) as usize).filter(|_| index >= 0);
+            let pattern = item.and_then(|it| it.pattern).unwrap_or(0);
+            let mut e = vec![Some(Int(id)), Some(Int(index)), Some(Int(pattern)), Some(Int(0)), None, None, None];
+            // member 6 (@0x28, 0x808046BC): the gear parts {i8 key, i16 gear index}; the
+            // weapon config (0x9109B0) looks up parts 5-7 here for the weapon's gear request
+            if let Some(it) = item.filter(|it| !it.gear.is_empty()) {
+                let mut parts: Vec<[i64; 2]> = it.gear.clone();
+                // D1B_GEAR_BASE_KEY=<k> (research): also send the arrangement's other index
+                // under part key k
+                if let (Some(k), Some(b)) = (std::env::var("D1B_GEAR_BASE_KEY").ok().and_then(|v| v.parse().ok()), it.base) {
+                    parts.push([k, b]);
+                }
+                e[6] = Some(Array(parts.iter().take(6).map(|[k, g]| Some(Struct(vec![Some(Int(*k)), Some(Int(*g))]))).collect()));
+            }
+            Some(Struct(e))
         })
         .collect();
     let mut m = vec![None; 16];
