@@ -332,6 +332,7 @@ struct Pipeline {
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;
     VkDescriptorSetLayout sets[2] = {};
+    bool push_ps = false;  // the pixel shader's set is a push descriptor set
     Shader* vs = nullptr;
     Shader* ps = nullptr;
 };
@@ -483,7 +484,7 @@ struct Renderer {
     uint32_t pass_w = 0, pass_h = 0;
 
     bool init(const Options& o);
-    Buffer make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host);
+    Buffer make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host, bool prefer_device = false);
     void free_buffer(Buffer& b);
     VkDeviceMemory alloc(VkMemoryRequirements req, VkMemoryPropertyFlags want);
     Alloc heap_alloc(VkMemoryRequirements req);
@@ -506,6 +507,10 @@ struct Renderer {
         wait_idle();
     }
     VkDescriptorSet alloc_set(VkDescriptorSetLayout layout);
+    // push descriptors (Vulkan 1.4 core): the pixel shader's bindings are written straight into
+    // the command buffer instead of allocating and updating a descriptor set per draw
+    PFN_vkCmdPushDescriptorSetKHR push_fn = nullptr;
+    uint32_t max_push = 0;
     void barrier();
     // bind = false (the pre-pass): create the image, but leave which image an address names
     // to the draws themselves, in order (a draw that reads last frame's contents of an
@@ -631,7 +636,7 @@ bool Renderer::init(const Options& o) {
     if (const char* v = std::getenv("D1_NG_RING_MB")) ring_mb = std::max<uint64_t>(64, std::strtoull(v, nullptr, 10));
     ring = make_buffer(ring_mb << 20, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                                          VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
+                                          VK_BUFFER_USAGE_TRANSFER_DST_BIT, true, std::getenv("D1_NG_RING_SYSMEM") == nullptr);
     if (!ring.map) {
         log("native renderer: no host-visible memory for the %llu MiB upload ring", (unsigned long long)ring_mb);
         return false;
@@ -671,6 +676,18 @@ bool Renderer::init(const Options& o) {
             vkCreatePipelineCache(ctx.device, &cci, nullptr, &pcache);
         }
         if (!data.empty()) log("native renderer: pipeline cache %.1f MiB from the last run", double(data.size()) / 1048576.0);
+    }
+    {
+        const char* v = std::getenv("D1_NG_PUSH_DESCRIPTORS");
+        if (!v || std::atoi(v) != 0) {
+            push_fn = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetDeviceProcAddr(ctx.device, "vkCmdPushDescriptorSet"));
+            if (!push_fn) push_fn = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetDeviceProcAddr(ctx.device, "vkCmdPushDescriptorSetKHR"));
+            VkPhysicalDevicePushDescriptorPropertiesKHR pp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
+            VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &pp};
+            vkGetPhysicalDeviceProperties2(ctx.gpu, &p2);
+            max_push = push_fn ? pp.maxPushDescriptors : 0;
+            log("native renderer: push descriptors %s (up to %u)", push_fn && max_push ? "on" : "unavailable", max_push);
+        }
     }
     opt.frames_in_flight = std::clamp(opt.frames_in_flight, 1u, 4u);
     log("native renderer: %s, Vulkan %u.%u, %llu MiB upload ring, %u frame%s in flight%s%s", ctx.name,
@@ -798,7 +815,7 @@ VkDeviceMemory Renderer::alloc(VkMemoryRequirements req, VkMemoryPropertyFlags w
     return m;
 }
 
-Buffer Renderer::make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host) {
+Buffer Renderer::make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host, bool prefer_device) {
     Buffer b;
     b.size = size;
     VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -807,8 +824,22 @@ Buffer Renderer::make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host)
     if (vkCreateBuffer(ctx.device, &bci, nullptr, &b.buf) != VK_SUCCESS) return Buffer{};
     VkMemoryRequirements req;
     vkGetBufferMemoryRequirements(ctx.device, b.buf, &req);
-    b.mem = alloc(req, host ? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-                            : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    const VkMemoryPropertyFlags hv = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    // host-visible memory in VRAM (resizable BAR) where the GPU offers it: what shaders read
+    // from it every frame (constants, streamed vertices) then stays on the card instead of
+    // crossing PCIe on every access
+    if (host && prefer_device) {
+        const uint32_t t = find_memory_type(ctx, req.memoryTypeBits, hv | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (t != UINT32_MAX) {
+            VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            ai.allocationSize = req.size;
+            ai.memoryTypeIndex = t;
+            if (vkAllocateMemory(ctx.device, &ai, nullptr, &b.mem) != VK_SUCCESS) b.mem = VK_NULL_HANDLE;
+            else log("native renderer: %llu MiB buffer in device-local host-visible memory", (unsigned long long)(size >> 20));
+        }
+    }
+    if (!b.mem)
+        b.mem = alloc(req, host ? hv : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     if (!b.mem) {
         vkDestroyBuffer(ctx.device, b.buf, nullptr);
         return Buffer{};
@@ -1877,6 +1908,12 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
         VkDescriptorSetLayoutCreateInfo dci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         dci.bindingCount = uint32_t(b.size());
         dci.pBindings = b.data();
+        // one push descriptor set per pipeline layout is allowed: the pixel shader's (the most
+        // textures and samplers)
+        if (s == 1 && push_fn && !b.empty() && b.size() <= max_push && b.size() <= 48) {
+            dci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+            p->push_ps = true;
+        }
         vkCreateDescriptorSetLayout(ctx.device, &dci, nullptr, &p->sets[s]);
     }
     VkPipelineLayoutCreateInfo lci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
@@ -2546,7 +2583,9 @@ void Renderer::draw(const Draw& dr) {
     }
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
     for (int s = 0; s < 2; ++s)
-        if (nw[s]) {
+        if (nw[s] && s == 1 && p->push_ps) {
+            push_fn(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 1, nw[s], writes[s]);
+        } else if (nw[s]) {
             VkDescriptorSet set = alloc_set(p->sets[s]);
             if (!set) return skip("descriptor pool");
             for (uint32_t k = 0; k < nw[s]; ++k) writes[s][k].dstSet = set;

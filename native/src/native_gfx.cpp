@@ -31,6 +31,7 @@
 #endif
 #include "hle.h"
 #include "os.h"
+#include "render_bridge.h"
 #include "runtime.h"
 #include "tiling.h"
 
@@ -44,6 +45,7 @@ namespace d1 {
 void* hook_eboot_function(uint64_t off, const void* host);  // hooks.cpp
 uint64_t guest_region_extent(uint64_t addr);                // hle_kernel.cpp
 uint64_t gpu_flip_count();                                  // hle_gpu.cpp
+uint64_t gpu_queue_wait_ns();                               // hle_gpu.cpp
 
 namespace {
 
@@ -314,7 +316,10 @@ struct DevState {
 
 std::mutex g_m;
 std::unordered_map<uint64_t, DevState*> g_devs;
-std::vector<ng::Draw*> g_pending;
+// draws waiting for the submission that holds their command-buffer position, by position: a
+// submission takes the draws inside its ranges with a few lookups (a frame's later draws are
+// all waiting while its earlier submissions run: ~10k, scanned in full per submission before)
+std::multimap<uint64_t, ng::Draw*> g_pending;
 uint32_t g_seq = 0;
 int g_every = 1;            // execute every Nth frame
 int g_dump_every = 0;       // write every Nth executed frame (0: none)
@@ -337,7 +342,7 @@ struct CbEvent {
     uint8_t stage, slot;
     ng::Draw::Cb cb;
 };
-std::vector<CbEvent> g_cb_pending;
+std::multimap<uint64_t, CbEvent> g_cb_pending;  // by position, as the draws
 ng::Draw::Cb g_ce[ng::kStages][16] = {};  // bindings as of the end of the last submission
 bool g_ce_order = true;                   // D1_NG_CE_ORDER=0: per-context bindings only (old behaviour)
 bool g_cbs_armed = false;
@@ -461,7 +466,7 @@ void push(ng::Draw* d) {
     std::lock_guard lk(g_m);
     d->seq = g_seq++;
     d->frame = uint32_t(gpu_flip_count());
-    g_pending.push_back(d);
+    g_pending.emplace(d->order, d);
 }
 
 // Occlusion counter dumps and predication packets of the submission being collected, as
@@ -714,7 +719,7 @@ D1_SYSV void r_set_cbs(uint64_t cue, uint32_t stage, uint32_t first, uint32_t co
             cb = {base, uint32_t(std::min<uint64_t>(bytes, 1u << 20))};
         }
         if (nr::g_ce_order && order)
-            nr::g_cb_pending.push_back({order, nr::g_seq++, uint8_t(s), uint8_t(first + k), cb});
+            nr::g_cb_pending.emplace(order, nr::CbEvent{order, nr::g_seq++, uint8_t(s), uint8_t(first + k), cb});
     }
 }
 
@@ -1126,53 +1131,67 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
         if (dcbs[k] && sizes[k]) nr::dcb_ranges(dcbs[k], sizes[k] / 4, 0, ranges);
     nr::g_dcb_events = nullptr;
     std::vector<std::pair<uint64_t, ng::Draw*>> mine;
+    // the range (in traversal order) holding a command-buffer position: binary search over
+    // the ranges sorted by start (the first range in traversal order wins where they overlap,
+    // as the linear search did); thousands of draws and constant events are placed per frame
+    std::vector<std::pair<uint64_t, uint32_t>> by_start;
+    by_start.reserve(ranges.size());
+    for (size_t r = 0; r < ranges.size(); ++r) by_start.push_back({ranges[r].first, uint32_t(r)});
+    std::sort(by_start.begin(), by_start.end());
+    bool overlap = false;
+    for (size_t i = 1; i < by_start.size(); ++i)
+        if (by_start[i].first < ranges[by_start[i - 1].second].second) overlap = true;
+    auto find_range = [&](uint64_t x) -> int64_t {
+        if (overlap) {
+            for (size_t r = 0; r < ranges.size(); ++r)
+                if (x >= ranges[r].first && x < ranges[r].second) return int64_t(r);
+            return -1;
+        }
+        auto it = std::upper_bound(by_start.begin(), by_start.end(), std::make_pair(x, UINT32_MAX));
+        if (it == by_start.begin()) return -1;
+        --it;
+        return x < ranges[it->second].second ? int64_t(it->second) : -1;
+    };
     {
         std::lock_guard lk(nr::g_m);
         auto& pend = nr::g_pending;
-        size_t keep = 0;
-        for (ng::Draw* d : pend) {
-            // position in the submission: (range in traversal order, offset inside it)
-            int64_t rng = -1;
-            for (size_t r = 0; r < ranges.size(); ++r)
-                if (d->order >= ranges[r].first && d->order < ranges[r].second) {
-                    rng = int64_t(r);
-                    break;
-                }
-            if (rng >= 0) mine.push_back({uint64_t(rng) << 40 | ((d->order - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull), d});
-            else if (nr::g_seq - d->seq < 200000) pend[keep++] = d;
-            else {  // never submitted
+        // the draws inside each range (in traversal order: where ranges overlap, the first wins)
+        for (size_t r = 0; r < ranges.size(); ++r) {
+            auto it = pend.lower_bound(ranges[r].first);
+            while (it != pend.end() && it->first < ranges[r].second) {
+                ng::Draw* d = it->second;
+                mine.push_back({uint64_t(r) << 40 | ((d->order - ranges[r].first) & 0xFFFFFFFFFFull), d});
+                it = pend.erase(it);
+            }
+        }
+        // draws whose submission never came
+        static uint32_t sweep = 0;
+        if (++sweep % 64 == 0)
+            for (auto it = pend.begin(); it != pend.end();) {
+                ng::Draw* d = it->second;
+                if (nr::g_seq - d->seq < 200000) { ++it; continue; }
                 ++nr::g_dropped;
                 static const bool log_drop = getenv("D1_NG_LOG_DROPS") != nullptr;
                 static int n = 0;
-                if (log_drop && n++ < 100) {
-                    // the nearest range, to see where the draw's recorded position went
-                    int64_t best = -1;
-                    uint64_t dist = ~0ull;
-                    for (size_t r = 0; r < ranges.size(); ++r) {
-                        const uint64_t dd = d->order < ranges[r].first ? ranges[r].first - d->order : d->order >= ranges[r].second ? d->order - ranges[r].second : 0;
-                        if (dd < dist) dist = dd, best = int64_t(r);
-                    }
-                    log("ng drop: draw ps %p from %#llx recorded at %#llx (flip %u), nearest range %lld [%#llx, %#llx) off by %llu",
-                        (const void*)d->ps, (unsigned long long)d->caller, (unsigned long long)d->order, d->frame, (long long)best,
-                        best >= 0 ? (unsigned long long)ranges[size_t(best)].first : 0ull,
-                        best >= 0 ? (unsigned long long)ranges[size_t(best)].second : 0ull, (unsigned long long)dist);
-                }
+                if (log_drop && n++ < 100)
+                    log("ng drop: draw ps %p from %#llx recorded at %#llx (flip %u) never submitted", (const void*)d->ps,
+                        (unsigned long long)d->caller, (unsigned long long)d->order, d->frame);
                 delete d;
+                it = pend.erase(it);
             }
+        if (static const bool st = getenv("D1_NG_PENDING_STATS") != nullptr; st) {
+            static uint64_t n = 0;
+            if (++n % 500 == 0)
+                log("ng pending: %zu draws, %zu constant events kept after a submission of %zu ranges (%zu matched)",
+                    pend.size(), nr::g_cb_pending.size(), ranges.size(), mine.size());
         }
-        pend.resize(keep);
         for (auto& [pos, e] : events) {
             if (!queries && (e->kind == ng::Draw::ZPass || e->kind == ng::Draw::PredOn || e->kind == ng::Draw::PredOff)) {
                 delete e;
                 continue;
             }
             e->seq = nr::g_seq++;
-            int64_t rng = -1;
-            for (size_t r = 0; r < ranges.size(); ++r)
-                if (pos >= ranges[r].first && pos < ranges[r].second) {
-                    rng = int64_t(r);
-                    break;
-                }
+            const int64_t rng = find_range(pos);
             if (rng >= 0) mine.push_back({uint64_t(rng) << 40 | ((pos - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull), e});
             else delete e;
         }
@@ -1181,20 +1200,18 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
             std::vector<std::pair<std::pair<uint64_t, uint32_t>, const nr::CbEvent*>> evs;
             auto& cp = nr::g_cb_pending;
             std::vector<nr::CbEvent> mine_ev;
-            size_t kept = 0;
-            for (const auto& e : cp) {
-                int64_t rng = -1;
-                for (size_t r = 0; r < ranges.size(); ++r)
-                    if (e.order >= ranges[r].first && e.order < ranges[r].second) {
-                        rng = int64_t(r);
-                        break;
-                    }
-                if (rng >= 0) {
-                    mine_ev.push_back(e);
-                    mine_ev.back().order = uint64_t(rng) << 40 | ((e.order - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull);
-                } else if (nr::g_seq - e.seq < 2000000) cp[kept++] = e;
+            for (size_t r = 0; r < ranges.size(); ++r) {
+                auto it = cp.lower_bound(ranges[r].first);
+                while (it != cp.end() && it->first < ranges[r].second) {
+                    mine_ev.push_back(it->second);
+                    mine_ev.back().order = uint64_t(r) << 40 | ((it->second.order - ranges[r].first) & 0xFFFFFFFFFFull);
+                    it = cp.erase(it);
+                }
             }
-            cp.resize(kept);
+            static uint32_t sweep_ev = 0;
+            if (++sweep_ev % 64 == 0)
+                for (auto it = cp.begin(); it != cp.end();)
+                    it = nr::g_seq - it->second.seq < 2000000 ? std::next(it) : cp.erase(it);
             std::vector<std::pair<std::pair<uint64_t, uint32_t>, int64_t>> seq;  // (pos, seq) -> draw index or ~event
             for (size_t i = 0; i < mine.size(); ++i) seq.push_back({{mine[i].first, mine[i].second->seq}, int64_t(i)});
             for (size_t i = 0; i < mine_ev.size(); ++i) seq.push_back({{mine_ev[i].order, mine_ev[i].seq}, ~int64_t(i)});
@@ -1338,6 +1355,15 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                     double(nr::g_exec_ns) / 1e6 / frames, double(nr::g_flip_ns) / 1e6 / frames,
                     double(faults - faults0) / fault_frames, (unsigned long long)(nr::g_dropped - dropped0),
                     (unsigned long long)(nr::g_late - late0));
+                // the game's side: its frame (submit to submit), the part blocked on GPU events, the
+                // part blocked on a full GPU queue (it is ahead of the renderer)
+                auto& gp = render::perf();
+                static uint64_t gf0 = 0, gn0 = 0, gw0 = 0, qw0 = 0;
+                const uint64_t gf = gp.guest_frames, gn = gp.guest_ns, gw = gp.guest_wait_ns, qw = gpu_queue_wait_ns();
+                const double gfr = double(std::max<uint64_t>(1, gf - gf0));
+                log("native gfx: game frame %.1f ms (waiting for GPU events %.1f ms, for the GPU queue %.1f ms)",
+                    double(gn - gn0) / 1e6 / gfr, double(gw - gw0) / 1e6 / gfr, double(qw - qw0) / 1e6 / gfr);
+                gf0 = gf, gn0 = gn, gw0 = gw, qw0 = qw;
                 dropped0 = nr::g_dropped, late0 = nr::g_late;
                 faults0 = faults;
                 ng::print_stats();

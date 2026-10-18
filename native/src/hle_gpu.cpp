@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "hle.h"
+#include "os.h"
 #include "render_bridge.h"
 #include "runtime.h"
 #include "settings.h"
@@ -366,6 +367,10 @@ static void do_flip(int32_t index, int64_t arg) {
     }
     gpu_stats(n);
 }
+namespace gpuq {  // asynchronous GPU queue (below)
+bool enabled();
+void push_flip(int32_t buf, int64_t arg);
+}
 static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64_t arg) {
     note_guest_frame();
     if (gpu_real() && frame_rendered()) {
@@ -375,6 +380,11 @@ static int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, int32_t mode, int64
         return SCE_OK;
     }
     if (gpu_real()) frame_end();
+    if (gpuq::enabled()) {
+        { std::lock_guard lk(g_vo.m); ++g_vo.status.flip_pending_num; }
+        gpuq::push_flip(index, arg);
+        return SCE_OK;
+    }
     if (index >= 0 && index < 16) native_gfx_flip(g_vo.buffers[index], g_vo.attr.width, g_vo.attr.height);
     do_flip(index, arg);
     return SCE_OK;
@@ -528,11 +538,104 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
 }
 
 
-static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
+static void submit_now(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
     g_rendered = native_gfx_submit(count, dcbs, dcb_sizes);
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && dcb_sizes[k]) run_dcb(dcbs[k], dcb_sizes[k] / 4, 0);
     native_gfx_check_waits(count, dcbs, dcb_sizes);
+}
+
+// ---- asynchronous GPU (native renderer): the game's submissions and flips go to a worker
+// thread in order, like a GPU's queue. The game's thread returns at once and builds its next
+// frame while the worker translates and records this one (on the console the GPU runs
+// beside the CPU too). Fences, labels and end-of-pipe events are written when the worker
+// gets to them, flips complete when the frame is presented, so the game waits exactly where
+// it would wait for a console GPU. At most kAheadFlips frames may be queued. D1_NG_ASYNC=0:
+// run them on the game's thread as before.
+namespace gpuq {
+struct Job {
+    bool flip = false;
+    std::vector<uint32_t*> dcbs;
+    std::vector<uint32_t> sizes;
+    int32_t buf = -1;
+    int64_t arg = 0;
+};
+constexpr int kAheadFlips = 2;
+std::mutex m;
+std::condition_variable cv, cv_space;
+std::vector<Job> queue;
+size_t head = 0;
+int queued_flips = 0;
+bool busy = false;
+std::atomic<uint64_t> wait_ns{0};
+
+bool enabled() {
+    static const bool on = [] { const char* v = getenv("D1_NG_ASYNC"); return !v || std::atoi(v) != 0; }();
+    return on && !gpu_real() && native_gfx_active();
+}
+void run(Job& j) {
+    if (!j.flip) {
+        submit_now(uint32_t(j.dcbs.size()), j.dcbs.data(), j.sizes.data());
+        return;
+    }
+    if (j.buf >= 0 && j.buf < 16) native_gfx_flip(g_vo.buffers[j.buf], g_vo.attr.width, g_vo.attr.height);
+    do_flip(j.buf, j.arg);
+}
+void worker() {
+    os::set_thread_name("gpu queue");
+    for (;;) {
+        Job j;
+        {
+            std::unique_lock lk(m);
+            cv.wait(lk, [] { return head < queue.size(); });
+            j = std::move(queue[head++]);
+            if (head == queue.size()) queue.clear(), head = 0;
+            busy = true;
+        }
+        run(j);
+        {
+            std::lock_guard lk(m);
+            busy = false;
+            if (j.flip) --queued_flips;
+        }
+        cv_space.notify_all();
+    }
+}
+void push(Job&& j) {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        std::thread(worker).detach();
+        log("gpu queue: submissions and flips run on their own thread (D1_NG_ASYNC=0 turns it off)");
+    });
+    std::unique_lock lk(m);
+    if (j.flip) {  // bound how far the game runs ahead of the presented frames
+        const auto t0 = std::chrono::steady_clock::now();
+        cv_space.wait(lk, [] { return queued_flips < kAheadFlips; });
+        wait_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        ++queued_flips;
+    }
+    queue.push_back(std::move(j));
+    lk.unlock();
+    cv.notify_one();
+}
+void push_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
+    Job j;
+    j.dcbs.assign(dcbs, dcbs + count);
+    j.sizes.assign(sizes, sizes + count);
+    push(std::move(j));
+}
+void push_flip(int32_t buf, int64_t arg) {
+    Job j;
+    j.flip = true, j.buf = buf, j.arg = arg;
+    push(std::move(j));
+}
+}  // namespace gpuq
+
+uint64_t gpu_queue_wait_ns() { return gpuq::wait_ns.load(); }
+
+static int32_t submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
+    if (gpuq::enabled()) gpuq::push_submit(count, dcbs, dcb_sizes);
+    else submit_now(count, dcbs, dcb_sizes);
     return SCE_OK;
 }
 
@@ -558,6 +661,12 @@ static int32_t sceGnmSubmitAndFlipCommandBuffers(uint32_t count, uint32_t* const
             ++g_vo.status.gc_queue_num;
         }
         return render::submit_and_flip(count, dcbs, dcb_sizes, ccbs, ccb_sizes, buf, arg);
+    }
+    if (gpuq::enabled()) {
+        { std::lock_guard lk(g_vo.m); ++g_vo.status.flip_pending_num; ++g_vo.status.gc_queue_num; }
+        gpuq::push_submit(count, dcbs, dcb_sizes);
+        gpuq::push_flip(int32_t(buf), arg);
+        return SCE_OK;
     }
     submit(count, dcbs, dcb_sizes);
     if (buf < 16) native_gfx_flip(g_vo.buffers[buf], g_vo.attr.width, g_vo.attr.height);
