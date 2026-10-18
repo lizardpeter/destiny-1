@@ -295,3 +295,29 @@ Validation: the latest Khronos validation layer (1.4.328, built from source) rep
 on Earth patrol. Synchronization validation reported no hazards either, but it also missed a
 known feedback loop, so its coverage of this renderer is unproven. All translated shaders pass
 `spirv-val`.
+
+## Status 2026-10-18 (evening): the corrupted UI text (test-31)
+
+The RTX 5090 log showed the same text corruption as the Arc, so it was not GPU-specific.
+Letters were swapped one for one ("NAX MODE", "SgbVFTKY" for SKYWATCH), which is what a stale
+glyph cache looks like.
+
+- `D1_NG_LOG_TEXUSE` showed the UI's text shaders sampling a 512x512 R8 texture at
+  `0x562A60000` and a 512x1 table at `0x562A5F000`. Both are CPU-written memory and not engine
+  resources.
+- The engine writes new glyphs into them directly, with no lock or unlock call. Opening the
+  Ghost in patrol (`D1_STATE_PRESS=activity:in_world:p@40+60`) logged "dynamic texture
+  0x562a60000 changed without an event".
+- Since test-28 dropped page protection, nothing noticed those writes.
+- Fix:
+  - CPU-written (non-resource) textures are hash-compared with guest memory once per
+    submission.
+  - Each recorded list keeps their T#s and hashes (`Sub::dyn`); `submit_recorded` compares
+    again and copies a changed one again, in place, in the upload slot.
+  - Announced CPU writes also make engine-resource textures over them stale.
+- Locally, the scene renders correctly with the check on and with it off
+  (`D1_NG_DYN_CHECK=0`): lavapipe is slow enough that the glyphs are always written before the
+  list is recorded. On a fast machine they are not.
+- Completion results (occlusion counts, readbacks) and end-of-pipe labels are now written
+  without the renderer's lock. The per-slot state `serial << 2 | {pending, writing, written}`
+  lets the completion thread and `retire_one` take each submission once, in order.
