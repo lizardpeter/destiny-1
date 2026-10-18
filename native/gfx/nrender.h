@@ -86,6 +86,21 @@ bool active();
 // Records and submits draws (already in GPU order). The GPU runs them asynchronously; data
 // they read from guest memory is copied while recording.
 void execute(const std::vector<Draw*>& draws);
+// ---- recording on the engine's own threads (native device layer)
+// A command list is recorded into its own Vulkan command buffer by the thread that ends it;
+// the GPU queue thread only submits the recorded lists, in the engine's submission order.
+// Constant buffers a list inherits from earlier lists (the constant engine's bindings carry
+// across command buffers) are only known at submission: such a Draw::Cb has
+// addr = kLateCb | stage << 4 | slot, and the list's draws read one ring region per slot,
+// filled at submission (fill_late) from the bindings in effect when the list starts.
+constexpr uint64_t kLateCb = 1ull << 62;
+struct LateCb { uint8_t stage, slot; uint32_t size; uint64_t off; };
+bool list_recording();  // on (D1_ND_RECORD, default on) and no per-draw diagnostics running
+// false: not recorded (the caller executes the list's draws at submission instead)
+bool record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late);
+void fill_late(const LateCb& l, uint64_t src, uint32_t size);
+void submit_recorded(const std::vector<uint32_t>& handles);  // in this order
+void discard_recorded(uint32_t handle);                       // never submitted
 // The video-out buffer at `addr` was flipped: present it to the window (if any), dump it when
 // frames are being written (dump = true), and limit how far the CPU runs ahead.
 void flip(uint64_t addr, uint32_t width, uint32_t height, uint64_t frame, bool dump);

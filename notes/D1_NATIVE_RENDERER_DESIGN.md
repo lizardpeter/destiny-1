@@ -170,3 +170,38 @@ descriptors 1.25, geometry 1-3 ms) and the game's frame is 13-19 ms. Today's sta
 
 Each step stays behind a switch with the previous path as fallback, and is checked against
 frame dumps of the patrol and orbit scenes (`wrun.sh`, `orbrun.sh`) before it ships.
+
+## Status 2026-10-18: lists recorded on the engine's threads (step 3 above)
+
+`D1_ND_RECORD` (default on): every command list is recorded into its own Vulkan command
+buffer by the engine thread that ends it (`cmdlist_end 0x7DCEC0` /
+`cmdlist_end_and_submit 0x7DE950`, before the engine's own end runs). The GPU queue thread
+only fills late constant buffers and submits the recorded command buffers in the engine's
+submission order.
+
+- **Recorders.** All per-recording state (command buffer, pass, state filter, queries,
+  predication) is a `Recorder`; `rc()` is the calling thread's. Each submission slot has its
+  own command pool. Slots are Idle / Recording / Recorded / Inflight.
+- **Locking.** The renderer lock is held for everything that changes shared state: target
+  set-up, pass changes, clears, queries, readbacks. It is released while runs of plain draws
+  record, which take it only on cache misses. Each recording thread keeps its own pipeline
+  cache, keyed by `targets_gen` (addresses whose sampled image changes kind use the shared
+  memo). The flip releases the lock while waiting for the GPU and while presenting.
+- **Uploads.** Texture uploads and new targets go to one shared upload slot, submitted
+  before the next recorded lists (and before any list executed the old way).
+- **Lifetimes.** Dropped images and geometry regions wait in a graveyard tagged with the
+  recording sequence. They are freed once no slot that began at or before that tag is still
+  in use. The ring's oldest live allocation is the minimum over the slots in use.
+- **Constant buffers across lists.** The constant engine's bindings carry across command
+  buffers. Measured with `D1_ND_CB_CHECK`: almost every draw of the worker contexts uses
+  bindings made by lists submitted before it. A snapshot at list begin (in list-end order)
+  disagrees for ~80% of them, so these bindings are only known at submission. A draw's slot
+  that its list did not bind before it gets `addr = kLateCb | stage << 4 | slot`. The list
+  reads one ring region per such slot, filled at submission from the bindings in effect
+  when the list starts. An unbinding inside the list counts as a binding: the draw then
+  keeps the buffer it captured. Getting this wrong showed as a dark cloud over the aurora
+  in the patrol sky.
+- **CPU-visible events.** DMA is done at record time (in order with the list's draws) and
+  again at submission. WRITE_DATA (labels) is done at submission only.
+- Checked against the old path on patrol and orbit (frame dumps): differences match the
+  run-to-run noise (wind, flickering lamps, idle animation).

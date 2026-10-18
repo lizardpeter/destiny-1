@@ -387,13 +387,14 @@ struct Heap {
 
 // One submitted (or recording) command buffer and what must outlive it.
 struct Sub {
+    VkCommandPool cpool = VK_NULL_HANDLE;  // its own (lists are recorded on several threads at once)
     VkCommandBuffer cmd = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
     uint64_t serial = 0;
+    enum State : uint8_t { Idle, Recording, Recorded, Inflight } state = Idle;
+    uint64_t submit_no = 0;   // the first recording that used it (what it may reference)
     uint64_t ring_begin = 0;  // ring position (absolute) when recording started
     std::vector<Buffer> staging;
-    std::vector<std::unique_ptr<Image>> dead;
-    std::vector<std::array<uint64_t, 3>> dead_geo;  // (block, offset, size) to free
     std::vector<VkDescriptorPool> pools;            // descriptor sets of this submission's draws
     size_t pool = 0;                                // the pool being allocated from
     // small render targets the CPU reads: copied to the ring, written to guest memory when done
@@ -511,9 +512,21 @@ struct Renderer {
     Buffer make_readback_buffer(uint64_t size);
     // bumped whenever a render target appears or the image bound at an address changes: what
     // T#s on render targets resolve to (pipeline memo below)
-    uint64_t targets_gen = 1;
+    std::atomic<uint64_t> targets_gen{1};
     uint64_t gen_why[8] = {};  // (diagnostics: which bump)
     std::vector<uint64_t> ambiguous_bases;  // sorted
+    // the same, append-only, read without a lock by the recording threads' pipeline caches
+    static constexpr uint32_t kAmbMax = 1024;
+    uint64_t amb_arr[kAmbMax] = {};
+    std::atomic<uint32_t> amb_n{0};
+    void publish_ambiguous(uint64_t base) {
+        const uint32_t n = amb_n.load(std::memory_order_relaxed);
+        if (n < kAmbMax) amb_arr[n] = base;
+        amb_n.store(n + 1, std::memory_order_release);  // (past kAmbMax: every T# counts as ambiguous)
+    }
+    // pipeline() key without the parts that need the shared maps; ambiguous = a T# names an
+    // address whose sampled image changes kind (then only pipeline() under the lock decides)
+    uint64_t pipe_key(const Draw& dr, Image* const* colors, Image* depth, bool& ambiguous) const;
     // what a pipeline sees of a render target sampled as a texture: dimensionality and kind
     static uint32_t target_attrs(const Image* i) {
         if (!i) return 0;
@@ -527,6 +540,7 @@ struct Renderer {
             else if (target_attrs(it->second) != target_attrs(img) &&
                      !std::binary_search(ambiguous_bases.begin(), ambiguous_bases.end(), base)) {  // (see below)
                 ambiguous_bases.insert(std::upper_bound(ambiguous_bases.begin(), ambiguous_bases.end(), base), base);
+                publish_ambiguous(base);
                 (++targets_gen, ++gen_why[0]);
             }
             it->second = img, ++views_gen;
@@ -540,6 +554,7 @@ struct Renderer {
             // that sample it by what it resolves to (instead of invalidating every pipeline)
             if (other_attrs && !std::binary_search(ambiguous_bases.begin(), ambiguous_bases.end(), base)) {
                 ambiguous_bases.insert(std::upper_bound(ambiguous_bases.begin(), ambiguous_bases.end(), base), base);
+                publish_ambiguous(base);
                 (++targets_gen, ++gen_why[1]);
             }
         }
@@ -579,7 +594,21 @@ struct Renderer {
         int32_t q_active = -1;  // the query counting now (in the current pass)
         int32_t pred_cur = -1;  // the slot predicating draws now (-1: none)
         bool pred_invert = false;
+        // recording a list on an engine thread: shared state is taken under the renderer's
+        // lock (m) instead of the finer locks the worker threads use while it is held
+        bool lr = false;
+        struct Late { uint64_t off = 0; uint32_t size = 0; };
+        Late late[kStages][16];
+        std::vector<LateCb> late_list;
     };
+    Recorder up_rec;  // uploads and target set-up for lists recorded on engine threads
+    std::atomic<uint32_t> late_hint[kStages][16] = {};  // largest inherited constant buffer seen per slot
+    bool list_rec = false;
+    std::atomic<uint64_t> lr_lists{0}, lr_ns{0}, lr_wait_ns{0}, lr_sub_ns{0};  // (statistics)
+    bool record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late);
+    void pre_pass(const std::vector<Draw*>& draws);
+    void submit_recorded(const std::vector<uint32_t>& handles);
+    void discard_recorded(uint32_t handle);
     Recorder main_rec;
     static thread_local Recorder* tr;  // this thread's recorder (null: the main one)
     Recorder& rc() { return tr ? *tr : main_rec; }
@@ -591,6 +620,17 @@ struct Renderer {
     // submissions
     void begin_record();
     void submit(const VkSemaphoreSubmitInfo* wait = nullptr, const VkSemaphoreSubmitInfo* signal = nullptr);
+    void submit_sub(uint32_t i, const VkSemaphoreSubmitInfo* wait = nullptr, const VkSemaphoreSubmitInfo* signal = nullptr);
+    uint64_t min_live_submit() const;
+    uint64_t oldest_ring() const;
+    uint64_t ring_oldest = 0;  // a lower bound of oldest_ring()
+    VkSemaphore timeline = VK_NULL_HANDLE;  // value = serial of the last completed submission
+    // images and geometry regions dropped while recordings that may use them are in progress
+    struct Dead { uint64_t tag; std::unique_ptr<Image> img; std::array<uint64_t, 3> geo; };
+    std::mutex grave_m;
+    std::vector<Dead> grave;
+    void bury(std::unique_ptr<Image> img);
+    void reap();
     void retire_one();
     void retire_completed();
     void wait_serial(uint64_t serial);
@@ -680,7 +720,7 @@ struct Renderer {
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         DrawState* ds = nullptr;
         bool parallel = false;
-        uint64_t t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, draws = 0, bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, predicated = 0;
+        uint64_t t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, draws = 0, bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, predicated = 0, memo_tl = 0;
         uint64_t chunk_pos = 0, chunk_end = 0;  // (parallel) this worker's slice of the ring
     };
     std::mutex pipe_m, geo_m, tex_m, set_m, ring_m, skip_m;
@@ -693,6 +733,7 @@ struct Renderer {
     void merge(const Rec& r) {
         st.t_pipe += r.t_pipe, st.t_geo += r.t_geo, st.t_desc += r.t_desc, st.t_cmd += r.t_cmd, st.draws += r.draws;
         st.bytes_vtx += r.bytes_vtx, st.bytes_idx += r.bytes_idx, st.bytes_cb += r.bytes_cb, st.predicated += r.predicated;
+        st.memo_hits += r.memo_tl;
     }
     void draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run_depth);
     void draw(const Draw& dr) {
@@ -755,14 +796,24 @@ bool Renderer::init(const Options& o) {
     // command buffers: enough for a few frames of several submissions each
     subs.resize(256);  // ~30 submissions a frame, a few frames in flight
     for (uint32_t i = 0; i < subs.size(); ++i) {
+        VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        pci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        pci.queueFamilyIndex = ctx.queue_family;
+        vkCreateCommandPool(ctx.device, &pci, nullptr, &subs[i].cpool);
         VkCommandBufferAllocateInfo cai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-        cai.commandPool = pool;
+        cai.commandPool = subs[i].cpool;
         cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         cai.commandBufferCount = 1;
         vkAllocateCommandBuffers(ctx.device, &cai, &subs[i].cmd);
         VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
         vkCreateFence(ctx.device, &fci, nullptr, &subs[i].fence);
         idle_subs.push_back(uint32_t(subs.size() - 1 - i));
+    }
+    {
+        VkSemaphoreTypeCreateInfo tci{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        tci.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &tci};
+        if (vkCreateSemaphore(ctx.device, &sci, nullptr, &timeline) != VK_SUCCESS) timeline = VK_NULL_HANDLE;
     }
     uint64_t ring_mb = 256;
     if (const char* v = std::getenv("D1_NG_RING_MB")) ring_mb = std::max<uint64_t>(64, std::strtoull(v, nullptr, 10));
@@ -838,6 +889,13 @@ bool Renderer::init(const Options& o) {
         log("native renderer: recording on %u thread%s (runs of %u+ draws in one pass split)", rec_threads + 1,
             rec_threads ? "s" : "", rec_min_run);
     }
+    // D1_ND_RECORD=0: lists are recorded on the GPU queue thread at submission (as before)
+    {
+        const char* v = std::getenv("D1_ND_RECORD");
+        list_rec = (!v || std::atoi(v) != 0) && !debug && passlog_frame == UINT64_MAX && !std::getenv("D1_NG_TRACE") &&
+                   !std::getenv("D1_NG_DRAWSTATS");
+        log("native renderer: command lists recorded %s", list_rec ? "on the engine's threads as they end" : "at submission");
+    }
     return true;
 }
 
@@ -845,14 +903,17 @@ bool Renderer::init(const Options& o) {
 void Renderer::begin_record() {
     if (rc().cur != UINT32_MAX) return;
     if (idle_subs.empty()) retire_one();
+    if (idle_subs.empty()) return;  // (every submission slot recorded and not yet submitted)
     rc().cur = idle_subs.back();
     idle_subs.pop_back();
     Sub& sb = subs[rc().cur];
     sb.ring_begin = ring_head;
+    sb.state = Sub::Recording;
+    sb.submit_no = rc().submit_no;
     for (VkDescriptorPool p : sb.pools) vkResetDescriptorPool(ctx.device, p, 0);
     sb.pool = 0;
     vkResetFences(ctx.device, 1, &sb.fence);
-    vkResetCommandBuffer(sb.cmd, 0);
+    vkResetCommandPool(ctx.device, sb.cpool, 0);
     for (auto& w : sb.sec)
         if (w.used) vkResetCommandPool(ctx.device, w.pool, 0), w.used = 0;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -865,8 +926,14 @@ void Renderer::begin_record() {
 
 void Renderer::submit(const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmitInfo* signal) {
     if (rc().cur == UINT32_MAX) return;
-    Sub& sb = subs[rc().cur];
-    vkEndCommandBuffer(sb.cmd);
+    vkEndCommandBuffer(subs[rc().cur].cmd);
+    submit_sub(rc().cur, wait, signal);
+    rc().cur = UINT32_MAX;
+    rc().cmd = VK_NULL_HANDLE;
+}
+
+void Renderer::submit_sub(uint32_t i, const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmitInfo* signal) {
+    Sub& sb = subs[i];
     VkCommandBufferSubmitInfo cbi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
     cbi.commandBuffer = sb.cmd;
     VkSubmitInfo2 si{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
@@ -874,8 +941,17 @@ void Renderer::submit(const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmit
     si.pCommandBufferInfos = &cbi;
     si.waitSemaphoreInfoCount = wait ? 1 : 0;
     si.pWaitSemaphoreInfos = wait;
-    si.signalSemaphoreInfoCount = signal ? 1 : 0;
-    si.pSignalSemaphoreInfos = signal;
+    // the timeline semaphore counts completed submissions (waited for without the lock)
+    VkSemaphoreSubmitInfo sig[2]{};
+    uint32_t nsig = 0;
+    if (signal) sig[nsig++] = *signal;
+    if (timeline) {
+        sig[nsig] = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+        sig[nsig].semaphore = timeline, sig[nsig].value = serial_next, sig[nsig].stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        ++nsig;
+    }
+    si.signalSemaphoreInfoCount = nsig;
+    si.pSignalSemaphoreInfos = sig;
     const uint64_t ts0 = now_ns();
     const VkResult r = vkQueueSubmit2(ctx.queue, 1, &si, sb.fence);
     st.t_submit += now_ns() - ts0;
@@ -889,9 +965,8 @@ void Renderer::submit(const VkSemaphoreSubmitInfo* wait, const VkSemaphoreSubmit
         }
     }
     sb.serial = serial_next++;
-    inflight.push_back(rc().cur);
-    rc().cur = UINT32_MAX;
-    rc().cmd = VK_NULL_HANDLE;
+    sb.state = Sub::Inflight;
+    inflight.push_back(i);
 }
 
 // Descriptor sets come from pools owned by the recording submission, reset when it is reused.
@@ -937,12 +1012,47 @@ void Renderer::retire_one() {
     sb.rb_used = 0;
     for (auto& b : sb.staging) free_buffer(b);
     sb.staging.clear();
-    for (auto& img : sb.dead) destroy_image(img.get());
-    sb.dead.clear();
-    for (auto& g : sb.dead_geo) geo_free_now(int(g[0]), g[1], g[2]);
-    sb.dead_geo.clear();
     serial_done = std::max(serial_done, sb.serial);
+    sb.state = Sub::Idle;
     idle_subs.push_back(i);
+    reap();
+}
+
+// The oldest recording any submission slot in use (recording, recorded or in flight) made:
+// what was dropped before it can be freed.
+uint64_t Renderer::min_live_submit() const {
+    uint64_t m = UINT64_MAX;
+    for (const Sub& sb : subs)
+        if (sb.state != Sub::Idle) m = std::min(m, sb.submit_no);
+    return m;
+}
+
+uint64_t Renderer::oldest_ring() const {
+    uint64_t m = ring_head;
+    for (const Sub& sb : subs)
+        if (sb.state != Sub::Idle) m = std::min(m, sb.ring_begin);
+    return m;
+}
+
+void Renderer::bury(std::unique_ptr<Image> img) {
+    if (!img) return;
+    std::lock_guard lk(grave_m);
+    grave.push_back({submit_seq.load(), std::move(img), {}});
+}
+
+void Renderer::reap() {
+    const uint64_t live = min_live_submit();
+    std::vector<Dead> now;
+    {
+        std::lock_guard lk(grave_m);
+        auto keep = std::stable_partition(grave.begin(), grave.end(), [&](const Dead& d) { return d.tag >= live; });
+        std::move(keep, grave.end(), std::back_inserter(now));
+        grave.erase(keep, grave.end());
+    }
+    for (Dead& d : now) {
+        if (d.img) destroy_image(d.img.get());
+        else geo_free_now(int(d.geo[0]), d.geo[1], d.geo[2]);
+    }
 }
 
 void Renderer::retire_completed() {
@@ -1234,15 +1344,15 @@ uint64_t Renderer::ring_alloc(uint64_t size, uint64_t align) {
         off = 0, p = 0;
     }
     const uint64_t end = ring_head - off + p + size;
-    for (;;) {
-        const uint64_t oldest = inflight.empty() ? subs[rc().cur].ring_begin : subs[inflight.front()].ring_begin;
-        if (end <= oldest + R) break;
-        if (inflight.empty()) return UINT64_MAX;  // this submission alone needs more than the ring
+    // (the oldest allocation still in use only moves forward: a slot begun later starts at the head)
+    while (end > ring_oldest + R) {
+        ring_oldest = oldest_ring();
+        if (end <= ring_oldest + R) break;
+        if (inflight.empty()) return UINT64_MAX;  // the recordings in progress need more than the ring
         retire_one();
     }
     ring_head = end;
-    const uint64_t oldest = inflight.empty() ? subs[rc().cur].ring_begin : subs[inflight.front()].ring_begin;
-    st.ring_peak = std::max(st.ring_peak, ring_head - oldest);
+    st.ring_peak = std::max(st.ring_peak, ring_head - ring_oldest);
     return p;
 }
 
@@ -1261,7 +1371,7 @@ uint64_t Renderer::rec_ring(Rec& r, uint64_t size, uint64_t align) {
         const uint64_t want = std::max(kChunk, size + align);
         uint64_t c;
         {
-            std::lock_guard lk(ring_m);
+            std::lock_guard lk(rc().lr ? m : ring_m);
             c = ring_alloc(want, 256);
         }
         if (c == UINT64_MAX) return UINT64_MAX;
@@ -1578,7 +1688,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                 ++st.tex_torn;
                 if (prev && prev->torn < 2) {  // show the previous contents one more frame
                     prev->torn++, prev->checked = rc().submit_no, prev->last_used = rc().submit_no;
-                    subs[rc().cur].dead.push_back(std::move(img));
+                    bury(std::move(img));
                     Image* keep = prev.get();
                     textures[key] = std::move(prev); ++views_gen;
                     return keep;
@@ -1589,7 +1699,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
             if (!out) textures.erase(key);
         }
     }
-    if (prev) subs[rc().cur].dead.push_back(std::move(prev));
+    if (prev) bury(std::move(prev));
     if (!out) textures[key] = nullptr; ++views_gen;
     return out;
 }
@@ -1744,12 +1854,8 @@ void Renderer::geo_free_now(int block, uint64_t off, uint64_t size) {
 
 // After the submissions that may read the region have completed.
 void Renderer::geo_free_later(int block, uint64_t off, uint64_t size) {
-    {
-        std::lock_guard lk(geo_block_m);
-        if (rc().cur != UINT32_MAX) return subs[rc().cur].dead_geo.push_back({uint64_t(block), off, size});
-        if (!inflight.empty()) return subs[inflight.back()].dead_geo.push_back({uint64_t(block), off, size});
-    }
-    geo_free_now(block, off, size);
+    std::lock_guard lk(grave_m);
+    grave.push_back({submit_seq.load(), nullptr, {uint64_t(block), off, size}});
 }
 
 // A GPU copy of guest memory [addr, addr+size), valid for this submission, or null (then the
@@ -1861,12 +1967,12 @@ thread_local Renderer::GeoHit Renderer::geo_hit_out;
 thread_local Renderer::Recorder* Renderer::tr = nullptr;
 
 void Renderer::evict_geo() {
-    const uint64_t horizon = 3000;
-    if (rc().submit_no < horizon) return;
+    const uint64_t horizon = 3000, now = submit_seq.load();
+    if (now < horizon) return;
     for (GeoShard& sh : geo_shards) {
         std::lock_guard lk(sh.m);
         for (auto it = sh.map.begin(); it != sh.map.end();) {
-            if (it->second.last_used + horizon < rc().submit_no) {
+            if (it->second.last_used + horizon < now) {
                 if (it->second.valid) geo_free_later(it->second.block, it->second.off, it->second.size);
                 it = sh.map.erase(it);
             } else {
@@ -1880,17 +1986,14 @@ void Renderer::evict_geo() {
 // game streams, and an address range can hold many textures over a session. The image is
 // destroyed once the submissions that may still read it have completed.
 void Renderer::evict_textures() {
-    const uint64_t horizon = 2000;  // submissions (several per frame)
-    if (rc().submit_no < horizon) return;
+    const uint64_t horizon = 2000, now = submit_seq.load();  // recordings (several per frame)
+    if (now < horizon) return;
     std::vector<uint64_t> drop;
     for (auto& [k, img] : textures)
-        if (img && img->last_used + horizon < rc().submit_no) drop.push_back(k);
+        if (img && img->last_used + horizon < now) drop.push_back(k);
     for (uint64_t k : drop) {
         auto it = textures.find(k);
-        // the current (or, without one, the newest) submission frees it when it completes
-        if (rc().cur != UINT32_MAX) subs[rc().cur].dead.push_back(std::move(it->second));
-        else if (!inflight.empty()) subs[inflight.back()].dead.push_back(std::move(it->second));
-        else destroy_image(it->second.get());
+        bury(std::move(it->second));  // (freed once every recording that may use it has completed)
         textures.erase(it); ++views_gen;
     }
     if (!drop.empty()) st.evicted += drop.size();
@@ -2074,6 +2177,28 @@ gcn::TexDim slot_dim(const uint32_t* t) {
 // Memoized: a draw's pipeline depends only on its shaders, primitive, render state, vertex
 // formats, target formats and its T#s' type / format / address (and what render target an
 // address is) - hashed here in far less time than resolving them again for every draw.
+uint64_t Renderer::pipe_key(const Draw& dr, Image* const* colors, Image* depth, bool& ambiguous) const {
+    uint64_t k = mix(mix(uint64_t(dr.vs), uint64_t(dr.ps)), uint64_t(dr.prim) | uint64_t(dr.tex_mask[0]) << 8 | uint64_t(dr.tex_mask[1]) << 24);
+    k = mix(mix(k, uint64_t(dr.blend) | uint64_t(dr.target_mask) << 32), uint64_t(dr.su_sc_mode) | uint64_t(dr.depth_ctl) << 32);
+    k = mix(k, dr.stencil_ctl);
+    for (int i = 0; i < 8; ++i) k = mix(k, uint64_t(colors[i]));
+    k = mix(k, uint64_t(depth));
+    for (int i = 0; i < 16; ++i) k = mix(k, uint64_t(dr.vb[i][1] >> 16) | uint64_t(dr.vb[i][3]) << 32);
+    const uint32_t na = amb_n.load(std::memory_order_acquire);
+    ambiguous = na > kAmbMax;
+    for (int s = 0; s < 2; ++s)
+        for (uint32_t m = dr.tex_mask[s]; m; m &= m - 1) {
+            const uint32_t* t = dr.tex[s][__builtin_ctz(m)];
+            k = mix(mix(k, uint64_t(t[0]) | uint64_t(t[1]) << 32), uint64_t(t[2]) | uint64_t(t[3]) << 32);
+            if (na && !ambiguous) {
+                const uint64_t base = (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8;
+                for (uint32_t i = 0; i < na; ++i)
+                    if (amb_arr[i] == base) { ambiguous = true; break; }
+            }
+        }
+    return k;
+}
+
 Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth) {
     uint64_t k = mix(mix(uint64_t(dr.vs), uint64_t(dr.ps)), uint64_t(dr.prim) | uint64_t(dr.tex_mask[0]) << 8 | uint64_t(dr.tex_mask[1]) << 24);
     k = mix(mix(k, uint64_t(dr.blend) | uint64_t(dr.target_mask) << 32), uint64_t(dr.su_sc_mode) | uint64_t(dr.depth_ctl) << 32);
@@ -2670,7 +2795,10 @@ void Renderer::masked_stencil_clear(Image* depth, uint32_t value, uint32_t write
 // buffer (parallel: the shared caches are taken under their locks, constants and streamed
 // vertices go to the worker's own slice of the ring, statistics to the context).
 void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run_depth) {
-    auto guard = [&](std::mutex& m) { return r.parallel ? std::unique_lock<std::mutex>(m) : std::unique_lock<std::mutex>(); };
+    const bool lr = rc().lr;
+    auto guard = [&](std::mutex& mx) {
+        return r.parallel ? std::unique_lock<std::mutex>(lr && &mx != &skip_m ? m : mx) : std::unique_lock<std::mutex>();
+    };
     auto skip = [&](const char* why) {
         auto lk = guard(skip_m);
         this->skip(why);
@@ -2699,8 +2827,24 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         depth = depth_target(dr.depth);
     }
     if (!depth && std::none_of(colors, colors + 8, [](Image* x) { return x != nullptr; })) return skip("no target");
-    Pipeline* p;
-    {
+    Pipeline* p = nullptr;
+    if (lr && r.parallel) {
+        // this thread's cache of pipeline() results (the shared memo needs the lock)
+        struct TlMemo { uint64_t key = 0, gen = 0; Pipeline* p = nullptr; };
+        static thread_local TlMemo tlm[4096];
+        bool amb;
+        const uint64_t k = pipe_key(dr, colors, depth, amb);
+        const uint64_t gen = targets_gen.load(std::memory_order_acquire);
+        TlMemo& e = tlm[k & 4095];
+        if (!amb && e.key == k && e.gen == gen && e.p) {
+            p = e.p;
+            ++r.memo_tl;
+        } else {
+            auto lk = guard(pipe_m);
+            p = pipeline(dr, colors, depth);
+            if (!amb) e = {k, gen, p};
+        }
+    } else {
         auto lk = guard(pipe_m);
         p = pipeline(dr, colors, depth);
     }
@@ -2845,7 +2989,17 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                 const auto& c = dr.cb[s][slot];
                 uint64_t off;
                 uint32_t size = std::max(16u, (c.size + 15) & ~15u);
-                if (c.addr >= 0x10000) off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size;
+                if ((c.addr & kLateCb) && rc().lr) {  // inherited from earlier lists: the list's region for the slot, filled at submission
+                    Recorder::Late& L = rc().late[s][slot];
+                    if (!L.size) {
+                        const uint32_t want = std::min<uint32_t>(65536, std::max({256u, (c.size + 255) & ~255u, late_hint[s][slot].load()}));
+                        L.off = rec_ring(r, want);
+                        if (L.off == UINT64_MAX) return skip("ring full");
+                        L.size = want;
+                        rc().late_list.push_back({uint8_t(s), uint8_t(slot), want, L.off});
+                    }
+                    off = L.off, size = L.size;
+                } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size;
                 else off = rec_ring(r, size), std::memset(ring.map + (off == UINT64_MAX ? 0 : off), 0, size);
                 if (off == UINT64_MAX) return skip("ring full");
                 bufs[s][nw[s]] = {ring.buf, off, size};
@@ -3152,18 +3306,14 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
     lap(r.t_cmd);
 }
 
-void Renderer::execute(const std::vector<Draw*>& draws) {
-    // D1_NG_PASSLOG=world: log the frame after the first big (in-world) submission, plus 3
-    if (passlog_frame == UINT64_MAX - 1 && draws.size() > 2000) passlog_frame = st.frames + 3;
-    ++rc().submit_no;
-    ++st.submits;
-    retire_completed();
-    begin_record();
+// Resources first (copies cannot run inside a render pass): targets, then textures (each
+// distinct target set and T# once per recording: thousands of draws share a few).
+void Renderer::pre_pass(const std::vector<Draw*>& draws) {
     const uint64_t tp = now_ns();
     if (reload_all) {
         reload_all = false;
         for (auto& [k, img] : textures)
-            if (img) subs[rc().cur].dead.push_back(std::move(img));
+            bury(std::move(img));
         textures.clear(); ++views_gen;
         log("native renderer: dropped every texture (D1_NG_SNAP_RELOAD)");
     }
@@ -3197,6 +3347,21 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
                 }
     barrier();
     st.t_pre += now_ns() - tp;
+}
+
+void Renderer::execute(const std::vector<Draw*>& draws) {
+    if (up_rec.cur != UINT32_MAX && !tr) {  // uploads for lists recorded on engine threads go first
+        tr = &up_rec;
+        submit();
+        tr = nullptr;
+    }
+    // D1_NG_PASSLOG=world: log the frame after the first big (in-world) submission, plus 3
+    if (passlog_frame == UINT64_MAX - 1 && draws.size() > 2000) passlog_frame = st.frames + 3;
+    rc().submit_no = ++submit_seq;
+    ++st.submits;
+    retire_completed();
+    begin_record();
+    pre_pass(draws);
     rc().q_on = false;
     for (Draw* d : draws) rc().q_on |= d->kind == Draw::ZPass;
     if (rc().q_on) {
@@ -3279,6 +3444,146 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     }
     submit();
     if ((rb_sync != bool(debug_toggles() & 2)) && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
+}
+
+// ---------------------------------------------------------------------------- lists on engine threads
+// A command list recorded on the thread that ended it, into a submission slot of its own. The
+// renderer's lock (m) is held for everything that changes shared state - texture uploads and
+// target set-up (into the shared upload slot, submitted before any list that follows), pass
+// changes, clears, queries, readbacks - and released for runs of plain draws, which take it
+// only for cache misses. Recorded slots wait for submit_recorded, in the engine's order.
+bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late) {
+    static thread_local Recorder R;
+    Recorder* const prev_tr = tr;
+    R.lr = true;
+    tr = &R;
+    struct Restore { Recorder* p; ~Restore() { tr = p; } } restore{prev_tr};
+    const uint64_t t_start = now_ns();
+    std::unique_lock lk(m, std::defer_lock);
+    uint64_t waited = 0;
+    auto relock = [&] {
+        const uint64_t t = now_ns();
+        lk.lock();
+        waited += now_ns() - t;
+    };
+    relock();
+    struct Account {
+        Renderer* g; const uint64_t& t0; const uint64_t& w;
+        ~Account() { g->lr_ns += now_ns() - t0, g->lr_wait_ns += w, ++g->lr_lists; }
+    } account{this, t_start, waited};
+    R.submit_no = ++submit_seq;
+    ++st.submits;
+    retire_completed();
+    begin_record();
+    if (R.cur == UINT32_MAX) return false;  // no free slot: executed at submission instead
+    for (auto& row : R.late)
+        for (auto& l : row) l = {};
+    R.late_list.clear();
+    R.q_on = false;
+    R.pred_cur = -1;
+    // uploads and new targets into the shared slot
+    tr = &up_rec;
+    up_rec.lr = true;
+    up_rec.submit_no = R.submit_no;
+    begin_record();
+    if (up_rec.cur != UINT32_MAX) pre_pass(items);
+    tr = &R;
+    for (const Draw* d : items) R.q_on |= d->kind == Draw::ZPass;
+    if (R.q_on) {
+        Sub& sb = subs[R.cur];
+        if (!sb.qpool) {
+            VkQueryPoolCreateInfo qci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+            qci.queryType = VK_QUERY_TYPE_OCCLUSION;
+            qci.queryCount = kQueries;
+            vkCreateQueryPool(ctx.device, &qci, nullptr, &sb.qpool);
+        }
+        if (sb.qpool) vkCmdResetQueryPool(R.cmd, sb.qpool, 0, kQueries);
+        else R.q_on = false;
+    }
+    Rec run_rec;  // (plain draws: one ring chunk stream for the whole list)
+    run_rec.cmd = R.cmd, run_rec.ds = &R.dstate, run_rec.parallel = true;
+    for (size_t i = 0; i < items.size(); ++i) {
+        Draw* d = items[i];
+        switch (d->kind) {
+        case Draw::Clear: clear(*d); break;
+        case Draw::ZPass: zpass(d->index_addr); break;
+        case Draw::PredOn: predicate(d->index_addr, d->count & 1); break;
+        case Draw::PredOff: R.pred_cur = -1; break;
+        case Draw::Dma:  // (in order with the draws that read it; repeated at submission)
+            if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->count) {
+                if (d->prim == 2) {
+                    auto* w = reinterpret_cast<uint32_t*>(d->caller);
+                    for (uint32_t k = 0; k < d->count / 4; ++k) w[k] = d->instances;
+                } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
+                    std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
+                }
+            }
+            break;
+        case Draw::Eop:
+        case Draw::WriteData: break;  // (CPU-visible: done at submission)
+        default: {
+            // a run of plain draws into the same targets: recorded without the lock
+            size_t j = i + 1;
+            auto plain = [&](const Draw* x) {
+                return (x->kind == Draw::Indexed || x->kind == Draw::Auto) && std::memcmp(x->color, d->color, sizeof d->color) == 0 &&
+                       std::memcmp(x->depth, d->depth, sizeof d->depth) == 0;
+            };
+            while (j < items.size() && plain(items[j])) ++j;
+            Image* colors[8] = {};
+            for (int k = 0; k < 5; ++k) colors[k] = color_target(d->color[k]);
+            Image* depth = depth_target(d->depth);
+            if (!depth && std::none_of(colors, colors + 8, [](Image* x) { return x != nullptr; })) {
+                for (size_t k = i; k < j; ++k) skip("no target");
+                i = j - 1;
+                break;
+            }
+            begin_pass(colors, depth);
+            lk.unlock();
+            for (size_t k = i; k < j; ++k) draw(*items[k], run_rec, colors, depth);
+            relock();
+            i = j - 1;
+            break;
+        }
+        }
+    }
+    merge(run_rec);
+    end_pass();
+    R.pred_cur = -1;
+    if (R.q_on) store_query_predicates();
+    R.q_on = false;
+    queue_readbacks();
+    vkEndCommandBuffer(R.cmd);
+    subs[R.cur].state = Sub::Recorded;
+    handle = R.cur;
+    late = R.late_list;
+    R.cur = UINT32_MAX, R.cmd = VK_NULL_HANDLE;
+    return true;
+}
+
+// The recorded lists of one submission, after the shared upload slot.
+void Renderer::submit_recorded(const std::vector<uint32_t>& handles) {
+    const uint64_t t0 = now_ns();
+    struct Account { Renderer* g; uint64_t t0; ~Account() { g->lr_sub_ns += now_ns() - t0; } } account{this, t0};
+    if (up_rec.cur != UINT32_MAX) {
+        Recorder* const prev_tr = tr;
+        tr = &up_rec;
+        submit();
+        tr = prev_tr;
+    }
+    for (uint32_t h : handles)
+        if (h < subs.size() && subs[h].state == Sub::Recorded) submit_sub(h);
+    retire_completed();
+}
+
+void Renderer::discard_recorded(uint32_t h) {
+    if (h >= subs.size() || subs[h].state != Sub::Recorded) return;
+    Sub& sb = subs[h];
+    sb.readbacks.clear(), sb.rb_used = 0, sb.zrecs.clear(), sb.q_used = 0;
+    for (auto& b : sb.staging) free_buffer(b);
+    sb.staging.clear();
+    sb.state = Sub::Idle;
+    idle_subs.push_back(h);
+    reap();
 }
 
 // False when the CPU has written a small render target's memory since the GPU rendered it:
@@ -3632,7 +3937,11 @@ void Renderer::present(uint64_t addr) {
         if (!make_swapchain(ww, wh)) return;
     const uint32_t slot = sc.slot;
     uint32_t index = 0;
+    // (the swapchain and the queue are only used on this thread: the lock is released while
+    // presentation may block, so the engine's threads keep recording)
+    m.unlock();
     VkResult r = vkAcquireNextImageKHR(ctx.device, sc.chain, UINT64_MAX, sc.acquired[slot], VK_NULL_HANDLE, &index);
+    m.lock();
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
         sc.stale = true;
         return;
@@ -3649,7 +3958,7 @@ void Renderer::present(uint64_t addr) {
     Image* from = src;
     if (const VkFormat uf = unorm_of(src->format); uf != VK_FORMAT_UNDEFINED) {
         if (!sc.raw || sc.raw->w != src->w || sc.raw->h != src->h || sc.raw->format != uf) {
-            if (sc.raw) subs[rc().cur].dead.push_back(std::move(sc.raw));
+            bury(std::move(sc.raw));
             sc.raw = make_image(uf, src->w, src->h, 1, 1, 1, false, false, false, false);
         }
         if (sc.raw) {
@@ -3714,7 +4023,9 @@ void Renderer::present(uint64_t addr) {
     pi.swapchainCount = 1;
     pi.pSwapchains = &sc.chain;
     pi.pImageIndices = &index;
+    m.unlock();
     r = vkQueuePresentKHR(ctx.queue, &pi);
+    m.lock();
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) sc.stale = r == VK_ERROR_OUT_OF_DATE_KHR;
     else if (r != VK_SUCCESS) {
         static int logged = 0;
@@ -3747,6 +4058,16 @@ void Renderer::save_pipeline_cache() {
 void Renderer::end_frame() {
     frame_ends.push_back(serial_next - 1);
     while (frame_ends.size() > opt.frames_in_flight) {
+        // (with m held by the caller: released while waiting, so lists keep being recorded)
+        if (timeline && serial_done < frame_ends.front()) {
+            VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+            wi.semaphoreCount = 1, wi.pSemaphores = &timeline, wi.pValues = &frame_ends.front();
+            const uint64_t tw = now_ns();
+            m.unlock();
+            vkWaitSemaphores(ctx.device, &wi, UINT64_MAX);
+            m.lock();
+            st.t_wait += now_ns() - tw;
+        }
         wait_serial(frame_ends.front());
         frame_ends.pop_front();
     }
@@ -3903,7 +4224,7 @@ void Renderer::dump(uint64_t addr, uint32_t, uint32_t, uint64_t frame) {
                 save_image(img.get(), path);
             }
     }
-    frame_first_submit = rc().submit_no;
+    frame_first_submit = submit_seq.load();
 }
 
 }  // namespace
@@ -3922,6 +4243,33 @@ void execute(const std::vector<Draw*>& draws) {
     if (!g) return;
     std::lock_guard lk(g->m);
     g->execute(draws);
+}
+bool list_recording() { return g && g->list_rec; }
+bool record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late) {
+    return g && g->list_rec && g->record_list(items, handle, late);
+}
+void fill_late(const LateCb& l, uint64_t src, uint32_t size) {
+    if (!g) return;
+    uint8_t* dst = g->ring.map + l.off;
+    const uint32_t n = src >= 0x10000 ? std::min(size, l.size) : 0;
+    if (n) std::memcpy(dst, reinterpret_cast<const void*>(src), n);
+    if (n < l.size) std::memset(dst + n, 0, l.size - n);
+    if (size > l.size) {  // (bigger next time)
+        auto& h = g->late_hint[l.stage & 1][l.slot & 15];
+        uint32_t cur = h.load();
+        const uint32_t want = std::min<uint32_t>(65536, (size + 255) & ~255u);
+        while (cur < want && !h.compare_exchange_weak(cur, want)) {}
+    }
+}
+void submit_recorded(const std::vector<uint32_t>& handles) {
+    if (!g) return;
+    std::lock_guard lk(g->m);
+    g->submit_recorded(handles);
+}
+void discard_recorded(uint32_t handle) {
+    if (!g) return;
+    std::lock_guard lk(g->m);
+    g->discard_recorded(handle);
 }
 void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
     if (!g) return;
@@ -3972,7 +4320,7 @@ void flip(uint64_t addr, uint32_t w, uint32_t h, uint64_t frame, bool dump) {
     ++g->st.frames;
     if (addr) g->present(addr);
     if (dump && addr) g->dump(addr, w, h, frame);
-    else g->frame_first_submit = g->main_rec.submit_no;
+    else g->frame_first_submit = g->submit_seq.load();
     g->end_frame();
 }
 void request_passlog(uint32_t frames) {
@@ -4045,6 +4393,11 @@ void print_stats() {
             (unsigned long long)g->gen_why[0], (unsigned long long)g->gen_why[1], (unsigned long long)g->gen_why[2],
             (unsigned long long)g->gen_why[3], (unsigned long long)g->gen_why[4]);
     s.memo_hits = s.memo_misses = s.memo_gen = 0, g->par_draws = g->par_runs = 0;
+    if (const double f = double(s.frames - s.t_frames); f > 0 && g->list_rec)
+        log("native renderer: lists recorded on the engine's threads: %.1f per frame, %.2f ms per frame of their time "
+            "(%.2f ms waiting for the renderer lock) | submitting them %.2f ms per frame",
+            double(g->lr_lists.exchange(0)) / f, double(g->lr_ns.exchange(0)) / f / 1e6, double(g->lr_wait_ns.exchange(0)) / f / 1e6,
+            double(g->lr_sub_ns.exchange(0)) / f / 1e6);
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: pre-pass per frame: targets %.2f ms, texture checks %.2f ms (%.0f, %.0f unwatched), texture loads %.2f ms "
             "(detile %.2f, mip check %.2f, protect %.2f, new images %.2f)",

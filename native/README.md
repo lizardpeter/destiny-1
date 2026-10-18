@@ -143,6 +143,9 @@ Native renderer (`native/gfx`, the default without shadPS4):
 | `D1_NG_EVERY=<n>` / `D1_NG_EVERY_WORLD=<s>` / `D1_NG_EVERY_STATE=<state>` | draw every n-th frame only (software rendering); from `<s>` seconds in the world (or in the given state, e.g. `setup:orbit`), every frame. `D1_NG_EVERY=100000` skips drawing until then: rendered checks of a late screen at headless speed |
 | `D1_NG_NOCACHE=1` | no geometry cache and no texture change tracking |
 | `D1_ND=0` | turn the native device layer off: the engine's Gnm / Gnmx calls build PS4 command buffers again and the emulated GPU answers fences, labels and occlusion from them (default: no Gnm command buffers at all, see findings/gpu_device_sync_contract.md). `D1_ND_LOG=1` logs the first lists and submissions |
+| `D1_ND_RECORD=0` | record the engine's command lists on the GPU queue thread at submission (as before) instead of on the engine's own threads as each list ends (default). The log's "lists recorded on the engine's threads" line gives their count, the time spent on the engine threads, the time spent waiting for the renderer lock, and the submission time per frame |
+| `D1_ND_LIST_STATS=1` | (diagnostics) draws and lists per device context per frame |
+| `D1_ND_CB_CHECK=1` | (diagnostics) how many draws take constant buffers from bindings made in earlier lists |
 | `D1_NG_RECORD_THREADS=<n>` | threads recording runs of draws in one render pass in parallel (secondary command buffers); default up to 6 (hardware threads - 4), 0 = one thread. `D1_NG_RECORD_RUN=<n>`: fewest draws split (default 64) |
 | `D1_NG_GNM_DRAWS=1` | also run the engine's Gnm draw code (constant update engine, draw packets) for captured draws (default: capture only) |
 | `D1_NG_ASYNC=0` | record and submit on the game's submitting thread (default: a separate GPU queue thread, at most 2 flips ahead) |

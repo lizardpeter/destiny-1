@@ -921,6 +921,7 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
 // the engine's own bookkeeping submits it in its order; at submission the lists named by
 // the tokens are executed by the Vulkan renderer and their labels written
 // (findings/gpu_device_sync_contract.md). Nothing parses PS4 packets.
+
 namespace nd {
 bool g_on = false;
 constexpr uint32_t kMagic = 0x4E44544Bu;  // token: NOP {magic, id lo, id hi}
@@ -935,6 +936,12 @@ struct List {
     size_t used = 0;
     bool eop = false;
     uint64_t made = 0;  // flip count when begun (cleanup of lists never submitted)
+    // recorded on the thread that ended it (ng::record_list): its submission slot, the
+    // constant buffers it inherits (filled at submission) and what they fall back to
+    bool recorded = false;
+    uint32_t handle = 0;
+    std::vector<ng::LateCb> late;
+    ng::Draw::Cb dflt[ng::kStages][16] = {};
 };
 std::mutex g_lists_m;
 std::unordered_map<uint64_t, List*> g_lists;  // ended, waiting for their submission
@@ -1009,6 +1016,38 @@ void write_token(uint64_t cb, uint64_t id) {
     p[1] = kMagic, p[2] = uint32_t(id), p[3] = uint32_t(id >> 32);
     *reinterpret_cast<uint32_t**>(cb + 0x10) = p + 4;
 }
+// Records the list on this thread (the engine's), when the renderer records lists as they end.
+// A draw's constant buffers are the list's own bindings before it; a slot the list has not
+// bound is inherited from the lists submitted before this one, known only at submission.
+void record(List* l) {
+    if (!ng::list_recording() || l->items.empty()) return;
+    if (gpu_flip_count() % uint64_t(nr::g_every) != 0) return;  // (not drawn this frame)
+    ng::Draw::Cb local[ng::kStages][16] = {};
+    bool bound[ng::kStages][16] = {};  // (an unbinding counts: the draw then keeps what it captured)
+    std::vector<ng::Draw*> items;
+    items.reserve(l->items.size());
+    for (Item& it : l->items) {
+        if (!it.d) {
+            local[it.cb.stage][it.cb.slot] = it.cb.cb;
+            bound[it.cb.stage][it.cb.slot] = true;
+            continue;
+        }
+        ng::Draw* d = it.d;
+        if (d->kind <= ng::Draw::Clear)
+            for (int st = 0; st < ng::kStages; ++st)
+                for (int sl = 0; sl < 16; ++sl) {
+                    ng::Draw::Cb& c = d->cb[st][sl];
+                    if (bound[st][sl]) {
+                        if (local[st][sl].addr) c = local[st][sl];
+                    } else {
+                        if (!l->dflt[st][sl].addr && c.addr) l->dflt[st][sl] = c;
+                        c = {ng::kLateCb | uint64_t(st) << 4 | uint64_t(sl), c.size};
+                    }
+                }
+        items.push_back(d);
+    }
+    l->recorded = ng::record_list(items, l->handle, l->late);
+}
 // end of a list: file it, mark its command buffer
 List* end_list(uint64_t dev) {
     const int c = ctx_of_dev(dev);
@@ -1018,6 +1057,7 @@ List* end_list(uint64_t dev) {
     }
     if (c < 0) return nullptr;
     List* l = list_of(c);
+    record(l);
     {
         std::lock_guard lk(g_lists_m);
         g_lists[l->id] = l;
@@ -1802,16 +1842,56 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
         static uint64_t sweep = 0;
         if (++sweep % 256 == 0)
             for (auto it = nd::g_lists.begin(); it != nd::g_lists.end();)
-                if (it->second->made + 300 < gpu_flip_count()) ++nd::g_orphans, nd::free_list(it->second), it = nd::g_lists.erase(it);
+                if (it->second->made + 300 < gpu_flip_count()) {
+                    if (it->second->recorded) ng::discard_recorded(it->second->handle);
+                    ++nd::g_orphans, nd::free_list(it->second), it = nd::g_lists.erase(it);
+                }
                 else ++it;
     }
     // the draws and events in order; constant buffer bindings replayed as the constant update
     // engine shares them between contexts (in submission order)
     std::vector<ng::Draw*> draws;
+    std::vector<uint32_t> recorded;
+    std::vector<ng::Draw*> cpu_events;  // of recorded lists: memory writes the CPU sees, after their submission
     bool eop = false;
+    // D1_ND_CB_CHECK: would the list's own bindings (over what the draw captured) give the
+    // same constant buffers as the replay across lists?
+    static const bool cb_check = getenv("D1_ND_CB_CHECK") != nullptr;
+    static uint64_t cbc_draws[nd::kMaxCtx] = {}, cbc_diff[nd::kMaxCtx] = {}, cbc_inh[nd::kMaxCtx] = {}, cbc_cap[nd::kMaxCtx] = {}, cbc_n = 0;
     for (nd::List* l : lists) {
         eop |= l->eop;
+        if (l->recorded) {
+            // its inherited constant buffers: the bindings as the lists before it left them
+            for (const ng::LateCb& lc : l->late) {
+                const ng::Draw::Cb& c = nr::g_ce[lc.stage][lc.slot].addr ? nr::g_ce[lc.stage][lc.slot] : l->dflt[lc.stage][lc.slot];
+                ng::fill_late(lc, c.addr, c.size);
+            }
+            recorded.push_back(l->handle);
+            for (nd::Item& it : l->items) {
+                if (!it.d) nr::g_ce[it.cb.stage][it.cb.slot] = it.cb.cb;
+                else if (it.d->kind == ng::Draw::Dma || it.d->kind == ng::Draw::WriteData) cpu_events.push_back(it.d);
+            }
+            continue;
+        }
+        ng::Draw::Cb local[ng::kStages][16] = {};
+        const int lc = cb_check && !l->recorded ? nd::ctx_of_dev(l->dev) : -1;
         for (nd::Item& it : l->items) {
+            if (cb_check && lc >= 0) {
+                if (!it.d) local[it.cb.stage][it.cb.slot] = it.cb.cb;
+                else if (it.d->kind <= ng::Draw::Clear) {
+                    bool diff = false, inh = false, cap = false;
+                    for (int st = 0; st < 2; ++st)
+                        for (int sl = 0; sl < 16; ++sl) {
+                            const ng::Draw::Cb own = local[st][sl].addr ? local[st][sl] : it.d->cb[st][sl];
+                            const ng::Draw::Cb full = nr::g_ce[st][sl].addr ? nr::g_ce[st][sl] : it.d->cb[st][sl];
+                            if (own.addr && full.addr && own.addr != full.addr) {
+                                if (local[st][sl].addr) diff = true; else cap = true;
+                            }
+                            inh |= !own.addr && full.addr;
+                        }
+                    ++cbc_draws[lc], cbc_diff[lc] += diff, cbc_inh[lc] += inh, cbc_cap[lc] += cap;
+                }
+            }
             if (!it.d) {
                 nr::g_ce[it.cb.stage][it.cb.slot] = it.cb.cb;
                 continue;
@@ -1824,8 +1904,37 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
             draws.push_back(d);
         }
     }
+    if (cb_check && ++cbc_n % 3000 == 0) {
+        std::string t;
+        for (int c = 0; c < nd::g_ndevs.load(); ++c) {
+            char b[128];
+            std::snprintf(b, sizeof b, " ctx%d %llu: local-conflict %llu captured-conflict %llu inherited %llu |", c, (unsigned long long)cbc_draws[c],
+                          (unsigned long long)cbc_diff[c], (unsigned long long)cbc_cap[c], (unsigned long long)cbc_inh[c]);
+            t += b;
+        }
+        log("nd cb check: draws whose constant buffers depend on earlier lists:%s", t.c_str());
+    }
     nr_every_world();
     const bool run = (gpu_flip_count() % uint64_t(nr::g_every)) == 0 && ng::active();
+    if (!recorded.empty()) {
+        const auto t0 = std::chrono::steady_clock::now();
+        ng::submit_recorded(recorded);
+        nr::g_exec_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        nr::g_frame_executed = true;
+        for (ng::Draw* d : cpu_events) {
+            if (d->kind == ng::Draw::Dma) {
+                if (d->caller < 0x10000 || guest_region_extent(d->caller) < d->count) continue;
+                if (d->prim == 2) {
+                    auto* w = reinterpret_cast<uint32_t*>(d->caller);
+                    for (uint32_t k = 0; k < d->count / 4; ++k) w[k] = d->instances;
+                } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
+                    std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
+                }
+            } else if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->inline_vertices.size()) {
+                std::memcpy(reinterpret_cast<void*>(d->caller), d->inline_vertices.data(), d->inline_vertices.size());
+            }
+        }
+    }
     if (run && !draws.empty()) {
         const auto t0 = std::chrono::steady_clock::now();
         ng::execute(draws);
