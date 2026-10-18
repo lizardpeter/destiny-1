@@ -1,0 +1,15 @@
+--- a/src/video_core/texture_cache/image.cpp
++++ b/src/video_core/texture_cache/image.cpp
+@@ -222,6 +222,12 @@
+ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::AccessFlags2 dst_mask,
+                         vk::PipelineStageFlags2 dst_stage,
+                         std::optional<SubresourceRange> subres_range) {
++    // d1-native: a 2D (array) view of a volume names slices as layers, but a 3D image has a
++    // single array layer: its barriers always cover the whole depth.
++    if (subres_range && info.type == AmdGpu::ImageType::Color3D) {
++        subres_range->base.layer = 0;
++        subres_range->extent.layers = info.resources.layers;
++    }
+     auto& last_state = backing->state;
+     auto& subresource_states = backing->subresource_states;
+ 

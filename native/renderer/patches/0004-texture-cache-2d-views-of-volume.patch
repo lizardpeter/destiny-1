@@ -1,0 +1,31 @@
+--- a/src/video_core/texture_cache/texture_cache.cpp
++++ b/src/video_core/texture_cache/texture_cache.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+@@ -570,10 +571,22 @@
+ 
+     if (image_id) {
+         Image& image_resolved = slot_images[image_id];
++        // d1-native: a 2D or 2D-array binding over the slices of a cached volume (Destiny 1
++        // renders its 32^3 colour-grading LUT slice by slice and samples it as 3D). The volume
++        // is created 2D-array compatible, so its slices are layers of the view; without this
++        // the volume was freed and rebuilt from memory on every bind, losing its contents.
++        const bool slices_of_volume =
++            image_resolved.info.type == AmdGpu::ImageType::Color3D &&
++            info.type != AmdGpu::ImageType::Color3D &&
++            info.size.width == image_resolved.info.size.width &&
++            info.size.height == image_resolved.info.size.height &&
++            info.resources.levels <= image_resolved.info.resources.levels &&
++            u32(std::max(view_slice, 0)) + info.resources.layers <= image_resolved.info.size.depth &&
++            !std::getenv("D1_NO_VOLUME_SLICES");
+         if (exact_fmt && info.pixel_format != image_resolved.info.pixel_format) {
+             // Cannot reuse this image as we need the exact requested format.
+             image_id = {};
+-        } else if (image_resolved.info.resources < info.resources) {
++        } else if (!slices_of_volume && image_resolved.info.resources < info.resources) {
+             // The image was clearly picked up wrong.
+             // d1-native: say which images, so the overlap can be fixed rather than recreated.
+             LOG_WARNING(Render_Vulkan,

@@ -1,0 +1,185 @@
+# Native renderer: the engine's GPU device layer (2026-10-14)
+
+Exact build: CUSA00219 01.33 `eboot.bin`. Addresses are eboot offsets. Names are
+HYPOTHESIS unless stated otherwise. Call rates come from `D1_COUNT` call counters with the
+null GPU, measured in-world at the prologue spawn: about 7,400–7,500 draws per frame.
+
+## Summary
+
+Destiny 1 does not write PS4 GPU packets throughout its code. It draws through one engine
+object, called here the **GPU device**, which wraps Sony's statically linked Gnm library
+(a `GfxContext` with a draw command buffer, a constant command buffer and a constant update
+engine, CUE). About 150 device functions sit together at `0x7D8000–0x7E4000`, and the Gnm
+packet builders sit at `0xF7C000–0xF92000`.
+
+All draw packets come from builders called only by the device layer:
+
+- `DRAW_INDEX_AUTO` builder `0xF7F260`: 11 callers, all in the device layer.
+- `DRAW_INDEX_2` builder `0xF7F320`: 2 callers.
+
+Only about 60 functions outside the device layer call Gnm directly. They're mostly resource
+creation (texture and render-target descriptors), submission and a few special passes.
+
+A native renderer can therefore hook the ~40 device functions that matter and implement
+them in Vulkan. The PS4 command stream and its emulation drop out entirely.
+
+## Device object layout (`this` of the functions below)
+
+| Offset | Meaning |
+|---|---|
+| `+0x26` | byte: device active; draws are skipped when 0 |
+| `+0x50` | `GfxContext*`. DCB at `+0`, CCB at `+0x80`, CUE at `+0xC0`; the DCB write pointer is at `+0x10`, its end at `+8` |
+| `+0x1D28` | current vertex shader object (cached, `0x7DE800`) |
+| `+0x1D30` | current pixel shader object (cached, `0x7DE7B0`) |
+| `+0x1D60` | current vertex declaration: a u32 element count; per element `{…, +0x14 dword fmt, +0x18 offset byte, +0x19 stream byte}` (8-byte stride from `+0x10`) |
+| `+0x1D68` | current index buffer handle |
+| `+0x1D70` | its resolved buffer object (`+0x30` GPU address, `+0x38` index size: 0 = 16-bit, `+0x3C` size) |
+| `+0x1D78[32]` | vertex stream handles |
+| `+0x1DF8[32]` | vertex stream offsets |
+| `+0x1E78[7][16]` | bound texture (`T#` pointer) per shader stage and slot |
+| `+0x2578..+0x258C` | viewport x, y, w, h, z near, z far |
+| `+0x25B4` | blend state index |
+| `+0x25BC` | rasteriser / depth-bias state index |
+| `+0x25C0` | depth-stencil state index |
+| `+0x25E8` | stencil reference state |
+| `+0x27C0` | byte: primitive restart |
+
+**Resource handles:** `(pool = handle >> 13 & 0x3FF, slot = handle & 0x1FFF)` resolve through
+the pool table at `*0x1A238A0` (0x40-byte pools: `+0x10` base, `+0x30` stride, `+0x34` mask).
+Buffer objects keep their GPU address at `+0x28` (vertex) or `+0x30` (index).
+
+## Device API
+
+| eboot | calls/frame | name (hypothesis) | notes |
+|---|---:|---|---|
+| `0x7E15D0` | ~7,100 | `draw_indexed(prim, ?, first_index, count)` | prim through the table `0x15D13C0`; CUE preDraw `0xF8DF60`, `0xF7F320`, postDraw `0xF8E880` |
+| `0x7E17C0` | ~160 | `draw(prim, count)` | `DRAW_INDEX_AUTO` |
+| `0x7E1710` | ~60 | `draw_instanced(prim, count, instances)` | |
+| `0x7E1840` | small | `draw_indexed_instanced` | |
+| `0x7E1960` | small | draw from an inline vertex buffer | |
+| `0x7DEC20` | ~8,500 | `set_vertex_buffer(handle, stream, offset, count)` | builds `V#` per declaration element of that stream; CUE `setVsharpInUserData`-like `0xF8B600`; cached per stream |
+| `0x7DF630` | ~9,000 | `alloc_constants(stage, slot, bytes)` → pointer | allocates from the DCB (`0xF7FEB0`), builds a `V#`, binds it as a constant buffer (`0xF8B500`); the caller writes the constants through the returned pointer |
+| `0x7DEE30` | ~2,800 | `set_index_buffer(handle)` | `INDEX_TYPE`, `INDEX_BUFFER_SIZE`, `INDEX_BASE`; cached |
+| `0x7DE8C0` | ~2,200 | `set_texture(stage, slot, T#*)` | CUE `setTextures` `0xF8AFD0`; null → default texture `*0x1A1F4B8`; cached per stage and slot |
+| `0x7DEF20` | ~700 | `set_texture(stage enum 1..4, slot, T#*)` | stage enum → hardware stages 1, 2, 3, 5 |
+| `0x7E1510` | | `unbind_texture_everywhere(T#*)` | |
+| `0x7DE800` | ~1,050 | `set_vs_shader(shader*)` | CUE `0xF8B790`; `shader+0` = …, `+8` fetch shader, `+0x14` registers |
+| `0x7DE7B0` | ~1,050 | `set_ps_shader(shader*)` | CUE `0xF8B8C0` |
+| `0x7DE4A0` | ~1,080 | `set_blend_state(index)` | fixed table `0x15D16C4`, stride 0x24; all four MRTs get the same blend |
+| `0x7DE590` | ~1,085 | `set_depth_state(index)` | fixed table `0x15D2394`, stride 0x10 |
+| `0x7DE640` | ~1,070 | `set_raster_state(index)` | fixed table `0x15D2424`, stride 0xC: depth bias / slope |
+| `0x7E0F90` | ~1,575 | `set_stencil(ref)` | uses table `*0x1A1F4C0` / `0x15D1E38` |
+| `0x7DE860` | ~1,050 | `set_primitive_setup(mode)` | |
+| `0x7DE370` | ~120 | `set_viewport(x, y, w, h, znear, zfar)` | |
+| `0x7E0780` | 0 in-world | `dispatch(x, y, z, …)` | |
+| `0x7DC270` | per pass | `reset_state(full)` | clears every cache above and unbinds |
+| `0x7DFAC0` / `0x7DFD10` | | render-target / scissor setup | to map |
+| `0x7E08A0`, `0x7E0AE0`, `0x7DF850`, `0x7E0040`, `0x7E2000`, `0x7E2480`, `0x7E2760`, `0x7E2CB0` | small | full-screen and clear passes | use `0xF7E540` (RT pitch) / `0xF7E2E0` (CMASK) |
+| `0x7DD6A0` | | big state / RT setup | to map |
+| `0x7DCEC0`, `0x7DD060` | 1 | begin / end command buffer, prepareFlip | `0xF81220` NOP 0x3E |
+| `0x7E40A0` | | submission | 25 Gnm calls |
+
+Main draw callers, per frame: `0x82BE10` (2,111), `0x82BD10` (2,099), `0x8A9CD0` (1,463),
+`0x7E16A0` (758), `0x7DA370` (303), `0x845F10` (194).
+
+## Scale of a frame (observer, `D1_NATIVE_GFX=observe`)
+
+Measured over 600 frames in-world at the prologue spawn with the null GPU. Per-frame
+averages and distinct counts are over those frames.
+
+| Measure | Value |
+|---|---|
+| draws per frame | 7,480–7,530 |
+| texture binds per frame | 2,080–2,250 |
+| vertex buffer binds per frame | ~8,800 |
+| constant allocations per frame | ~9,500 (~865 KB) |
+| render-target sets per frame | 21 (≈ passes) |
+| device instances | **5, used from 4 threads** (the engine already records in parallel) |
+| distinct vertex / pixel shaders | ~81 / ~233 |
+| distinct VS+PS programs | ~263 |
+| vertex declarations | ~40 |
+| distinct pipeline states | ~370–400 (program, declaration, primitive, blend, depth, raster, stencil, target format) |
+| distinct textures | ~310 |
+| distinct vertex / index buffers | ~1,050 / ~510 |
+| color targets | 19 |
+
+These numbers are small enough to precompile every pipeline and to create every resource
+once. Because there are four recording threads, the native renderer can record Vulkan
+command buffers in parallel (one secondary command buffer or command pool per device
+instance).
+
+## Native renderer plan (outline)
+
+1. **Hook the device API.** Keep the engine's own redundancy caches (it already skips
+   unchanged state).
+   - Shaders, blend/depth/raster tables and resource handles map one-to-one onto Vulkan
+     objects.
+2. **Resources.**
+   - **Textures:** create a `VkImage` once per `T#` object; detile on first use and on
+     engine updates.
+   - **Buffers:** create once per engine handle and pool.
+   - **Constants:** `alloc_constants` returns memory from our persistently mapped upload
+     ring instead of the DCB.
+3. **Shaders.** Translate each Gnm VS/PS (and fetch shader plus vertex declaration) once
+   with shadPS4's GCN → SPIR-V recompiler; cache the results on disk.
+4. **Pipelines.** Key them by (VS, PS, vertex declaration, blend, depth, raster, RT formats)
+   and cache them.
+5. **Bring-up order:**
+   1. clears and UI;
+   2. menus (class screen);
+   3. the world: G-buffer, lighting, post.
+
+   Each step is checked against the shadPS4 path, which stays as the reference and fallback.
+
+## Shader objects and resource slots (confirmed from in-world dumps)
+
+**Vertex shader object** (what `set_vs_shader` receives):
+
+| Offset | Content |
+|---|---|
+| `+0` | fetch shader size |
+| `+8` | fetch shader address |
+| `+0x14` | Gnm `VsShader` |
+
+**Pixel shader object:** the Gnm `PsShader` starts at `+0`.
+
+**Gnm shader layout:**
+- **Common data** (8 bytes): code size in bits 0..22; **number of input usage slots** in
+  bits 24..31.
+- **Stage registers:**
+  - VS: 7 dwords: `PGM_LO`, `PGM_HI`, `RSRC1`, `RSRC2`, `VS_OUT_CONFIG`, `POS_FORMAT`,
+    `PA_CL_VS_OUT_CNTL`.
+  - PS: 12 dwords: `PGM_LO`, `PGM_HI`, `RSRC1`, `RSRC2`, `Z_FORMAT`, `COL_FORMAT`,
+    `PS_INPUT_ENA`, `PS_INPUT_ADDR`, `PS_IN_CONTROL`, `BARYC_CNTL`, `DB_SHADER_CONTROL`,
+    `CB_SHADER_MASK`.
+- **4 bytes:** input / export semantic counts.
+- **Input usage slots**, 4 bytes each: `{usage type, API slot, start SGPR, flags}`.
+  Flags `0x3` on a `T#` = 8 dwords.
+- Code address = `PGM_LO << 8 | PGM_HI << 40`. User SGPR count = `RSRC2 >> 1 & 0x1F`.
+
+**Usage types seen in-world**, over 409 programs:
+
+| Type | Count |
+|---|---:|
+| `S#` immediate | 1,002 |
+| constant buffer `V#` immediate | 768 |
+| `T#` immediate | 462 |
+| extended user data pointer | 340 |
+| fetch-shader sub-pointer + vertex buffer table | 92 each |
+| resource table | 88 |
+| sampler table | 2 |
+
+Slots with a start register of 16 or more live in the **extended user data** in memory: the
+shader loads them through the pointer in `s[2:3]`.
+
+**Example pixel shader:** `ExtUD[1]@s2  T#[0]@s4 (8 dwords)  S#[1]@s16  CB[0]@s20`. The
+`T#` sits in `s[4:11]`, and the sampler and constant buffer come from the extended user
+data.
+
+**Translation rule:** every resource access is resolved statically, from the usage slots
+plus the SMRD loads that follow them, to `(type, API slot)`. The API slot matches the engine
+device calls (`set_texture(stage, slot)` and the constant-buffer slot of `alloc_constants`),
+so each slot becomes a Vulkan push-descriptor binding.
+
+Decoder check: all 409 programs (VS, PS and fetch) seen in-world decode cleanly with
+`d1-shadertool` (67,102 instructions, 102 distinct opcodes).

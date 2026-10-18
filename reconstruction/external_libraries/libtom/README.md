@@ -98,7 +98,10 @@
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x6cd20` | gcm_encrypt |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`6cd20_gcm_encrypt.c`](decompiled/6cd20_gcm_encrypt.c) | AES-128-GCM encrypt (libtomcrypt) used for the BAP channel: no AAD, 16-byte tag. |
+| `0x6ce20` | gcm_decrypt |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`6ce20_gcm_decrypt.c`](decompiled/6ce20_gcm_decrypt.c) | AES-128-GCM decrypt for the BAP channel. |
 
 ## Classes (0)
 

@@ -11,7 +11,9 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x2a20c0` | incident_dispatch |  | Static decompilation plus d1-native research traces (D1_TRACE_* / D1_BYPASS runs: co-op joining, replication, Director, unlock flags, gear), 2026-10-15/16; names are HYPOTHESIS | [`2a20c0_incident_dispatch.c`](decompiled/2a20c0_incident_dispatch.c) | Hands a host incident to the incident game system (vtable +0x98): announcements / heat / rewards. Payload 0x8080097D {u5 count, u12 kinds[25]}, {u1, {u5 count, u32[25]}}, {u9 length, u8 blob[500]}. |
 
 ## Classes (74)
 

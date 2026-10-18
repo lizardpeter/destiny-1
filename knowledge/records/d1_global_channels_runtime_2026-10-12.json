@@ -72,6 +72,12 @@
       "kind": "channel_name_candidate",
       "status": "REJECTED",
       "label": "sea_hero_receive"
+    },
+    {
+      "id": "semantic:name_of_hash_056007c7",
+      "kind": "semantic",
+      "status": "UNRESOLVED",
+      "label": "name of hash 056007C7"
     }
   ],
   "edges": [
@@ -176,7 +182,7 @@
     {
       "id": "r1",
       "candidate_node": "name:candidate:sea_hero_receive",
-      "rejected_as": "name of hash 056007C7",
+      "rejected_as": "semantic:name_of_hash_056007c7",
       "reason": "Dictionary collision; sun_glow_color matches the same hash and fits the channel's neighbours. tonemap_cosmodrome_indoor (CBF32782) rejected the same way.",
       "assertion_ids": [
         "a4"
