@@ -124,3 +124,12 @@ the renderer kept there) showed three kinds of memory still write-tracked.
 Result: no page is write-protected any more, so there are 0 write faults in patrol and orbit,
 on both Linux and Windows. `D1_NG_VERIFY_DYN=1` hashes every dynamic texture at every use:
 525 checks, 0 changed without an event.
+
+## Stale registry entries (2026-10-18)
+
+Registrations are keyed by object address and were never removed. Handle pools are freed (a
+package unloads) and relocated (`0x6FA10`), so an old object address can later hold anything.
+In an orbit run, about 130 lookups hit addresses whose registered handle no longer resolved
+there (`handle ... now names 0`). Several were around `0x4045_xxxx`, where the UI builds T#s in
+scratch memory. The registry now stores the handle with each entry and rejects the entry when
+`resolve_handle_safe(handle)` names another address.

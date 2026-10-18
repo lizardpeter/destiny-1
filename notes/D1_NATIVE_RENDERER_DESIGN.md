@@ -258,3 +258,40 @@ found in the code. Neither shows on lavapipe, which renders draws in order throu
   - Now the copies run first (`run_copies`, both for recorded lists and at submission), and
     every texture whose memory they write is marked stale and copied again at its next use:
     about 3 per second in patrol.
+
+## Status 2026-10-18 (later): what behaves differently on a real GPU (test-30)
+
+test-29 did not fix the Arc glitches. A review for undefined Vulkan behaviour and for timing
+and thread-count dependence found these (lavapipe forgives all of them):
+
+- **Stale resource-registry entries.** Entries were never removed. After a pool was freed or
+  relocated, memory at an old object address (often UI T#s built in scratch memory) still
+  mapped to the old resource id. Its texture key could match the old texture, and CPU writes
+  to it were then never checked. `resreg::get` now keeps the event's handle and rejects the
+  entry when the handle names another address. About 130 rejections in an orbit run here.
+  Texture hits also require the same base address.
+- **Comparison samplers.** S# compare functions became `compareEnable`, but the shaders compare
+  themselves with a plain sample. That is undefined; Intel returns garbage (shadows, lights).
+  Compare is never enabled now.
+- **FMA contraction.** Float add, sub, mul and div are `NoContraction` (GCN rounds every
+  result), and `gl_Position` is `Invariant`. A depth pre-pass and a colour pass of the same
+  geometry now agree exactly (depth-equal tests: sky, Earth, decals).
+- **End-of-pipe labels.** EOP label writes (32/64-bit and GPU-clock) and the EOP interrupt used
+  to happen at submission, before readbacks and occlusion counts reached memory. They now run
+  on a completion thread (`ng::after_gpu`) once the timeline semaphore passes the submission.
+- **Cross-list ordering.** Lists run in submission order, not the order they were recorded in.
+  New render targets and snapshot images are created and cleared in the upload slot
+  (`to_upload_slot`), which is submitted before every list recorded later. They are never
+  created inside a render pass.
+- **Smaller fixes:**
+  - Float-to-int conversions saturate and NaN becomes 0, as on GCN; `v_fract` stays below 1.0.
+  - Formats without linear filtering get a NEAREST sampler.
+  - LOD bias is clamped to 15.99.
+  - Dual-source blend factors fall back to the first output; blending is enabled only where the
+    format supports it.
+  - Readbacks mark textures over the same memory stale.
+
+Validation: the latest Khronos validation layer (1.4.328, built from source) reports no errors
+on Earth patrol. Synchronization validation reported no hazards either, but it also missed a
+known feedback loop, so its coverage of this renderer is unproven. All translated shaders pass
+`spirv-val`.
