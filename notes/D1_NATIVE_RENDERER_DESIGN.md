@@ -129,3 +129,44 @@ The device layer already skips redundant binds; we push only what changed before
   `D1_RENDER_EVERY` for in-world).
 - Per-frame CPU cost goes in the perf overlay: the target is ~1–2 µs per draw on the engine's
   own recording threads.
+
+## Status 2026-10-17: from capture-and-convert to the native device layer
+
+Measured on the user's RTX 5090 (test-19, Earth patrol, ~3,900 draws a frame): the renderer
+thread spends ~10.4 ms a frame converting captured draws (commands 3.6, pipeline 2.5,
+descriptors 1.25, geometry 1-3 ms) and the game's frame is 13-19 ms. Today's state:
+
+1. **No Gnm on the draw path (done, test-21).** Draws are captured at the device API
+   (`findings/gpu_device_layer.md`) and the engine's Gnm draw code (CUE preDraw / postDraw,
+   draw packets) no longer runs; recording threads queue their records in per-thread inboxes
+   (no shared lock). State setters and events still go through Gnmx / PM4, so the null GPU
+   still answers labels, EOP, occlusion dumps and DMA from the command buffers, and the
+   (range, position) ordering above still holds.
+2. **Parallel recording (next).** Split `Renderer::draw` into
+   - *resolve*: everything that touches shared caches - pipeline (memoized), shader modules,
+     image views, samplers, geometry cache entries, ring copies of constants - producing a
+     plain `ResolvedDraw` (pipeline + layout, vertex / index bindings, descriptor writes,
+     viewport, scissor, stencil, depth bias, predication slot);
+   - *record*: `vkCmd*` calls from a `ResolvedDraw` only, with the redundant-state filter.
+   Then record runs of plain draws inside one render pass in parallel: each run goes to a
+   secondary command buffer recorded on a worker thread (inheritance: the pass's
+   `VkCommandBufferInheritanceRenderingInfo`), the primary keeps pass begins / ends, clears,
+   queries, predication, DMA / WRITE_DATA events and `vkCmdExecuteCommands` in order.
+   Resolve is made thread-safe next (read-mostly caches behind shared locks, creation under
+   an exclusive lock, per-worker ring regions) so that it runs in the workers too.
+3. **Recording on the engine's own threads (after 2).** Each device context (main + 6
+   workers, `G+0x10` / `G+0x2910+i*0x2860`) gets a recorder; a command list
+   (`cmdlist_begin 0x7DCCE0` / `cmdlist_begin_inherit 0x7DD6A0` .. `cmdlist_end 0x7DCEC0`)
+   becomes one primary command buffer recorded as the engine calls the device API, submitted
+   in the engine's order by `device_submit_queued 0x7DD060`. Needs, from the device layer
+   instead of PM4: occlusion (`0x7E12C0` / `0x7E1390`), the GPU copy queue (`0x7DACF0`),
+   labels / EOP the CPU waits on (`0x7EF3A0`, `G+0xB8/BC`), and the constant-buffer bindings
+   the constant update engine shares between contexts (a worker list sees the main
+   context's bindings as of its submission point: snapshot them at `0x7DD6A0`).
+4. **Persistent resources by engine handle.** Vertex / index buffers by tag handle
+   (`set_vertex_stream 0x7DEC20`, `set_index_buffer 0x7DEE30`), textures by their tag's T#
+   pointer, uploaded when loaded or streamed (descriptor patch sites `0x7D3BA0..0x7D6220`,
+   copy queue) instead of write-watching guest memory.
+
+Each step stays behind a switch with the previous path as fallback, and is checked against
+frame dumps of the patrol and orbit scenes (`wrun.sh`, `orbrun.sh`) before it ships.
