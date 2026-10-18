@@ -36,7 +36,7 @@
     X(vkDestroyPipelineCache) \
     X(vkCmdPipelineBarrier2) X(vkCmdBeginRendering) X(vkCmdEndRendering) X(vkCmdBindPipeline) \
     X(vkCmdBindVertexBuffers) X(vkCmdBindIndexBuffer) X(vkCmdDraw) \
-    X(vkCmdDrawIndexed) X(vkCmdDispatch) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdCopyBuffer) \
+    X(vkCmdDrawIndexed) X(vkCmdExecuteCommands) X(vkCmdDispatch) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdCopyBuffer) \
     X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) X(vkCmdBlitImage) X(vkCmdClearColorImage) \
     X(vkCmdClearDepthStencilImage) X(vkCmdSetStencilReference) X(vkCmdPushConstants) X(vkCmdClearAttachments) \
     X(vkCmdSetDepthBias) X(vkCreateDescriptorPool) X(vkDestroyDescriptorPool) X(vkResetDescriptorPool) \

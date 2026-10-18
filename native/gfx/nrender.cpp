@@ -15,6 +15,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
+#include <functional>
+#include <thread>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -398,6 +401,9 @@ struct Sub {
     std::vector<Readback> readbacks;
     Buffer rb;             // their copies, in host-cached memory (the ring may be write-combined VRAM)
     uint64_t rb_used = 0;
+    // secondary command buffers recorded by the worker threads (one pool per worker)
+    struct Secondaries { VkCommandPool pool = VK_NULL_HANDLE; std::vector<VkCommandBuffer> cbs; size_t used = 0; };
+    std::vector<Secondaries> sec;
     // occlusion counting (ZPASS_DONE dumps): one query per stretch of draws between two dumps
     // (and render pass boundaries); a dump's counter is the sum of the stretches before it
     VkQueryPool qpool = VK_NULL_HANDLE;
@@ -588,7 +594,22 @@ struct Renderer {
                    uint32_t sint_in = 0);
     Pipeline* pipeline(const Draw& dr, Image* const* colors, Image* depth);
     Pipeline* pipeline_resolve(const Draw& dr, Image* const* colors, Image* depth);
-    void begin_pass(Image* const* colors, Image* depth);
+    void begin_pass(Image* const* colors, Image* depth, bool secondaries = false);
+    // parallel recording of runs of plain draws (secondary command buffers, worker threads)
+    struct Workers {
+        std::vector<std::thread> threads;
+        std::mutex m;
+        std::condition_variable cv, done_cv;
+        std::vector<std::function<void()>> jobs;
+        size_t pending = 0;
+        bool quit = false;
+    } wk;
+    uint32_t rec_threads = 0;   // worker threads (0: everything on the submitting thread)
+    uint32_t rec_min_run = 64;  // fewest draws in a pass worth splitting
+    uint64_t par_runs = 0, par_draws = 0;
+    void start_workers();
+    void run_parallel(Draw* const* run, size_t n);
+    VkCommandBuffer secondary(uint32_t worker);
     void end_pass();
     void queue_readbacks();
     bool target_current(uint64_t base);
@@ -599,7 +620,34 @@ struct Renderer {
         ++st.skipped;
         ++st.skip[why];
     }
-    void draw(const Draw& dr);
+    // a recording context for draw(): the command buffer, its state filter, and what it adds to
+    // the statistics (merged after the run)
+    struct Rec {
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        DrawState* ds = nullptr;
+        bool parallel = false;
+        uint64_t t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, draws = 0, bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, predicated = 0;
+        uint64_t chunk_pos = 0, chunk_end = 0;  // (parallel) this worker's slice of the ring
+    };
+    std::mutex pipe_m, geo_m, tex_m, set_m, ring_m, skip_m;
+    bool pass_secondary = false;  // the current pass's contents are secondary command buffers
+    uint64_t rec_ring(Rec& r, uint64_t size, uint64_t align = 256);
+    uint64_t rec_copy(Rec& r, const void* src, uint64_t size) {
+        const uint64_t p = rec_ring(r, std::max<uint64_t>(size, 16));
+        if (p != UINT64_MAX) std::memcpy(ring.map + p, src, size);
+        return p;
+    }
+    void merge(const Rec& r) {
+        st.t_pipe += r.t_pipe, st.t_geo += r.t_geo, st.t_desc += r.t_desc, st.t_cmd += r.t_cmd, st.draws += r.draws;
+        st.bytes_vtx += r.bytes_vtx, st.bytes_idx += r.bytes_idx, st.bytes_cb += r.bytes_cb, st.predicated += r.predicated;
+    }
+    void draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run_depth);
+    void draw(const Draw& dr) {
+        Rec r;
+        r.cmd = cmd, r.ds = &dstate;
+        draw(dr, r, nullptr, nullptr);
+        merge(r);
+    }
     void clear(const Draw& dr);
     void execute(const std::vector<Draw*>& draws);
     // presentation
@@ -725,6 +773,18 @@ bool Renderer::init(const Options& o) {
         VK_API_VERSION_MAJOR(ctx.api_version), VK_API_VERSION_MINOR(ctx.api_version), (unsigned long long)ring_mb,
         opt.frames_in_flight, opt.frames_in_flight == 1 ? "" : "s", sc.failed ? "" : ", presenting to the window",
         opt.frames_dir ? ", writing frames" : "");
+    // D1_NG_RECORD_THREADS=<n>: worker threads recording runs of draws in parallel (default:
+    // up to 6, leaving four hardware threads for the game; 0 = all on one thread)
+    // D1_NG_RECORD_RUN=<n>: fewest draws in one render pass that are split (default 64)
+    {
+        const uint32_t hw = std::max(1u, std::thread::hardware_concurrency());
+        rec_threads = hw >= 6 ? std::min(6u, hw - 4) : 0;
+        if (const char* v = std::getenv("D1_NG_RECORD_THREADS")) rec_threads = uint32_t(std::clamp(std::atoi(v), 0, 15));
+        if (const char* v = std::getenv("D1_NG_RECORD_RUN")) rec_min_run = uint32_t(std::max(2, std::atoi(v)));
+        if (rec_threads) start_workers();
+        log("native renderer: recording on %u thread%s (runs of %u+ draws in one pass split)", rec_threads + 1,
+            rec_threads ? "s" : "", rec_min_run);
+    }
     return true;
 }
 
@@ -740,6 +800,8 @@ void Renderer::begin_record() {
     sb.pool = 0;
     vkResetFences(ctx.device, 1, &sb.fence);
     vkResetCommandBuffer(sb.cmd, 0);
+    for (auto& w : sb.sec)
+        if (w.used) vkResetCommandPool(ctx.device, w.pool, 0), w.used = 0;
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(sb.cmd, &bi);
@@ -1135,6 +1197,25 @@ uint64_t Renderer::ring_copy(const void* src, uint64_t size) {
     const uint64_t p = ring_alloc(std::max<uint64_t>(size, 16));
     if (p == UINT64_MAX) return p;
     std::memcpy(ring.map + p, src, size);
+    return p;
+}
+
+uint64_t Renderer::rec_ring(Rec& r, uint64_t size, uint64_t align) {
+    if (!r.parallel) return ring_alloc(size, align);
+    uint64_t p = (r.chunk_pos + align - 1) & ~(align - 1);
+    if (p + size > r.chunk_end) {
+        constexpr uint64_t kChunk = 1ull << 20;
+        const uint64_t want = std::max(kChunk, size + align);
+        uint64_t c;
+        {
+            std::lock_guard lk(ring_m);
+            c = ring_alloc(want, 256);
+        }
+        if (c == UINT64_MAX) return UINT64_MAX;
+        r.chunk_pos = c, r.chunk_end = c + want;
+        p = (r.chunk_pos + align - 1) & ~(align - 1);
+    }
+    r.chunk_pos = p + size;
     return p;
 }
 
@@ -2191,16 +2272,130 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
 
 void Renderer::end_pass() {
     if (!in_pass) return;
-    q_end();
-    vkCmdEndRendering(cmd);
-    in_pass = false;
+    if (pass_secondary) {  // its query was begun outside the pass
+        vkCmdEndRendering(cmd);
+        q_end();
+    } else {
+        q_end();
+        vkCmdEndRendering(cmd);
+    }
+    in_pass = false, pass_secondary = false;
     barrier();
 }
 
-void Renderer::begin_pass(Image* const* colors, Image* depth) {
+// ---------------------------------------------------------------------------- parallel recording
+void Renderer::start_workers() {
+    for (uint32_t i = 0; i < rec_threads; ++i)
+        wk.threads.emplace_back([this] {
+            for (;;) {
+                std::function<void()> job;
+                {
+                    std::unique_lock lk(wk.m);
+                    wk.cv.wait(lk, [&] { return wk.quit || !wk.jobs.empty(); });
+                    if (wk.quit) return;
+                    job = std::move(wk.jobs.back());
+                    wk.jobs.pop_back();
+                }
+                job();
+                std::lock_guard lk(wk.m);
+                if (--wk.pending == 0) wk.done_cv.notify_all();
+            }
+        });
+}
+
+// A secondary command buffer from worker slot `w`'s pool for the current submission (pools
+// are per worker slot: command pools are not thread-safe; reset when the submission is reused).
+VkCommandBuffer Renderer::secondary(uint32_t w) {
+    Sub& sb = subs[cur];
+    auto& sc = sb.sec[w];
+    if (!sc.pool) {
+        VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        pci.queueFamilyIndex = ctx.queue_family;
+        if (vkCreateCommandPool(ctx.device, &pci, nullptr, &sc.pool) != VK_SUCCESS) return VK_NULL_HANDLE;
+    }
+    if (sc.used == sc.cbs.size()) {
+        VkCommandBufferAllocateInfo cai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        cai.commandPool = sc.pool;
+        cai.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+        cai.commandBufferCount = 1;
+        VkCommandBuffer cb = VK_NULL_HANDLE;
+        if (vkAllocateCommandBuffers(ctx.device, &cai, &cb) != VK_SUCCESS) return VK_NULL_HANDLE;
+        sc.cbs.push_back(cb);
+    }
+    return sc.cbs[sc.used++];
+}
+
+// n plain draws with the same render targets: one render pass whose contents are secondary
+// command buffers, each recorded by a thread (the workers and this one) from a contiguous
+// slice, executed in order.
+void Renderer::run_parallel(Draw* const* run, size_t n) {
+    Image* colors[8] = {};
+    for (int i = 0; i < 5; ++i) colors[i] = color_target(run[0]->color[i]);
+    Image* depth = depth_target(run[0]->depth);
+    if (!depth && std::none_of(colors, colors + 8, [](Image* x) { return x != nullptr; })) {
+        for (size_t i = 0; i < n; ++i) skip("no target");
+        return;
+    }
+    const uint32_t T = rec_threads + 1;
+    Sub& sb = subs[cur];
+    if (sb.sec.size() < T) sb.sec.resize(T);
+    // slices and their command buffers (allocated here: the pools belong to this thread's use)
+    std::vector<VkCommandBuffer> cbs(T);
+    for (uint32_t t = 0; t < T; ++t)
+        if (!(cbs[t] = secondary(t))) {
+            for (size_t i = 0; i < n; ++i) draw(*run[i]);
+            return;
+        }
+    begin_pass(colors, depth, true);
+    pass_secondary = true;
+    VkFormat cfmt[8]{};
+    uint32_t ncolor = 0;
+    for (uint32_t i = 0; i < 8; ++i)
+        if (colors[i]) cfmt[i] = colors[i]->format, ncolor = i + 1;
+    VkCommandBufferInheritanceRenderingInfo iri{VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO};
+    iri.colorAttachmentCount = ncolor;
+    iri.pColorAttachmentFormats = cfmt;
+    iri.depthAttachmentFormat = depth ? depth->format : VK_FORMAT_UNDEFINED;
+    iri.stencilAttachmentFormat = depth && depth->stencil ? depth->format : VK_FORMAT_UNDEFINED;
+    iri.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkCommandBufferInheritanceInfo ii{VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO, &iri};
+    ii.occlusionQueryEnable = q_active >= 0;
+    ii.queryFlags = q_active >= 0 && ctx.occlusion_precise ? VK_QUERY_CONTROL_PRECISE_BIT : 0;
+    std::vector<Rec> recs(T);
+    std::vector<DrawState> states(T);
+    auto slice = [&](uint32_t t) {
+        const size_t b = n * t / T, e = n * (t + 1) / T;
+        Rec& r = recs[t];
+        r.cmd = cbs[t], r.ds = &states[t], r.parallel = true;
+        VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        bi.pInheritanceInfo = &ii;
+        vkBeginCommandBuffer(r.cmd, &bi);
+        for (size_t i = b; i < e; ++i) draw(*run[i], r, colors, depth);
+        vkEndCommandBuffer(r.cmd);
+    };
+    {
+        std::lock_guard lk(wk.m);
+        for (uint32_t t = 1; t < T; ++t) wk.jobs.push_back([&slice, t] { slice(t); });
+        wk.pending += T - 1;
+    }
+    wk.cv.notify_all();
+    slice(0);
+    {
+        std::unique_lock lk(wk.m);
+        wk.done_cv.wait(lk, [&] { return wk.pending == 0; });
+    }
+    vkCmdExecuteCommands(cmd, T, cbs.data());
+    for (const Rec& r : recs) merge(r);
+    dstate.valid = false;  // (the primary's bindings and dynamic state are undefined after secondaries)
+    end_pass();
+    ++par_runs, par_draws += n;
+}
+
+void Renderer::begin_pass(Image* const* colors, Image* depth, bool secondaries) {
     uint64_t key = uint64_t(depth);
     for (int i = 0; i < 8; ++i) key = mix(mix(key, uint64_t(colors[i])), colors[i] ? colors[i]->bind_slice : 0);
-    if (in_pass && key == pass_key) return;
+    if (!secondaries && in_pass && key == pass_key) return;
     end_pass();
     VkRenderingAttachmentInfo ca[8]{};
     uint32_t n = 0, w = UINT32_MAX, h = UINT32_MAX;
@@ -2232,9 +2427,19 @@ void Renderer::begin_pass(Image* const* colors, Image* depth) {
     ri.pColorAttachments = ca;
     ri.pDepthAttachment = depth ? &da : nullptr;
     ri.pStencilAttachment = depth && depth->stencil ? &da : nullptr;
+    if (secondaries) {
+        // (contents only through vkCmdExecuteCommands; an occlusion query spans the pass from
+        // outside, begun before it)
+        ri.flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT;
+        if (q_on && q_active < 0 && subs[cur].q_used < kQueries) {
+            Sub& sb = subs[cur];
+            vkCmdBeginQuery(cmd, sb.qpool, sb.q_used, ctx.occlusion_precise ? VK_QUERY_CONTROL_PRECISE_BIT : 0);
+            q_active = int32_t(sb.q_used++);
+        }
+    }
     vkCmdBeginRendering(cmd, &ri);
     in_pass = true;
-    q_begin();
+    if (!secondaries) q_begin();
     if (st.frames == passlog_frame) {
         PassLog pl{};
         for (int i = 0; i < 5; ++i) pl.c[i] = colors[i] ? colors[i]->base + colors[i]->bind_slice : 0;
@@ -2376,7 +2581,17 @@ void Renderer::masked_stencil_clear(Image* depth, uint32_t value, uint32_t write
     vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 
-void Renderer::draw(const Draw& dr) {
+// One draw into a recording context: the main command buffer (serially, as the submission is
+// executed) or, for runs of plain draws inside one render pass, a worker's secondary command
+// buffer (parallel: the shared caches are taken under their locks, constants and streamed
+// vertices go to the worker's own slice of the ring, statistics to the context).
+void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run_depth) {
+    auto guard = [&](std::mutex& m) { return r.parallel ? std::unique_lock<std::mutex>(m) : std::unique_lock<std::mutex>(); };
+    auto skip = [&](const char* why) {
+        auto lk = guard(skip_m);
+        this->skip(why);
+    };
+    VkCommandBuffer cmd = r.cmd;
     uint64_t t0 = now_ns();
     auto lap = [&](uint64_t& acc) {
         const uint64_t t = now_ns();
@@ -2384,6 +2599,7 @@ void Renderer::draw(const Draw& dr) {
         t0 = t;
     };
     if (!dr.vs || uint64_t(dr.vs) < 0x10000 || (dr.ps && uint64_t(dr.ps) < 0x10000)) {
+        auto lk = guard(skip_m);
         static std::unordered_set<uint64_t> seen;
         if (seen.insert(dr.caller).second && seen.size() < 20)
             log("native renderer: draw without shaders (vs %p ps %p) from eboot+%#llx", (const void*)dr.vs,
@@ -2391,22 +2607,35 @@ void Renderer::draw(const Draw& dr) {
         return skip("no shader");
     }
     Image* colors[8] = {};
-    for (int i = 0; i < 5; ++i) colors[i] = color_target(dr.color[i]);
-    Image* depth = depth_target(dr.depth);
+    Image* depth = nullptr;
+    if (run_colors) {
+        std::copy(run_colors, run_colors + 8, colors), depth = run_depth;
+    } else {
+        for (int i = 0; i < 5; ++i) colors[i] = color_target(dr.color[i]);
+        depth = depth_target(dr.depth);
+    }
     if (!depth && std::none_of(colors, colors + 8, [](Image* x) { return x != nullptr; })) return skip("no target");
-    Pipeline* p = pipeline(dr, colors, depth);
+    Pipeline* p;
+    {
+        auto lk = guard(pipe_m);
+        p = pipeline(dr, colors, depth);
+    }
     if (!p) return skip("pipeline");
-    lap(st.t_pipe);
+    lap(r.t_pipe);
     // geometry into the ring
     VkBuffer vbufs[16];
     VkDeviceSize voffs[16], vsizes[16];
     uint32_t vmask = 0;
     // vertices the draw can reference: [first, last] from the indices
     uint32_t vfirst = 0, vlast = dr.count ? dr.count - 1 : 0;
-    GeoEntry* ige = nullptr;  // cached index buffer
-    if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count && dr.prim != 0x13)
-        ige = geo_get(dr.index_addr, uint64_t(dr.count) * (dr.index32 ? 4 : 2), dr.index32 ? 4 : 2, dr.count);
-    if (ige) vfirst = ige->vfirst, vlast = ige->vlast;
+    bool ige = false;  // cached index buffer
+    VkBuffer ige_buf = VK_NULL_HANDLE;
+    uint64_t ige_off = 0;
+    if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count && dr.prim != 0x13) {
+        auto lk = guard(geo_m);
+        if (GeoEntry* e = geo_get(dr.index_addr, uint64_t(dr.count) * (dr.index32 ? 4 : 2), dr.index32 ? 4 : 2, dr.count))
+            ige = true, ige_buf = geo_blocks[size_t(e->block)].buf.buf, ige_off = e->off, vfirst = e->vfirst, vlast = e->vlast;
+    }
     else if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
         vfirst = UINT32_MAX, vlast = 0;
         if (dr.index32) {
@@ -2434,7 +2663,7 @@ void Renderer::draw(const Draw& dr) {
         const uint32_t lo = per_instance ? 0 : vfirst, hi = per_instance ? std::max(dr.instances, 1u) - 1 : vlast;
         const uint32_t first = stride ? lo : 0, last = stride ? std::min(hi, records - 1) : 0;
         if (first >= records && stride) {  // every fetch is out of range: reads 0, as on GCN
-            const uint64_t off = ring_alloc(16);
+            const uint64_t off = rec_ring(r, 16);
             if (off == UINT64_MAX) return skip("ring full");
             std::memset(ring.map + off, 0, 16);
             vbufs[slot] = ring.buf, voffs[slot] = off, vsizes[slot] = 16;
@@ -2444,7 +2673,8 @@ void Renderer::draw(const Draw& dr) {
         uint64_t size = stride ? uint64_t(last - first + 1) * stride : 16;
         uint64_t src = base + uint64_t(first) * stride;
         // the whole buffer from the geometry cache
-        if (dr.inline_vertices.empty() && stride && base >= 0x10000)
+        if (dr.inline_vertices.empty() && stride && base >= 0x10000) {
+            auto lk = guard(geo_m);
             if (GeoEntry* ge = geo_get(base, uint64_t(records) * stride, 0, 0)) {
                 const GeoBlock& gb = geo_blocks[size_t(ge->block)];
                 vbufs[slot] = gb.buf.buf, voffs[slot] = ge->off + uint64_t(first) * stride;
@@ -2452,22 +2682,23 @@ void Renderer::draw(const Draw& dr) {
                 vmask |= 1u << slot;
                 continue;
             }
+        }
         if (!dr.inline_vertices.empty()) {  // V# base is an offset into the inline data
             if (src >= dr.inline_vertices.size()) return skip("inline vertex offset");
             size = std::min<uint64_t>(size, dr.inline_vertices.size() - src);
             src += uint64_t(dr.inline_vertices.data());
         } else if (base < 0x10000) return skip("null vertex buffer");
         size = std::min<uint64_t>(size, 64ull << 20);
-        const uint64_t off = ring_alloc(std::max<uint64_t>(size, 16), 256);
+        const uint64_t off = rec_ring(r, std::max<uint64_t>(size, 16), 256);
         if (off == UINT64_MAX) return skip("ring full");
         std::memcpy(ring.map + off, reinterpret_cast<const void*>(src), size);
-        st.bytes_vtx += size;
+        r.bytes_vtx += size;
         if (size < 16) std::memset(ring.map + off + size, 0, 16 - size);
         // the binding starts at vertex `vfirst`; a stride-0 stream is one record for every vertex
         vbufs[slot] = ring.buf, voffs[slot] = off, vsizes[slot] = std::max<uint64_t>(size, 16);
         vmask |= 1u << slot;
     }
-    lap(st.t_geo);
+    lap(r.t_geo);
     // descriptors (copied constants, image views, samplers)
     VkWriteDescriptorSet writes[2][48];
     VkDescriptorImageInfo images[2][48];
@@ -2484,6 +2715,7 @@ void Renderer::draw(const Draw& dr) {
             w.descriptorCount = 1;
             const uint32_t slot = b.api_slot & 15;
             if (b.kind == gcn::Binding::Texture) {
+                auto lk = guard(tex_m);
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
                 images[s][nw[s]] = {VK_NULL_HANDLE, texture_view(dr.T(s, slot), slot_dim(dr.T(s, slot))),
                                     VK_IMAGE_LAYOUT_GENERAL};
@@ -2492,6 +2724,7 @@ void Renderer::draw(const Draw& dr) {
                         images[s][nw[s]].imageView = texture_view(dr.T(s, slot), ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D);
                 w.pImageInfo = &images[s][nw[s]];
             } else if (b.kind == gcn::Binding::Sampler) {
+                auto lk = guard(tex_m);
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
                 images[s][nw[s]] = {sampler(dr.S(s, slot)), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
                 w.pImageInfo = &images[s][nw[s]];
@@ -2500,8 +2733,8 @@ void Renderer::draw(const Draw& dr) {
                 const auto& c = dr.cb[s][slot];
                 uint64_t off;
                 uint32_t size = std::max(16u, (c.size + 15) & ~15u);
-                if (c.addr >= 0x10000) off = ring_copy(reinterpret_cast<const void*>(c.addr), c.size), st.bytes_cb += c.size;
-                else off = ring_alloc(size), std::memset(ring.map + (off == UINT64_MAX ? 0 : off), 0, size);
+                if (c.addr >= 0x10000) off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size;
+                else off = rec_ring(r, size), std::memset(ring.map + (off == UINT64_MAX ? 0 : off), 0, size);
                 if (off == UINT64_MAX) return skip("ring full");
                 bufs[s][nw[s]] = {ring.buf, off, size};
                 w.pBufferInfo = &bufs[s][nw[s]];
@@ -2509,7 +2742,7 @@ void Renderer::draw(const Draw& dr) {
             ++nw[s];
         }
     }
-    lap(st.t_desc);
+    lap(r.t_desc);
     // indices
     uint32_t count = dr.count;
     uint64_t ioff = 0;
@@ -2519,7 +2752,7 @@ void Renderer::draw(const Draw& dr) {
     if (dr.prim == 0x13 && indexed && dr.index_addr < 0x10000) return skip("null index buffer");
     if (dr.prim == 0x13) {  // quad list -> two triangles per quad
         const uint32_t quads = count / 4;
-        const uint64_t o = ring_alloc(uint64_t(quads) * 6 * 4, 4);
+        const uint64_t o = rec_ring(r, uint64_t(quads) * 6 * 4, 4);
         if (o == UINT64_MAX) return skip("ring full");
         uint32_t* out = reinterpret_cast<uint32_t*>(ring.map + o);
         for (uint32_t q = 0; q < quads; ++q) {
@@ -2535,23 +2768,22 @@ void Renderer::draw(const Draw& dr) {
         }
         ioff = o, count = quads * 6, indexed = true, itype = VK_INDEX_TYPE_UINT32;
     } else if (indexed && ige) {
-        const GeoBlock& gb = geo_blocks[size_t(ige->block)];
-        index_buf = gb.buf.buf, ioff = ige->off;
+        index_buf = ige_buf, ioff = ige_off;
     } else if (indexed) {
         if (dr.index_addr < 0x10000) return skip("null index buffer");
-        ioff = ring_copy(reinterpret_cast<const void*>(dr.index_addr), uint64_t(count) * (dr.index32 ? 4 : 2));
-        st.bytes_idx += uint64_t(count) * (dr.index32 ? 4 : 2);
+        ioff = rec_copy(r, reinterpret_cast<const void*>(dr.index_addr), uint64_t(count) * (dr.index32 ? 4 : 2));
+        r.bytes_idx += uint64_t(count) * (dr.index32 ? 4 : 2);
         if (ioff == UINT64_MAX) return skip("ring full");
     }
     if (!count) return;
 
-    begin_pass(colors, depth);
+    if (!r.parallel) begin_pass(colors, depth);
     // D1_NG_DEBUG_PS=<hex>: only log draws using this pixel shader, with its constant buffers in full
     static const uint64_t debug_ps = [] {
         const char* v = std::getenv("D1_NG_DEBUG_PS");
         return v ? std::strtoull(v, nullptr, 16) : 0ull;
     }();
-    if (debug && st.frames >= debug_from && debug_lines < 600 && (!debug_ps || uint64_t(dr.ps) == debug_ps)) {
+    if (!r.parallel && debug && st.frames >= debug_from && debug_lines < 600 && (!debug_ps || uint64_t(dr.ps) == debug_ps)) {
         ++debug_lines;
         log("ng draw %s prim %u count %u inst %u | vs %p ps %p | c0 %llx d %llx | depth %#x stencil %#x/%#x blend %#x mask %#x "
             "su %#x | vp %d %d %d %d z %g..%g | vb %u range %u..%u | from %#llx",
@@ -2676,7 +2908,7 @@ void Renderer::draw(const Draw& dr) {
                 }
         }
     }
-    if (st.frames == passlog_frame && !passlog.empty()) {
+    if (!r.parallel && st.frames == passlog_frame && !passlog.empty()) {
         auto& pl = passlog.back();
         if (!pl.draws++) {
             pl.first_vs = uint64_t(dr.vs), pl.first_ps = uint64_t(dr.ps), pl.caller = dr.caller;
@@ -2701,13 +2933,17 @@ void Renderer::draw(const Draw& dr) {
     }
     // state the previous draw in this command buffer already set is not set again (bindings
     // and dynamic state last for the whole command buffer)
-    DrawState& ds = dstate;
+    DrawState& ds = *r.ds;
     if (!ds.valid || ds.pipe != p->pipeline) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline), ds.pipe = p->pipeline;
     for (int s = 0; s < 2; ++s)
         if (nw[s] && s == 1 && p->push_ps) {
             push_fn(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 1, nw[s], writes[s]);
         } else if (nw[s]) {
-            VkDescriptorSet set = alloc_set(p->sets[s]);
+            VkDescriptorSet set;
+            {
+                auto lk = guard(set_m);
+                set = alloc_set(p->sets[s]);
+            }
             if (!set) return skip("descriptor pool");
             for (uint32_t k = 0; k < nw[s]; ++k) writes[s][k].dstSet = set;
             vkUpdateDescriptorSets(ctx.device, nw[s], writes[s], 0, nullptr);
@@ -2758,7 +2994,7 @@ void Renderer::draw(const Draw& dr) {
         cr.offset = uint64_t(pred_cur) * 4;
         cr.flags = pred_invert ? VK_CONDITIONAL_RENDERING_INVERTED_BIT_EXT : 0;
         vkCmdBeginConditionalRenderingEXT(cmd, &cr);
-        ++st.predicated;
+        ++r.predicated;
     }
     if (indexed) {
         if (ds.ib != index_buf || ds.ioff != ioff || ds.itype != itype)
@@ -2768,10 +3004,10 @@ void Renderer::draw(const Draw& dr) {
         vkCmdDraw(cmd, count, std::max(1u, dr.instances), 0, 0);
     }
     if (predicated) vkCmdEndConditionalRenderingEXT(cmd);
-    ++st.draws;
+    ++r.draws;
     // D1_NG_DRAWSTATS: (diagnostics) per logged frame, draws and instances per shader pair
     static const bool drawstats = std::getenv("D1_NG_DRAWSTATS") != nullptr;
-    if (drawstats && st.frames == passlog_frame) {
+    if (!r.parallel && drawstats && st.frames == passlog_frame) {
         auto& e = frame_draws[uint64_t(dr.ps) ^ uint64_t(dr.vs) << 20];
         e.first += 1, e.second += std::max(1u, dr.instances) * uint64_t(count);
     }
@@ -2783,7 +3019,7 @@ void Renderer::draw(const Draw& dr) {
             std::sscanf(e, "%llx,%u,%u,%u,%u", reinterpret_cast<unsigned long long*>(&t.base), &t.x, &t.y, &t.w, &t.h);
         return t;
     }();
-    if (trace.base && st.frames == passlog_frame)
+    if (!r.parallel && trace.base && st.frames == passlog_frame)
         for (int i = 0; i < 8; ++i)
             if (colors[i] && colors[i]->base == trace.base && trace.x + trace.w <= colors[i]->w && trace.y + trace.h <= colors[i]->h &&
                 colors[i]->bpp && traces.size() < 4000) {
@@ -2801,7 +3037,7 @@ void Renderer::draw(const Draw& dr) {
                 traces.push_back({uint64_t(dr.ps), uint64_t(dr.vs), dr.caller, off, bytes, trace.w * trace.h, dr.blend, dr.count});
                 break;
             }
-    lap(st.t_cmd);
+    lap(r.t_cmd);
 }
 
 void Renderer::execute(const std::vector<Draw*>& draws) {
@@ -2864,7 +3100,8 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
             vkCmdResetQueryPool(cmd, sb.qpool, 0, kQueries);
         } else q_on = false;
     }
-    for (Draw* d : draws) {
+    for (size_t i = 0; i < draws.size(); ++i) {
+        Draw* d = draws[i];
         switch (d->kind) {
         case Draw::Clear: clear(*d); break;
         case Draw::ZPass: zpass(d->index_addr); break;
@@ -2884,7 +3121,24 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
             if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->inline_vertices.size())
                 std::memcpy(reinterpret_cast<void*>(d->caller), d->inline_vertices.data(), d->inline_vertices.size());
             break;
-        default: draw(*d); break;
+        default: {
+            // a run of plain draws into the same targets: recorded in parallel
+            size_t j = i + 1;
+            if (rec_threads && !debug && st.frames != passlog_frame) {
+                auto plain = [&](const Draw* x) {
+                    return (x->kind == Draw::Indexed || x->kind == Draw::Auto) && std::memcmp(x->color, d->color, sizeof d->color) == 0 &&
+                           std::memcmp(x->depth, d->depth, sizeof d->depth) == 0;
+                };
+                while (j < draws.size() && plain(draws[j])) ++j;
+            }
+            if (j - i >= rec_min_run) {
+                run_parallel(draws.data() + i, j - i);
+                i = j - 1;
+            } else {
+                draw(*d);
+            }
+            break;
+        }
         }
     }
     end_pass();
@@ -3663,11 +3917,12 @@ void print_stats() {
             double(s.t_pipe) / f / 1e6, double(s.t_geo) / f / 1e6, double(s.t_desc) / f / 1e6, double(s.t_cmd) / f / 1e6,
             double(s.t_submit) / f / 1e6, double(s.t_wait) / f / 1e6);
     if (const double n = double(s.draws - s.t_draws); n > 0)
-        log("native renderer: per draw (%.0f draws per frame): pipeline %.0f ns, geometry %.0f ns, descriptors %.0f ns, commands %.0f ns"
-            " | pipeline memo %llu hits, %llu misses (%llu by target changes)",
-            n / std::max(1.0, double(s.frames - s.t_frames)), double(s.t_pipe) / n, double(s.t_geo) / n, double(s.t_desc) / n,
-            double(s.t_cmd) / n, (unsigned long long)s.memo_hits, (unsigned long long)s.memo_misses, (unsigned long long)s.memo_gen);
-    s.memo_hits = s.memo_misses = s.memo_gen = 0;
+        log("native renderer: per draw (%.0f draws per frame, %.0f%% recorded in parallel): pipeline %.0f ns, geometry %.0f ns, "
+            "descriptors %.0f ns, commands %.0f ns (summed over threads) | pipeline memo %llu hits, %llu misses (%llu by target changes)",
+            n / std::max(1.0, double(s.frames - s.t_frames)), 100.0 * double(g->par_draws) / n, double(s.t_pipe) / n, double(s.t_geo) / n,
+            double(s.t_desc) / n, double(s.t_cmd) / n, (unsigned long long)s.memo_hits, (unsigned long long)s.memo_misses,
+            (unsigned long long)s.memo_gen);
+    s.memo_hits = s.memo_misses = s.memo_gen = 0, g->par_draws = g->par_runs = 0;
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: pre-pass per frame: targets %.2f ms, texture checks %.2f ms (%.0f, %.0f unwatched), texture loads %.2f ms "
             "(detile %.2f, mip check %.2f, protect %.2f, new images %.2f)",
