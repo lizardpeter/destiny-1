@@ -426,6 +426,11 @@ struct Sub {
     struct ZRec { uint64_t dest; uint32_t boundary; };
     std::vector<ZRec> zrecs;
     std::vector<std::array<uint64_t, 4>> copies;  // (D1_NG_VERIFY_LATE) kind, address, size, hash when recorded
+    // dynamic textures (CPU-written memory, no resource) the list samples: their T# and the
+    // hash of the memory when copied; checked again at submission (the CPU may still write
+    // them between the list's end and its submission - the console reads them even later)
+    struct DynUse { uint32_t t[8]; uint64_t hash; };
+    std::vector<DynUse> dyn;
 };
 
 // Copies of guest vertex / index buffers kept on the GPU while the game does not write them.
@@ -617,6 +622,7 @@ struct Renderer {
         // recording a list on an engine thread: shared state is taken under the renderer's
         // lock (m) instead of the finer locks the worker threads use while it is held
         bool lr = false;
+        std::vector<Sub::DynUse> dyn;  // (see Sub::dyn)
         struct Late { uint64_t off = 0; uint32_t size = 0; };
         Late late[kStages][16];
         std::vector<LateCb> late_list;
@@ -688,6 +694,7 @@ struct Renderer {
     }
     uint64_t late_checked[3] = {}, late_changed[3] = {};
     Recorder up_rec;  // uploads and target set-up for lists recorded on engine threads
+    Recorder* pre_for = nullptr;  // the list whose textures pre_pass is preparing (in the upload slot)
     // the loader thread: engine resources prepared when the engine binds or moves them
     struct LoadJob { bool tex; uint32_t t[8]; uint64_t base, size, res, obj; };
     std::mutex load_m;
@@ -719,7 +726,7 @@ struct Renderer {
     std::map<uint64_t, std::pair<uint64_t, uint64_t>> dyn_mem;     // base -> (size, generation)   [under m]
     std::unordered_set<uint64_t> dyn_targets;                       // (bases of render targets among them)
     uint64_t dyn_target_bumps = 0;
-    uint64_t dyn_events = 0, dyn_bumps = 0, dyn_verify_hits = 0, dyn_verify_missed = 0;
+    uint64_t dyn_events = 0, dyn_bumps = 0, dyn_verify_hits = 0, dyn_verify_missed = 0, dyn_late = 0;
     // The list's copy commands (DMA_DATA), done before its textures are prepared (the engine
     // copies first, e.g. streamed mips or new glyphs, then draws with the result); the textures
     // whose memory they write are marked stale.
@@ -757,29 +764,44 @@ struct Renderer {
                         img->res_val ? "engine resource" : "dynamic");
             }
     }
-    uint64_t dma_tex_hits = 0, feedback_draws = 0, readback_stale = 0;
+    uint64_t dma_tex_hits = 0, feedback_draws = 0, readback_stale = 0, cpu_stale = 0;
     // The GPU's results reached guest memory (a readback): copies made from that memory (a
     // texture over a render target's memory, e.g. glyphs drawn into a cache texture) are stale.
+    // (runs without the renderer's lock: the copies over it are marked stale when the CPU writes are applied)
     void gpu_wrote(uint64_t a, uint64_t n) {
-        if (dynamic_copy) {
-            std::lock_guard dl(dyn_m);
-            dyn_q.push_back({a, n});
-        }
-        const uint64_t e = a + n;
-        for (auto& [k, img] : textures)
-            if (img && img->src_size && a < img->src_addr + img->src_size && e > img->src_addr && !img->stale) {
-                img->stale = true, ++readback_stale;
-                static int told = 0;
-                if (told++ < 20 && std::getenv("D1_NG_LOG_READBACK"))
-                    log("native renderer: readback %#llx +%llu into texture %#llx %ux%u", (unsigned long long)a, (unsigned long long)n,
-                        (unsigned long long)img->src_addr, img->w, img->h);
-            }
+        std::lock_guard dl(dyn_m);
+        dyn_q.push_back({a, n});
     }
     void apply_cpu_writes() {
         std::vector<std::pair<uint64_t, uint64_t>> q;
         {
             std::lock_guard lk(dyn_m);
             q.swap(dyn_q);
+        }
+        // any texture copy over memory the CPU wrote is stale, engine resources included: the
+        // engine writes some resource textures itself (lock / unlock), with no resource event
+        if (!q.empty() && !textures.empty()) {
+            std::vector<std::pair<uint64_t, uint64_t>> r;  // (start, end), sorted and merged
+            for (auto [a, n] : q) r.push_back({a, a + std::max<uint64_t>(n, 1)});
+            std::sort(r.begin(), r.end());
+            size_t k = 0;
+            for (size_t i = 1; i < r.size(); ++i)
+                if (r[i].first <= r[k].second) r[k].second = std::max(r[k].second, r[i].second);
+                else r[++k] = r[i];
+            r.resize(k + 1);
+            for (auto& [key, img] : textures) {
+                if (!img || !img->src_size || img->stale) continue;
+                const uint64_t a = img->src_addr, e = a + img->src_size;
+                auto it = std::upper_bound(r.begin(), r.end(), std::make_pair(a, UINT64_MAX));
+                bool hit = it != r.end() && it->first < e;
+                if (!hit && it != r.begin()) hit = std::prev(it)->second > a;
+                if (!hit) continue;
+                img->stale = true, ++cpu_stale;
+                static int told = 0;
+                if (told++ < 30 && std::getenv("D1_NG_LOG_DYN"))
+                    log("native renderer: CPU write into texture %#llx %ux%u fmt %d (%s): copied again", (unsigned long long)a, img->w,
+                        img->h, int(img->format), img->res_val ? "engine resource" : "dynamic");
+            }
         }
         for (auto [a, n] : q) {
             ++dyn_events;
@@ -840,6 +862,9 @@ struct Renderer {
     std::deque<Done> done_q;
     std::thread done_thread;
     void completion_loop();
+    void write_results(uint32_t i, uint64_t serial);
+    std::unique_ptr<std::atomic<uint64_t>[]> res_state;    // per submission slot: serial << 2 | 0 results pending, 1 being written, 2 written
+    std::deque<std::pair<uint64_t, uint32_t>> done_subs;   // (serial, slot) submitted, results not taken yet [done_m]
     // images and geometry regions dropped while recordings that may use them are in progress
     struct Dead { uint64_t tag; std::unique_ptr<Image> img; std::array<uint64_t, 3> geo; };
     std::mutex grave_m;
@@ -1068,6 +1093,8 @@ bool Renderer::init(const Options& o) {
     vkCreateCommandPool(ctx.device, &pci, nullptr, &pool);
     // command buffers: enough for a few frames of several submissions each
     subs.resize(256);  // ~30 submissions a frame, a few frames in flight
+    res_state.reset(new std::atomic<uint64_t>[256]);
+    for (int k = 0; k < 256; ++k) res_state[k].store(2);
     for (uint32_t i = 0; i < subs.size(); ++i) {
         VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         pci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
@@ -1231,6 +1258,12 @@ void Renderer::submit_sub(uint32_t i, const VkSemaphoreSubmitInfo* wait, const V
     }
     si.signalSemaphoreInfoCount = nsig;
     si.pSignalSemaphoreInfos = sig;
+    res_state[i].store(serial_next << 2, std::memory_order_release);
+    {
+        std::lock_guard dl(done_m);
+        done_subs.push_back({serial_next, i});
+        while (done_subs.size() > 4096) done_subs.pop_front();  // (no completion thread yet: only the newest matter)
+    }
     const uint64_t ts0 = now_ns();
     const VkResult r = vkQueueSubmit2(ctx.queue, 1, &si, sb.fence);
     st.t_submit += now_ns() - ts0;
@@ -1274,6 +1307,25 @@ VkDescriptorSet Renderer::alloc_set(VkDescriptorSetLayout layout) {
     }
 }
 
+// The GPU's results where the game reads them (occlusion counts, small targets): once per
+// submission, in submission order, by whichever comes first - the completion thread (without
+// the renderer's lock: end-of-pipe labels must not wait for recording) or retire_one.
+void Renderer::write_results(uint32_t i, uint64_t serial) {
+    uint64_t z = serial << 2;  // (state of that submission: a slot reused since is left alone)
+    if (res_state[i].compare_exchange_strong(z, serial << 2 | 1, std::memory_order_acq_rel)) {
+        Sub& sb = subs[i];
+        write_zpass_results(sb);
+        for (const auto& rb : sb.readbacks)
+            if (sb.rb.map && guest_region_extent(rb.base) >= rb.sf.total_size) {
+                tiling::tile(rb.sf, 0, sb.rb.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
+                gpu_wrote(rb.base, rb.sf.total_size);
+            }
+        res_state[i].store(serial << 2 | 2, std::memory_order_release);
+        return;
+    }
+    while (res_state[i].load(std::memory_order_acquire) == (serial << 2 | 1)) std::this_thread::yield();
+}
+
 void Renderer::retire_one() {
     if (inflight.empty()) return;
     const uint32_t i = inflight.front();
@@ -1282,12 +1334,7 @@ void Renderer::retire_one() {
     const uint64_t tw = now_ns();
     vkWaitForFences(ctx.device, 1, &sb.fence, VK_TRUE, UINT64_MAX);
     st.t_wait += now_ns() - tw;
-    write_zpass_results(sb);
-    for (const auto& rb : sb.readbacks)  // the GPU's results where the game reads them
-        if (sb.rb.map && guest_region_extent(rb.base) >= rb.sf.total_size) {
-            tiling::tile(rb.sf, 0, sb.rb.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
-            gpu_wrote(rb.base, rb.sf.total_size);
-        }
+    write_results(i, sb.serial);
     st.readbacks += sb.readbacks.size();
     sb.readbacks.clear();
     sb.rb_used = 0;
@@ -1910,21 +1957,21 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
             st.t_tex_hit += now_ns() - t_in;
             return img;
         }
-        const uint64_t v = mem_version(img->src_addr, img->src_size);
+        uint64_t v = mem_version(img->src_addr, img->src_size);
+        static const bool dyn_check = [] { const char* e = std::getenv("D1_NG_DYN_CHECK"); return !e || std::atoi(e) != 0; }();
+        if (v == img->version && dyn_check && dynamic_copy && img->content && guest_region_extent(img->src_addr) >= img->src_size) {
+            // CPU-written memory: not every write is announced (the glyph cache the UI's text
+            // draws from is written directly), so the contents are compared once per submission
+            if (hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size) != img->content) {
+                ++dyn_verify_missed;
+                static int told = 0;
+                if (told++ < 30 && std::getenv("D1_NG_LOG_DYN"))
+                    log("native renderer: dynamic texture %#llx (%llu bytes, %ux%u fmt %d) changed without an event", (unsigned long long)img->src_addr,
+                        (unsigned long long)img->src_size, img->w, img->h, int(img->format));
+                v = ~0ull - 1;  // (copied again below)
+            } else ++dyn_verify_hits;
+        }
         if (v == img->version) {
-            // D1_NG_VERIFY_DYN=1: (testing) is it really unchanged? (a CPU write without an event)
-            static const bool verify = std::getenv("D1_NG_VERIFY_DYN") != nullptr;
-            if (verify && dynamic_copy && img->content) {
-                if (guest_region_extent(img->src_addr) >= img->src_size &&
-                    hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size) != img->content) {
-                    ++dyn_verify_missed;
-                    static int told = 0;
-                    if (told++ < 30)
-                        log("native renderer: dynamic texture %#llx (%llu bytes, %ux%u fmt %d) changed without an event", (unsigned long long)img->src_addr,
-                            (unsigned long long)img->src_size, img->w, img->h, int(img->format));
-                    img->content = hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size);
-                } else ++dyn_verify_hits;
-            }
             img->checked = rc().submit_no;
             st.t_tex_hit += now_ns() - t_in;
             return img;
@@ -1982,9 +2029,10 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
         } else if (img && (opt.watch || dynamic_copy)) {  // protect first, then copy: a later write shows up as a new version
             const uint64_t tw = now_ns();
             img->version = mem_watch(ts.base, sf.total_size);
-            if (dynamic_copy && std::getenv("D1_NG_VERIFY_DYN")) img->content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
+            if (dynamic_copy) img->content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
             st.t_watch += now_ns() - tw;
             if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = rc().submit_no;
+            if (dynamic_copy && !img->content) img->content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
         }
         if (img) {
             uint64_t total = 0;
@@ -3968,6 +4016,20 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         for (uint32_t k = slot; k < end; ++k) ds.vb[k] = vbufs[k], ds.voff[k] = voffs[k], ds.vsize[k] = vsizes[k], ds.vmask |= 1u << k;
         slot = end;
     }
+    // D1_NG_LOG_TEXUSE: (diagnostics) each distinct (pixel shader, texture) a draw uses, with its target
+    if (static const bool lt = std::getenv("D1_NG_LOG_TEXUSE") != nullptr; lt && colors[0]) {
+        static std::mutex tm;
+        static std::set<std::pair<uint64_t, uint64_t>> seen;
+        std::lock_guard l(tm);
+        for (uint32_t msk = dr.tex_mask[1]; msk; msk &= msk - 1) {
+            const uint32_t* t = dr.tex[1][__builtin_ctz(msk)];
+            const auto ts = fmt::decode_tsharp(t);
+            if (seen.size() < 3000 && seen.insert({uint64_t(dr.ps), ts.base}).second)
+                log("ng texuse ps %#llx t%u %#llx %ux%u f%u.%u tile %u res %d | rt %#llx %ux%u", (unsigned long long)dr.ps,
+                    __builtin_ctz(msk), (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt, ts.tiling,
+                    dr.tex_res[1][__builtin_ctz(msk)] != 0, (unsigned long long)colors[0]->base, colors[0]->w, colors[0]->h);
+        }
+    }
     // D1_NG_LOG_CLIP: (diagnostics) the clip-control values draws use
     if (static const bool lc = std::getenv("D1_NG_LOG_CLIP") != nullptr; lc) {
         static std::mutex cm;
@@ -4094,7 +4156,16 @@ void Renderer::pre_pass(const std::vector<Draw*>& draws) {
                     const uint64_t b = fmt::decode_tsharp(t).base;
                     const bool is_target = target_bases.count(b) != 0;
                     if (is_target) tsharp_bases.insert(b);  // (only render target addresses matter there)
-                    if (!is_target || !target_current(b)) upload_texture(t, d->tex_res[s][i]);
+                    if (!is_target || !target_current(b)) {
+                        Image* img = upload_texture(t, d->tex_res[s][i]);
+                        // (a CPU-written texture: checked again when the list is submitted)
+                        if (img && pre_for && dynamic_copy && !img->res_val && img->content && img->src_size) {
+                            Sub::DynUse u;
+                            std::memcpy(u.t, t, 32);
+                            u.hash = img->content;
+                            pre_for->dyn.push_back(u);
+                        }
+                    }
                 }
     barrier();
     st.t_pre += now_ns() - tp;
@@ -4352,6 +4423,7 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
         for (auto& l : row) l = {};
     R.late_list.clear();
     R.copies.clear();
+    R.dyn.clear();
     R.q_on = false;
     R.pred_cur = -1;
     // uploads and new targets into the shared slot
@@ -4360,7 +4432,9 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     up_rec.submit_no = R.submit_no;
     begin_record();
     run_copies(items);
+    pre_for = &R;
     if (up_rec.cur != UINT32_MAX) pre_pass(items);
+    pre_for = nullptr;
     tr = &R;
     for (const Draw* d : items) R.q_on |= d->kind == Draw::ZPass;
     if (R.q_on) {
@@ -4421,6 +4495,8 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     vkEndCommandBuffer(R.cmd);
     subs[R.cur].state = Sub::Recorded;
     subs[R.cur].copies.clear();
+    subs[R.cur].dyn = std::move(R.dyn);
+    R.dyn.clear();
     for (const auto& c : R.copies) subs[R.cur].copies.push_back({c.kind, c.addr, c.size, c.hash});
     handle = R.cur;
     late = R.late_list;
@@ -4432,6 +4508,31 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
 void Renderer::submit_recorded(const std::vector<uint32_t>& handles) {
     const uint64_t t0 = now_ns();
     struct Account { Renderer* g; uint64_t t0; ~Account() { g->lr_sub_ns += now_ns() - t0; } } account{this, t0};
+    // CPU-written textures the lists sample, as they are now (the console's GPU reads them when
+    // it runs the list, after this): rewritten since the list ended -> copied again, in place,
+    // in the upload slot that goes first
+    for (uint32_t h : handles) {
+        if (h >= subs.size()) continue;
+        for (const auto& u : subs[h].dyn) {
+            const auto ts = fmt::decode_tsharp(u.t);
+            auto it = textures.find(tex_key(u.t, 0));
+            if (it == textures.end() || !it->second || !it->second->src_size || guest_region_extent(ts.base) < it->second->src_size) continue;
+            Image* img = it->second.get();
+            if (img->content != u.hash) continue;  // (copied again since: done)
+            if (hash_bytes(reinterpret_cast<const void*>(ts.base), img->src_size) == u.hash) continue;
+            ++dyn_late;
+            Recorder* const prev_tr = tr;
+            tr = &up_rec;
+            up_rec.lr = true;
+            if (up_rec.cur == UINT32_MAX) up_rec.submit_no = submit_seq.load(), begin_record();
+            if (up_rec.cur != UINT32_MAX) {
+                img->stale = true;
+                upload_texture(u.t, 0);
+            }
+            tr = prev_tr;
+        }
+        subs[h].dyn.clear();
+    }
     if (up_rec.cur != UINT32_MAX) {
         Recorder* const prev_tr = tr;
         tr = &up_rec;
@@ -5187,13 +5288,24 @@ void Renderer::completion_loop() {
             done_cv.wait(dl, [&] { return !done_q.empty(); });
             d = std::move(done_q.front());
         }
-        if (timeline && serial_done_seen.load() < d.serial) {  // (without the lock: recording goes on)
-            VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
-            wi.semaphoreCount = 1, wi.pSemaphores = &timeline, wi.pValues = &d.serial;
-            vkWaitSemaphores(ctx.device, &wi, UINT64_MAX);
-        }
-        {
-            std::lock_guard lk(m);  // the results of every submission up to it, into guest memory
+        if (timeline) {  // (without the renderer's lock: recording goes on)
+            if (serial_done_seen.load() < d.serial) {
+                VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+                wi.semaphoreCount = 1, wi.pSemaphores = &timeline, wi.pValues = &d.serial;
+                vkWaitSemaphores(ctx.device, &wi, UINT64_MAX);
+            }
+            for (;;) {  // the results of every submission up to it, into guest memory, in order
+                std::pair<uint64_t, uint32_t> e;
+                {
+                    std::lock_guard dl(done_m);
+                    if (done_subs.empty() || done_subs.front().first > d.serial) break;
+                    e = done_subs.front();
+                    done_subs.pop_front();
+                }
+                write_results(e.second, e.first);
+            }
+        } else {
+            std::lock_guard lk(m);
             wait_serial(d.serial);
         }
         d.fn();
@@ -5399,13 +5511,13 @@ void print_stats() {
         if (g->dynamic_copy)
             log("native renderer: dynamic memory (no write tracking): %llu CPU writes announced, %llu copies made stale (%llu render targets), %zu ranges tracked%s",
                 (unsigned long long)g->dyn_events, (unsigned long long)g->dyn_bumps, (unsigned long long)g->dyn_target_bumps, g->dyn_mem.size(),
-                std::getenv("D1_NG_VERIFY_DYN") ? (" | verify: " + std::to_string(g->dyn_verify_hits) + " unchanged, " +
-                                                   std::to_string(g->dyn_verify_missed) + " CHANGED WITHOUT AN EVENT").c_str() : "");
-        g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = g->dyn_target_bumps = 0;
-        log("native renderer: feedback loops: %llu target snapshots copied, %llu reused | texture copies made stale by copy commands %llu, by readbacks %llu",
+                (" | contents compared: " + std::to_string(g->dyn_verify_hits) + " unchanged, " + std::to_string(g->dyn_verify_missed) +
+                 " changed without an event, " + std::to_string(g->dyn_late) + " changed after the list ended").c_str());
+        g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = g->dyn_target_bumps = g->dyn_late = 0;
+        log("native renderer: feedback loops: %llu target snapshots copied, %llu reused | texture copies made stale by copy commands %llu, by readbacks %llu, by CPU writes %llu",
             (unsigned long long)g->snap_copies, (unsigned long long)g->snap_reused, (unsigned long long)g->dma_stale,
-            (unsigned long long)g->readback_stale);
-        g->snap_copies = g->snap_reused = g->dma_stale = g->readback_stale = 0;
+            (unsigned long long)g->readback_stale, (unsigned long long)g->cpu_stale);
+        g->snap_copies = g->snap_reused = g->dma_stale = g->readback_stale = g->cpu_stale = 0;
         s.unreg_tex.clear(), s.unreg_geo = s.unreg_geo_bytes = 0;
     }
     if (g->load_on) {
