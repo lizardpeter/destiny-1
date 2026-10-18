@@ -429,7 +429,11 @@ uint32_t vertex_count(uint32_t prim, uint32_t n) {
 namespace resreg {
 constexpr uint32_t kBits = 18;
 constexpr size_t kSlots = size_t(1) << kBits, kProbe = 64;
-struct Slot { std::atomic<uint64_t> key{0}, val{0}; };
+// handle: the engine handle whose object was at `key` when the last event came (UINT32_MAX:
+// unknown). An entry whose handle names an object elsewhere now is stale: the object moved (a
+// whole pool can be relocated) or was freed, and the memory may hold anything - often T#s the
+// UI builds in scratch memory, which must not pass for the old texture.
+struct Slot { std::atomic<uint64_t> key{0}, val{0}; std::atomic<uint32_t> handle{0xFFFFFFFFu}; };
 Slot* g_slots = nullptr;
 std::mutex g_wm;
 uint32_t g_next_id = 0;
@@ -444,13 +448,25 @@ inline uint64_t get(uint64_t key) {
     for (size_t i = 0; i < kProbe; ++i) {
         Slot& sl = g_slots[(h + i) & (kSlots - 1)];
         const uint64_t k = sl.key.load(std::memory_order_acquire);
-        if (k == key) return sl.val.load(std::memory_order_acquire);
+        if (k == key) {
+            const uint64_t v = sl.val.load(std::memory_order_acquire);
+            const uint32_t hd = sl.handle.load(std::memory_order_relaxed);
+            if (hd != 0xFFFFFFFFu && resolve_handle_safe(hd) != key) {  // (stale: see Slot)
+                static std::atomic<uint64_t> n{0};
+                const uint64_t c = ++n;
+                if ((c & (c - 1)) == 0 && c <= (1u << 20))  // (1, 2, 4, ... : how often, without flooding)
+                    log("nd: stale resource registry entries ignored: %llu (object %#llx, handle %#x now names %#llx)", (unsigned long long)c,
+                        (unsigned long long)key, hd, (unsigned long long)resolve_handle_safe(hd));
+                return 0;
+            }
+            return v;
+        }
         if (!k) return 0;
     }
     return 0;
 }
 // an event on the object: a new epoch (insert = false: only if it is registered already)
-void touch(uint64_t key, bool insert) {
+void touch(uint64_t key, bool insert, uint32_t handle = 0xFFFFFFFFu) {
     if (!g_slots || key < 0x10000) return;
     std::lock_guard lk(g_wm);
     const size_t h = home(key);
@@ -459,12 +475,14 @@ void touch(uint64_t key, bool insert) {
         const uint64_t k = sl.key.load(std::memory_order_relaxed);
         if (k == key) {
             const uint64_t v = sl.val.load(std::memory_order_relaxed);
+            if (handle != 0xFFFFFFFFu) sl.handle.store(handle, std::memory_order_relaxed);
             sl.val.store((v & ~0xFFFFFFFFull) | ((v + 1) & 0xFFFFFFFFull), std::memory_order_release);
             ++g_events;
             return;
         }
         if (!k) {
             if (!insert || g_used * 10 > kSlots * 7) return;  // (full: unregistered, write-tracked as before)
+            sl.handle.store(handle, std::memory_order_relaxed);
             sl.val.store(uint64_t(++g_next_id) << 32 | 1, std::memory_order_relaxed);
             sl.key.store(key, std::memory_order_release);
             ++g_used, ++g_events;
@@ -487,12 +505,12 @@ void prefetch(uint32_t type, uint64_t o) {
     else if (type == 4) ng::prefetch_buffer(field<uint64_t>(o, 0x28), field<uint32_t>(o, 0), res, o);
 }
 void event(uint32_t type, uint32_t handle, bool insert) {
-    if (const uint64_t o = object_of(type, handle)) touch(o, insert), prefetch(type, o);
+    if (const uint64_t o = object_of(type, handle)) touch(o, insert, handle), prefetch(type, o);
 }
 // a handle of unknown type (moves): whichever object it names, if registered
 void event_any(uint32_t handle) {
     if (handle == 0xFFFFFFFFu) return;
-    if (const uint64_t o = resolve_handle_safe(handle)) touch(o, false);
+    if (const uint64_t o = resolve_handle_safe(handle)) touch(o, false, handle);
 }
 void init() {
     if (g_slots) return;

@@ -225,10 +225,12 @@ VkBlendFactor blend_factor(uint32_t f) {
     case 10: return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
     case 13: return VK_BLEND_FACTOR_CONSTANT_COLOR;
     case 14: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
-    case 15: return VK_BLEND_FACTOR_SRC1_COLOR;
-    case 16: return VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
-    case 17: return VK_BLEND_FACTOR_SRC1_ALPHA;
-    case 18: return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
+    // dual-source factors: the translated shaders have no second output (and the device may not
+    // enable dualSrcBlend): undefined in Vulkan, so the first output stands in
+    case 15: return VK_BLEND_FACTOR_SRC_COLOR;
+    case 16: return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+    case 17: return VK_BLEND_FACTOR_SRC_ALPHA;
+    case 18: return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     case 19: return VK_BLEND_FACTOR_CONSTANT_ALPHA;
     case 20: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
     default: return VK_BLEND_FACTOR_ONE;
@@ -645,6 +647,33 @@ struct Renderer {
     void feedback_snapshots(const Draw* const* run, size_t n, Image* const* colors, Image* depth, bool new_pass = false);
     // what these draws may write: bit i color target i, bit 8 depth, bit 9 stencil
     static uint32_t run_writes(const Draw* const* run, size_t n);
+    // Shared images (render targets, snapshots) are set up - layout, first clear - in the upload
+    // slot when lists are recorded on engine threads: it is submitted before every list
+    // recorded after this one, while lists run in the engine's submission order, not the order
+    // they were recorded in (a list submitted earlier could otherwise use the image before the
+    // list that made it had set it up). Outside a render pass in any case.
+    struct UpSlot {
+        Recorder* prev;
+        bool on;
+        ~UpSlot() { if (on) tr = prev; }
+    };
+    UpSlot to_upload_slot() {
+        if (!rc().lr || tr == &up_rec) {
+            if (rc().in_pass) end_pass();
+            return {tr, false};
+        }
+        Recorder* const prev = tr;
+        const uint64_t sn = rc().submit_no;
+        tr = &up_rec;
+        up_rec.lr = true;
+        if (up_rec.cur == UINT32_MAX) up_rec.submit_no = sn, begin_record();
+        if (up_rec.cur == UINT32_MAX) {
+            tr = prev;
+            if (rc().in_pass) end_pass();
+            return {prev, false};
+        }
+        return {prev, true};
+    }
     void wrote_target(Image* img, uint8_t aspects = 3) {
         auto& f = rc().fresh;
         for (size_t i = 0; i < f.size();)
@@ -728,7 +757,24 @@ struct Renderer {
                         img->res_val ? "engine resource" : "dynamic");
             }
     }
-    uint64_t dma_tex_hits = 0, feedback_draws = 0;
+    uint64_t dma_tex_hits = 0, feedback_draws = 0, readback_stale = 0;
+    // The GPU's results reached guest memory (a readback): copies made from that memory (a
+    // texture over a render target's memory, e.g. glyphs drawn into a cache texture) are stale.
+    void gpu_wrote(uint64_t a, uint64_t n) {
+        if (dynamic_copy) {
+            std::lock_guard dl(dyn_m);
+            dyn_q.push_back({a, n});
+        }
+        const uint64_t e = a + n;
+        for (auto& [k, img] : textures)
+            if (img && img->src_size && a < img->src_addr + img->src_size && e > img->src_addr && !img->stale) {
+                img->stale = true, ++readback_stale;
+                static int told = 0;
+                if (told++ < 20 && std::getenv("D1_NG_LOG_READBACK"))
+                    log("native renderer: readback %#llx +%llu into texture %#llx %ux%u", (unsigned long long)a, (unsigned long long)n,
+                        (unsigned long long)img->src_addr, img->w, img->h);
+            }
+    }
     void apply_cpu_writes() {
         std::vector<std::pair<uint64_t, uint64_t>> q;
         {
@@ -861,7 +907,7 @@ struct Renderer {
         return hash_bytes(c, 32, (res >> 32) * 0x9E3779B97F4A7C15ull) | 1;
     }
     void evict_textures();
-    VkSampler sampler(const uint32_t* s);
+    VkSampler sampler(const uint32_t* s, bool nearest = false);
     Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in = 0,
                    uint32_t sint_in = 0, uint32_t scaled_in = 0);
     // what this GPU supports per format (cached): vertex buffers, sampling, rendering
@@ -1238,8 +1284,10 @@ void Renderer::retire_one() {
     st.t_wait += now_ns() - tw;
     write_zpass_results(sb);
     for (const auto& rb : sb.readbacks)  // the GPU's results where the game reads them
-        if (sb.rb.map && guest_region_extent(rb.base) >= rb.sf.total_size)
+        if (sb.rb.map && guest_region_extent(rb.base) >= rb.sf.total_size) {
             tiling::tile(rb.sf, 0, sb.rb.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
+            gpu_wrote(rb.base, rb.sf.total_size);
+        }
     st.readbacks += sb.readbacks.size();
     sb.readbacks.clear();
     sb.rb_used = 0;
@@ -1666,6 +1714,7 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
     Image* img = it != targets.end() ? it->second.get() : nullptr;
     if (!img || (layered && img->d <= slice_max)) {
         const uint32_t depth = layered ? std::max(slice_max + 1, std::min(w, 64u)) : 1;
+        const UpSlot up = to_upload_slot();
         auto n = make_image(f, w, h, depth, 1, 1, false, layered, false, false);
         if (!n) return nullptr;
         {  // new images hold undefined data (garbage on most GPUs): start from zero
@@ -1756,6 +1805,7 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
     Image* img;
     if (it != targets.end()) img = it->second.get();
     else {
+        const UpSlot up = to_upload_slot();
         auto n = make_image(f, w, h, 1, 1, 1, false, false, true, sfmt != 0);
         if (!n) return nullptr;
         {
@@ -1814,7 +1864,9 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
         if (res && img->res_val) {
             // an engine resource: unchanged while its epoch is; after an event (a move, most
             // often) the same contents at the new address keep the image
-            if (img->res_val == res) {
+            // (the same epoch names the same memory: a T# with this resource's key elsewhere is
+            // another texture - compared by contents below)
+            if (img->res_val == res && img->src_addr == fmt::decode_tsharp(t).base) {
                 ++st.res_hits;
                 // D1_NG_VERIFY_RES=1: (testing) unchanged really? (a write the engine did not announce)
                 static const bool verify_res = std::getenv("D1_NG_VERIFY_RES") != nullptr;
@@ -2448,9 +2500,9 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t 
     return view(img, vt, comp, first, false);
 }
 
-VkSampler Renderer::sampler(const uint32_t* s) {
+VkSampler Renderer::sampler(const uint32_t* s, bool nearest) {
     if (!s) return dummy_sampler;
-    const uint64_t key = hash_bytes(s, 16);
+    const uint64_t key = hash_bytes(s, 16) ^ (nearest ? 0x6A09E667F3BCC909ull : 0);
     auto it = samplers.find(key);
     if (it != samplers.end()) return it->second;
     VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -2463,17 +2515,22 @@ VkSampler Renderer::sampler(const uint32_t* s) {
     sci.maxLod = float(s[1] >> 12 & 0xFFF) / 256.0f;
     int32_t bias = int32_t(s[2] & 0x3FFF);
     if (bias & 0x2000) bias -= 0x4000;
-    sci.mipLodBias = float(bias) / 256.0f;
+    sci.mipLodBias = std::clamp(float(bias) / 256.0f, -15.99f, 15.99f);  // (the smallest maxSamplerLodBias GPUs report is 15-16)
     const uint32_t mag = s[2] >> 20 & 3, min = s[2] >> 22 & 3, mip = s[2] >> 26 & 3;
     sci.magFilter = mag == 0 ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
     sci.minFilter = min == 0 ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
     sci.mipmapMode = mip == 2 ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    if (nearest) {  // (an image format the GPU cannot filter - integer formats, some float ones: undefined with LINEAR)
+        sci.magFilter = sci.minFilter = VK_FILTER_NEAREST;
+        sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    }
     if (mip == 0) sci.maxLod = sci.minLod;  // no mipmapping
     if (sci.maxLod < sci.minLod) sci.maxLod = sci.minLod;
-    if (cmp) {
-        sci.compareEnable = VK_TRUE;
-        sci.compareOp = VkCompareOp(cmp);
-    }
+    // No compareEnable: the shaders do depth comparisons themselves (image_sample_c becomes a plain
+    // sample and a compare), and a comparison sampler used by a non-Dref instruction is
+    // undefined in Vulkan (Intel's sampler then compares against whatever the coordinates
+    // hold: shadows and lights flicker). GCN ignores the S# compare function for plain samples.
+    (void)cmp;
     (void)aniso;
     const uint32_t border = s[3] >> 30;
     sci.borderColor = border == 1 ? VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK
@@ -2816,7 +2873,8 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
         cfmt[i] = colors[i] ? colors[i]->format : VK_FORMAT_UNDEFINED;
         auto& a = cb[i];
         a.colorWriteMask = (dr.target_mask >> (4 * i)) & 0xF;
-        if (i < 4 && (dr.blend >> 30 & 1) && colors[i] && !is_int_format(colors[i]->format)) {
+        if (i < 4 && (dr.blend >> 30 & 1) && colors[i] && !is_int_format(colors[i]->format) &&
+            (format_props(colors[i]->format).optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT)) {
             a.blendEnable = VK_TRUE;
             a.srcColorBlendFactor = blend_factor(dr.blend & 0x1F);
             a.colorBlendOp = blend_op(dr.blend >> 5 & 7);
@@ -3128,7 +3186,10 @@ void Renderer::feedback_snapshots(const Draw* const* run, size_t n, Image* const
             auto& sn = snap_img[img];
             if (!sn || sn->w != img->w || sn->h != img->h || sn->format != img->format) {
                 if (sn) bury(std::move(sn));
-                sn = make_image(img->format, img->w, img->h, 1, 1, 1, false, false, img->depth, img->stencil);
+                {
+                    const UpSlot up = to_upload_slot();  // (shared by every list's snapshots of this target)
+                    sn = make_image(img->format, img->w, img->h, 1, 1, 1, false, false, img->depth, img->stencil);
+                }
                 if (!sn) continue;
                 sn->base = img->base, sn->swap = img->swap;
             }
@@ -3631,14 +3692,34 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                 struct SmpEntry { uint64_t key = 0; VkSampler smp = VK_NULL_HANDLE; };
                 static thread_local SmpEntry smc[512];
                 const uint32_t* S = dr.S(s, slot);
-                const uint64_t key = S ? hash_bytes(S, 16) | 1 : 0;
+                // the formats it filters (a format without linear filtering gets a NEAREST sampler)
+                uint64_t fkey = 0;
+                for (uint32_t tm = sh->res.sampler_textures[slot & 15]; tm; tm &= tm - 1)
+                    if (const uint32_t* T = dr.T(s, __builtin_ctz(tm))) {
+                        const auto ts = fmt::decode_tsharp(T);
+                        fkey = fkey * 0x100000001B3ull + (uint64_t(ts.dfmt) << 8 | ts.nfmt) + 1;
+                    }
+                const uint64_t key = S ? (hash_bytes(S, 16) ^ fkey * 0x9E3779B97F4A7C15ull) | 1 : 0;
                 SmpEntry& e = smc[key & 511];
                 VkSampler smp;
                 if (key && e.key == key) {
                     smp = e.smp;
                 } else {
+                    bool nearest = false;
+                    for (uint32_t tm = sh->res.sampler_textures[slot & 15]; tm; tm &= tm - 1)
+                        if (const uint32_t* T = dr.T(s, __builtin_ctz(tm))) {
+                            const auto ts = fmt::decode_tsharp(T);
+                            VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
+                            {
+                                auto lk = guard(tex_m);
+                                if (Image* ri = target_for(ts)) f = ri->format;
+                            }
+                            if (f != VK_FORMAT_UNDEFINED &&
+                                !(format_props(f).optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+                                nearest = true;
+                        }
                     auto lk = guard(tex_m);
-                    smp = sampler(S);
+                    smp = sampler(S, nearest);
                     if (key) e = {key, smp};
                 }
                 images[s][nw[s]] = {smp, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
@@ -3886,6 +3967,15 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         vkCmdBindVertexBuffers2(cmd, slot, end - slot, &vbufs[slot], &voffs[slot], &vsizes[slot], nullptr);
         for (uint32_t k = slot; k < end; ++k) ds.vb[k] = vbufs[k], ds.voff[k] = voffs[k], ds.vsize[k] = vsizes[k], ds.vmask |= 1u << k;
         slot = end;
+    }
+    // D1_NG_LOG_CLIP: (diagnostics) the clip-control values draws use
+    if (static const bool lc = std::getenv("D1_NG_LOG_CLIP") != nullptr; lc) {
+        static std::mutex cm;
+        static std::set<uint32_t> seen;
+        std::lock_guard l(cm);
+        if (seen.insert(dr.clip).second && seen.size() < 40)
+            log("ng clip %#x: first ps %#llx depth ctl %#x vp z %g..%g (k %g)", dr.clip, (unsigned long long)dr.ps, dr.depth_ctl, dr.znear,
+                dr.zfar, dr.zk);
     }
     // viewport (GCN y points down the screen: flip with a negative height)
     VkViewport vp{};
@@ -5312,9 +5402,10 @@ void print_stats() {
                 std::getenv("D1_NG_VERIFY_DYN") ? (" | verify: " + std::to_string(g->dyn_verify_hits) + " unchanged, " +
                                                    std::to_string(g->dyn_verify_missed) + " CHANGED WITHOUT AN EVENT").c_str() : "");
         g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = g->dyn_target_bumps = 0;
-        log("native renderer: feedback loops: %llu target snapshots copied, %llu reused | copy commands: %llu texture copies made stale",
-            (unsigned long long)g->snap_copies, (unsigned long long)g->snap_reused, (unsigned long long)g->dma_stale);
-        g->snap_copies = g->snap_reused = g->dma_stale = 0;
+        log("native renderer: feedback loops: %llu target snapshots copied, %llu reused | texture copies made stale by copy commands %llu, by readbacks %llu",
+            (unsigned long long)g->snap_copies, (unsigned long long)g->snap_reused, (unsigned long long)g->dma_stale,
+            (unsigned long long)g->readback_stale);
+        g->snap_copies = g->snap_reused = g->dma_stale = g->readback_stale = 0;
         s.unreg_tex.clear(), s.unreg_geo = s.unreg_geo_bytes = 0;
     }
     if (g->load_on) {

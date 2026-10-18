@@ -926,6 +926,7 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
         problem(std::string(op_name(in.op)) + " with an unresolved " + (!tex.ok ? "T#" : "S#") + at);
         return;
     }
+    if (sampling && smp.api < 16 && tex.api < 16) r_.sampler_textures[smp.api] |= uint16_t(1u << tex.api);
     const TexDim td = tex.api < 16 ? d_.tex_dims[tex.api] : TexDim::Tex2D;
     const uint32_t ncoord = td == TexDim::Tex2D ? 2 : 3;  // 2D array / 3D / cube: 3 address VGPRs
     const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;

@@ -84,6 +84,7 @@ struct Result {
     uint32_t ps_flat_inputs = 0;        // pixel: attributes read flat (v_interp_mov)
     uint32_t color_outputs = 0;         // pixel: MRT mask
     bool writes_depth = false, discards = false, uses_branches = false;
+    uint16_t sampler_textures[16] = {};  // per sampler slot: the texture slots it samples (filter choice)
     std::vector<std::string> problems;  // anything not translated exactly
 };
 
