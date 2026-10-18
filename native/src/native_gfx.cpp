@@ -319,8 +319,9 @@ std::unordered_map<uint64_t, DevState*> g_devs;
 // draws waiting for the submission that holds their command-buffer position, by position: a
 // submission takes the draws inside its ranges with a few lookups (a frame's later draws are
 // all waiting while its earlier submissions run: ~10k, scanned in full per submission before)
-std::multimap<uint64_t, ng::Draw*> g_pending;
-uint32_t g_seq = 0;
+// sorted by command-buffer position (equal positions keep their recording order)
+std::vector<std::pair<uint64_t, ng::Draw*>> g_pending;
+std::atomic<uint32_t> g_seq{0};
 int g_every = 1;            // execute every Nth frame
 int g_dump_every = 0;       // write every Nth executed frame (0: none)
 uint64_t g_executed_frames = 0;
@@ -342,7 +343,7 @@ struct CbEvent {
     uint8_t stage, slot;
     ng::Draw::Cb cb;
 };
-std::multimap<uint64_t, CbEvent> g_cb_pending;  // by position, as the draws
+std::vector<CbEvent> g_cb_pending;  // by position, as the draws (stage 0xFF: taken)
 ng::Draw::Cb g_ce[ng::kStages][16] = {};  // bindings as of the end of the last submission
 bool g_ce_order = true;                   // D1_NG_CE_ORDER=0: per-context bindings only (old behaviour)
 bool g_cbs_armed = false;
@@ -400,9 +401,11 @@ uint32_t vertex_count(uint32_t prim, uint32_t n) {
     }
 }
 
+ng::Draw* alloc_draw();
+
 // Common state of every draw, read from the device object.
 ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
-    auto* d = new ng::Draw;
+    auto* d = alloc_draw();
     d->caller = caller ? caller - g_base : 0;
     d->prim = uint8_t(eb<uint32_t>(0x15D13C0 + uint64_t(engine_prim) * 4));
     d->vs = reinterpret_cast<const uint8_t*>(field<uint64_t>(dev, kVsShader));
@@ -462,11 +465,97 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
     return d;
 }
 
+// Draw records are recycled (a few thousand a frame, ~5 KB each): recording threads take
+// them in batches from a shared free list, the submitting thread gives them back.
+std::mutex g_free_m;
+std::vector<ng::Draw*> g_free;
+ng::Draw* alloc_draw() {
+    thread_local std::vector<ng::Draw*> cache;
+    if (cache.empty()) {
+        std::lock_guard lk(g_free_m);
+        const size_t n = std::min<size_t>(g_free.size(), 128);
+        cache.assign(g_free.end() - n, g_free.end());
+        g_free.resize(g_free.size() - n);
+    }
+    if (cache.empty()) return new ng::Draw;
+    ng::Draw* d = cache.back();
+    cache.pop_back();
+    // back to the defaults capture() relies on (it writes the shader resources it marks in
+    // tex_mask / smp_mask, every constant buffer slot, the registers and the targets itself)
+    d->kind = ng::Draw::Auto, d->prim = 4, d->index32 = 0, d->clear_flags = 0;
+    d->count = 0, d->instances = 1, d->index_addr = 0, d->order = 0, d->seq = 0, d->frame = 0, d->caller = 0;
+    d->vs = d->ps = nullptr, d->num_vb = 0;
+    std::memset(d->vb, 0, sizeof d->vb);
+    d->tex_mask[0] = d->tex_mask[1] = d->smp_mask[0] = d->smp_mask[1] = 0;
+    d->clear_color[0] = d->clear_color[1] = d->clear_color[2] = d->clear_color[3] = 0;
+    d->clear_depth = 1, d->clear_stencil = 0;
+    d->inline_vertices.clear();
+    return d;
+}
+void release_draws(std::vector<ng::Draw*>& ds) {
+    std::lock_guard lk(g_free_m);
+    for (ng::Draw* d : ds) {
+        if (g_free.size() >= 65536) delete d;
+        else {
+            if (d->inline_vertices.capacity() > 65536) d->inline_vertices = {};
+            g_free.push_back(d);
+        }
+    }
+    ds.clear();
+}
+void release_draw(ng::Draw* d) {
+    std::vector<ng::Draw*> v{d};
+    release_draws(v);
+}
+
+// Each recording thread (the engine's render jobs record on up to 7 device contexts at once)
+// queues its draws and constant-buffer events in its own inbox; the submitting thread drains
+// every inbox into the pending maps. (One lock shared by all of them made the recording
+// threads wait on each other for every draw.)
+struct Inbox {
+    std::mutex m;
+    std::vector<ng::Draw*> draws;
+    std::vector<CbEvent> cbs;
+};
+std::vector<Inbox*> g_inboxes;  // (under g_m; never freed: one per thread that ever recorded)
+Inbox& inbox() {
+    thread_local Inbox* ib = nullptr;
+    if (!ib) {
+        ib = new Inbox;
+        std::lock_guard lk(g_m);
+        g_inboxes.push_back(ib);
+    }
+    return *ib;
+}
 void push(ng::Draw* d) {
-    std::lock_guard lk(g_m);
-    d->seq = g_seq++;
+    d->seq = g_seq.fetch_add(1, std::memory_order_relaxed);
     d->frame = uint32_t(gpu_flip_count());
-    g_pending.emplace(d->order, d);
+    Inbox& ib = inbox();
+    std::lock_guard lk(ib.m);
+    ib.draws.push_back(d);
+}
+// (g_m held) everything recorded so far into g_pending / g_cb_pending
+void drain_inboxes() {
+    std::vector<ng::Draw*> ds;
+    std::vector<CbEvent> cs;
+    const size_t old_d = g_pending.size(), old_c = g_cb_pending.size();
+    for (Inbox* ib : g_inboxes) {
+        {
+            std::lock_guard lk(ib->m);
+            ds.swap(ib->draws);
+            cs.swap(ib->cbs);
+        }
+        for (ng::Draw* d : ds) g_pending.push_back({d->order, d});
+        g_cb_pending.insert(g_cb_pending.end(), cs.begin(), cs.end());
+        ds.clear(), cs.clear();
+    }
+    // stable: each thread's records with equal positions stay in the order they were made
+    auto by_pos = [](const auto& a, const auto& b) { return a.first < b.first; };
+    std::stable_sort(g_pending.begin() + ptrdiff_t(old_d), g_pending.end(), by_pos);
+    std::inplace_merge(g_pending.begin(), g_pending.begin() + ptrdiff_t(old_d), g_pending.end(), by_pos);
+    auto ev_pos = [](const CbEvent& a, const CbEvent& b) { return a.order < b.order; };
+    std::stable_sort(g_cb_pending.begin() + ptrdiff_t(old_c), g_cb_pending.end(), ev_pos);
+    std::inplace_merge(g_cb_pending.begin(), g_cb_pending.begin() + ptrdiff_t(old_c), g_cb_pending.end(), ev_pos);
 }
 
 // Occlusion counter dumps and predication packets of the submission being collected, as
@@ -576,6 +665,13 @@ DrawQuadsFn o_draw_quads;
 DrawInlineFn o_draw_inline;
 ClearFn o_clear;
 
+// Draws are only captured: the engine's Gnm draw code (constant update engine preDraw /
+// postDraw, draw packets) does not run, so the command buffers carry state and events only
+// (the null GPU still answers fences and labels from them). D1_NG_GNM_DRAWS=1 runs it too.
+bool gnm_draws() {
+    static const bool on = [] { const char* v = getenv("D1_NG_GNM_DRAWS"); return v && atoi(v) != 0; }();
+    return on;
+}
 thread_local uint32_t t_instances = 1;  // set by the instanced draw around its draw_indexed call
 D1_SYSV void r_draw_indexed(uint64_t dev, uint64_t prim, uint64_t a, int32_t first, uint32_t count) {
     if (field<uint8_t>(dev, 0x26)) {
@@ -589,7 +685,7 @@ D1_SYSV void r_draw_indexed(uint64_t dev, uint64_t prim, uint64_t a, int32_t fir
         d->instances = t_instances;
         nr::push(d);
     }
-    o_draw_indexed(dev, prim, a, first, count);
+    if (gnm_draws()) o_draw_indexed(dev, prim, a, first, count);
 }
 D1_SYSV void r_draw(uint64_t dev, uint64_t prim, uint32_t count) {
     if (field<uint8_t>(dev, 0x26)) {
@@ -598,7 +694,7 @@ D1_SYSV void r_draw(uint64_t dev, uint64_t prim, uint32_t count) {
         d->count = count;
         nr::push(d);
     }
-    o_draw(dev, prim, count);
+    if (gnm_draws()) o_draw(dev, prim, count);
 }
 D1_SYSV void r_draw_instanced(uint64_t dev, uint32_t prim, uint32_t count, uint64_t a, uint32_t instances) {
     if (field<uint8_t>(dev, 0x26)) {
@@ -607,7 +703,7 @@ D1_SYSV void r_draw_instanced(uint64_t dev, uint32_t prim, uint32_t count, uint6
         d->count = count, d->instances = instances;
         nr::push(d);
     }
-    o_draw_instanced(dev, prim, count, a, instances);
+    if (gnm_draws()) o_draw_instanced(dev, prim, count, a, instances);
 }
 // draw_indexed_instanced(prim, count, ?, instances, ?, first): NUM_INSTANCES around draw_indexed
 D1_SYSV void r_draw_indexed_instanced(uint64_t dev, uint32_t prim, uint32_t count, uint64_t a, uint32_t instances,
@@ -623,7 +719,7 @@ D1_SYSV void r_draw_quads(uint64_t dev, uint32_t prim, uint64_t first, int32_t p
     d->index_addr = field<uint64_t>(field<uint64_t>(dev, 0), 0) + (first & 0xFFFFFFFF) * 2;
     d->count = nr::vertex_count(prim, uint32_t(prims));
     nr::push(d);
-    o_draw_quads(dev, prim, first, prims);
+    if (gnm_draws()) o_draw_quads(dev, prim, first, prims);
 }
 D1_SYSV void r_draw_inline(uint64_t dev, uint32_t prim, int32_t prims, const void* data, int32_t stride) {
     const uint64_t decl = field<uint64_t>(dev, kVertexDecl);
@@ -641,7 +737,7 @@ D1_SYSV void r_draw_inline(uint64_t dev, uint32_t prim, int32_t prims, const voi
                              field<uint32_t>(decl, 0x14 + 8 * i), uint32_t(stride), d->count);
         nr::push(d);
     }
-    o_draw_inline(dev, prim, prims, data, stride);
+    if (gnm_draws()) o_draw_inline(dev, prim, prims, data, stride);
 }
 // clear(flags): bits 2..5 color MRT 0..3 with the color at +0x40, 0x40 depth (+0x20, stored
 // reversed unless +0x24), 0x80 stencil (+0x25)
@@ -706,7 +802,8 @@ D1_SYSV void r_set_cbs(uint64_t cue, uint32_t stage, uint32_t first, uint32_t co
         }
     }
     const uint64_t order = field<uint64_t>(cue - 0xC0, 0x10);
-    std::lock_guard lk(nr::g_m);
+    nr::Inbox& ib = nr::inbox();
+    std::lock_guard lk(ib.m);
     for (uint32_t k = 0; k < count && first + k < 16; ++k) {
         ng::Draw::Cb& cb = c->cb[s][first + k];
         if (!vs) {
@@ -719,7 +816,7 @@ D1_SYSV void r_set_cbs(uint64_t cue, uint32_t stage, uint32_t first, uint32_t co
             cb = {base, uint32_t(std::min<uint64_t>(bytes, 1u << 20))};
         }
         if (nr::g_ce_order && order)
-            nr::g_cb_pending.emplace(order, nr::CbEvent{order, nr::g_seq++, uint8_t(s), uint8_t(first + k), cb});
+            ib.cbs.push_back(nr::CbEvent{order, nr::g_seq.fetch_add(1, std::memory_order_relaxed), uint8_t(s), uint8_t(first + k), cb});
     }
 }
 
@@ -1154,31 +1251,34 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
     };
     {
         std::lock_guard lk(nr::g_m);
+        nr::drain_inboxes();
         auto& pend = nr::g_pending;
         // the draws inside each range (in traversal order: where ranges overlap, the first wins)
         for (size_t r = 0; r < ranges.size(); ++r) {
-            auto it = pend.lower_bound(ranges[r].first);
-            while (it != pend.end() && it->first < ranges[r].second) {
+            auto it = std::lower_bound(pend.begin(), pend.end(), ranges[r].first,
+                                       [](const auto& a, uint64_t x) { return a.first < x; });
+            for (; it != pend.end() && it->first < ranges[r].second; ++it) {
                 ng::Draw* d = it->second;
+                if (!d) continue;
                 mine.push_back({uint64_t(r) << 40 | ((d->order - ranges[r].first) & 0xFFFFFFFFFFull), d});
-                it = pend.erase(it);
+                it->second = nullptr;
             }
         }
         // draws whose submission never came
         static uint32_t sweep = 0;
         if (++sweep % 64 == 0)
-            for (auto it = pend.begin(); it != pend.end();) {
-                ng::Draw* d = it->second;
-                if (nr::g_seq - d->seq < 200000) { ++it; continue; }
+            for (auto& [pos, d] : pend) {
+                if (!d || nr::g_seq - d->seq < 200000) continue;
                 ++nr::g_dropped;
                 static const bool log_drop = getenv("D1_NG_LOG_DROPS") != nullptr;
                 static int n = 0;
                 if (log_drop && n++ < 100)
                     log("ng drop: draw ps %p from %#llx recorded at %#llx (flip %u) never submitted", (const void*)d->ps,
                         (unsigned long long)d->caller, (unsigned long long)d->order, d->frame);
-                delete d;
-                it = pend.erase(it);
+                nr::release_draw(d);
+                d = nullptr;
             }
+        pend.erase(std::remove_if(pend.begin(), pend.end(), [](const auto& e) { return !e.second; }), pend.end());
         if (static const bool st = getenv("D1_NG_PENDING_STATS") != nullptr; st) {
             static uint64_t n = 0;
             if (++n % 500 == 0)
@@ -1187,13 +1287,13 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
         }
         for (auto& [pos, e] : events) {
             if (!queries && (e->kind == ng::Draw::ZPass || e->kind == ng::Draw::PredOn || e->kind == ng::Draw::PredOff)) {
-                delete e;
+                nr::release_draw(e);
                 continue;
             }
             e->seq = nr::g_seq++;
             const int64_t rng = find_range(pos);
             if (rng >= 0) mine.push_back({uint64_t(rng) << 40 | ((pos - ranges[size_t(rng)].first) & 0xFFFFFFFFFFull), e});
-            else delete e;
+            else nr::release_draw(e);
         }
         // constant buffer bindings recorded in this submission's command buffers, merged in order
         if (nr::g_ce_order) {
@@ -1201,17 +1301,20 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
             auto& cp = nr::g_cb_pending;
             std::vector<nr::CbEvent> mine_ev;
             for (size_t r = 0; r < ranges.size(); ++r) {
-                auto it = cp.lower_bound(ranges[r].first);
-                while (it != cp.end() && it->first < ranges[r].second) {
-                    mine_ev.push_back(it->second);
-                    mine_ev.back().order = uint64_t(r) << 40 | ((it->second.order - ranges[r].first) & 0xFFFFFFFFFFull);
-                    it = cp.erase(it);
+                auto it = std::lower_bound(cp.begin(), cp.end(), ranges[r].first,
+                                           [](const nr::CbEvent& a, uint64_t x) { return a.order < x; });
+                for (; it != cp.end() && it->order < ranges[r].second; ++it) {
+                    if (it->stage == 0xFF) continue;
+                    mine_ev.push_back(*it);
+                    mine_ev.back().order = uint64_t(r) << 40 | ((it->order - ranges[r].first) & 0xFFFFFFFFFFull);
+                    it->stage = 0xFF;
                 }
             }
             static uint32_t sweep_ev = 0;
-            if (++sweep_ev % 64 == 0)
-                for (auto it = cp.begin(); it != cp.end();)
-                    it = nr::g_seq - it->second.seq < 2000000 ? std::next(it) : cp.erase(it);
+            const bool sweep_now = ++sweep_ev % 64 == 0;
+            cp.erase(std::remove_if(cp.begin(), cp.end(),
+                                    [&](const nr::CbEvent& e) { return e.stage == 0xFF || (sweep_now && nr::g_seq - e.seq >= 2000000); }),
+                     cp.end());
             std::vector<std::pair<std::pair<uint64_t, uint32_t>, int64_t>> seq;  // (pos, seq) -> draw index or ~event
             for (size_t i = 0; i < mine.size(); ++i) seq.push_back({{mine[i].first, mine[i].second->seq}, int64_t(i)});
             for (size_t i = 0; i < mine_ev.size(); ++i) seq.push_back({{mine_ev[i].order, mine_ev[i].seq}, ~int64_t(i)});
@@ -1276,7 +1379,12 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
         nr::g_exec_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         nr::g_frame_executed = true;
     }
-    for (auto& [k, d] : mine) delete d;
+    {
+        std::vector<ng::Draw*> done;
+        done.reserve(mine.size());
+        for (auto& [k, d] : mine) done.push_back(d);
+        nr::release_draws(done);
+    }
     return run && !mine.empty() && queries;  // (the renderer answered the occlusion dumps)
 }
 
