@@ -654,7 +654,9 @@ void Translator::emit_vop(const Inst& in) {
     }
     case Op::V_MIN_I32: wu(i2u(m_.ext(ti_, GlslSMin, {si(0), si(1)}))); return;
     case Op::V_MAX_I32: wu(i2u(m_.ext(ti_, GlslSMax, {si(0), si(1)}))); return;
-    case Op::V_FRACT_F32: wf(m_.ext(tf_, GlslFract, {f(0)})); return;
+    case Op::V_FRACT_F32:  // (GCN: below 1.0 always; fract of a tiny negative number rounds to 1.0 in IEEE)
+        wf(m_.ext(tf_, GlslNMin, {m_.ext(tf_, GlslFract, {f(0)}), u2f(m_.c_u32(0x3F7FFFFF))}));
+        return;
     case Op::V_TRUNC_F32: wf(m_.ext(tf_, GlslTrunc, {f(0)})); return;
     case Op::V_CEIL_F32: wf(m_.ext(tf_, GlslCeil, {f(0)})); return;
     case Op::V_RNDNE_F32: wf(m_.ext(tf_, GlslRoundEven, {f(0)})); return;
@@ -671,8 +673,16 @@ void Translator::emit_vop(const Inst& in) {
     case Op::V_COS_F32: wf(m_.ext(tf_, GlslCos, {m_.op_r(OpFMul, tf_, {f(0), m_.c_f32(6.28318530718f)})})); return;
     case Op::V_CVT_F32_I32: wf(m_.op_r(OpConvertSToF, tf_, {si(0)})); return;
     case Op::V_CVT_F32_U32: wf(m_.op_r(OpConvertUToF, tf_, {u(0)})); return;
-    case Op::V_CVT_I32_F32: wu(i2u(m_.op_r(OpConvertFToS, ti_, {f(0)}))); return;
-    case Op::V_CVT_U32_F32: wu(m_.op_r(OpConvertFToU, tu_, {m_.ext(tf_, GlslFMax, {f(0), m_.c_f32(0.0f)})})); return;
+    // (GCN saturates and turns NaN into 0; out-of-range conversions are undefined in SPIR-V)
+    case Op::V_CVT_I32_F32: {
+        const Id x = f(0);
+        const Id c = m_.ext(tf_, GlslNClamp, {x, m_.c_f32(-2147483648.0f), m_.c_f32(2147483520.0f)});
+        wu(i2u(m_.op_r(OpSelect, ti_, {m_.op_r(OpIsNan, tbool_, {x}), m_.c_i32(0), m_.op_r(OpConvertFToS, ti_, {c})})));
+        return;
+    }
+    case Op::V_CVT_U32_F32:
+        wu(m_.op_r(OpConvertFToU, tu_, {m_.ext(tf_, GlslNClamp, {f(0), m_.c_f32(0.0f), m_.c_f32(4294967040.0f)})}));
+        return;
     case Op::V_CVT_PKRTZ_F16_F32:
         wu(m_.ext(tu_, GlslPackHalf2x16, {m_.op_r(OpCompositeConstruct, tv2f_, {f(0), f(1)})}));
         return;
@@ -811,6 +821,7 @@ void Translator::emit_exp(const Inst& in) {
             if (!position_out_) {
                 position_out_ = global(m_.t_ptr(SCOutput, tv4f_), SCOutput);
                 m_.decorate(position_out_, DecBuiltIn, {BuiltInPosition});
+                m_.decorate(position_out_, DecInvariant);  // (the same position in every pass that draws it)
             }
             st(position_out_, vec4());
         } else if (t >= 32 && t < 64) {
@@ -1285,6 +1296,7 @@ std::vector<uint32_t> rect_list_gs(uint32_t param_exports) {
         Var v{m.variable(p_in, SCInput), m.variable(p_out, SCOutput)};
         m.decorate(v.in, DecBuiltIn, {BuiltInPosition});
         m.decorate(v.out, DecBuiltIn, {BuiltInPosition});
+        m.decorate(v.out, DecInvariant);
         vars.push_back(v);
     }
     for (uint32_t l = 0; l < 32; ++l)

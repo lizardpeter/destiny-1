@@ -1698,11 +1698,13 @@ D1_SYSV void s_eop_label(uint64_t cb, uint32_t, uint32_t, uint64_t addr, uint32_
                          uint32_t int_sel) {
     List* l = list_of(ctx_of_cb(cb));
     if (!l) return;
-    if (addr >= 0x10000 && (data_sel == 1 || data_sel == 2)) {
+    if (addr >= 0x10000 && (data_sel == 1 || data_sel == 2 || data_sel == 3)) {
         ng::Draw* d = nr::alloc_draw();
         d->kind = ng::Draw::WriteData;
+        d->prim = ng::kEopLabel;  // (written when the GPU has finished the submission: after_gpu)
         d->caller = addr;
         d->inline_vertices.resize(data_sel == 1 ? 4 : 8);
+        d->count = data_sel == 3;  // (the GPU clock when it completes)
         std::memcpy(d->inline_vertices.data(), &data, d->inline_vertices.size());
         l->items.push_back({d, {}});
     }
@@ -2424,6 +2426,9 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
     std::vector<ng::Draw*> draws;
     std::vector<uint32_t> recorded;
     std::vector<ng::Draw*> cpu_events;  // of recorded lists: memory writes the CPU sees, after their submission
+    // end-of-pipe label writes: when the GPU has finished this submission (with the results the
+    // game reads back already in memory), as the console's GPU writes them
+    std::vector<std::pair<uint64_t, std::vector<uint8_t>>> labels;
     bool eop = false;
     // D1_ND_CB_CHECK: would the list's own bindings (over what the draw captured) give the
     // same constant buffers as the replay across lists?
@@ -2440,6 +2445,7 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
             recorded.push_back(l->handle);
             for (nd::Item& it : l->items) {
                 if (!it.d) nr::g_ce[it.cb.stage][it.cb.slot] = it.cb.cb;
+                else if (it.d->kind == ng::Draw::WriteData && it.d->prim == ng::kEopLabel) labels.push_back({it.d->caller | uint64_t(it.d->count) << 63, it.d->inline_vertices});
                 else if (it.d->kind == ng::Draw::Dma || it.d->kind == ng::Draw::WriteData) cpu_events.push_back(it.d);
             }
             continue;
@@ -2468,6 +2474,10 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
                 continue;
             }
             ng::Draw* d = it.d;
+            if (d->kind == ng::Draw::WriteData && d->prim == ng::kEopLabel) {
+                labels.push_back({d->caller | uint64_t(d->count) << 63, d->inline_vertices});
+                continue;
+            }
             if (nr::g_ce_order && d->kind <= ng::Draw::Clear)
                 for (int st = 0; st < 2; ++st)
                     for (int sl = 0; sl < 16; ++sl)
@@ -2559,7 +2569,19 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
             log("nd: submission of %u buffers: %zu lists, %zu items, eop %d, run %d", count, lists.size(), draws.size(), int(eop), int(run));
     }
     for (nd::List* l : lists) nd::free_list(l);
-    if (eop) gnm_signal_eop();
+    if (!labels.empty() || eop)
+        ng::after_gpu([labels = std::move(labels), eop] {
+            for (auto [tagged, bytes] : labels) {
+                const uint64_t addr = tagged & ~(1ull << 63);
+                if (tagged >> 63) {  // GPU clock 64 (ns, the clock hle_gpu's timestamps use)
+                    const uint64_t t = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                    std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+                    std::memcpy(bytes.data(), &t, 8);
+                }
+                if (addr >= 0x10000 && guest_region_extent(addr) >= bytes.size()) std::memcpy(reinterpret_cast<void*>(addr), bytes.data(), bytes.size());
+            }
+            if (eop) gnm_signal_eop();
+        });
 }
 
 // Diagnostics (D1_NG_LOG_WAITS): memory waits still unsatisfied after the null GPU ran the

@@ -59,7 +59,7 @@ enum StorageClass : uint32_t {
     SCFunction = 7, SCPushConstant = 9, SCStorageBuffer = 12,
 };
 enum Decoration : uint32_t {
-    DecBlock = 2, DecArrayStride = 6, DecBuiltIn = 11, DecFlat = 14, DecNoPerspective = 13, DecNonWritable = 24,
+    DecBlock = 2, DecArrayStride = 6, DecBuiltIn = 11, DecInvariant = 18, DecNoContraction = 42, DecFlat = 14, DecNoPerspective = 13, DecNonWritable = 24,
     DecLocation = 30, DecComponent = 31, DecIndex = 32, DecBinding = 33, DecDescriptorSet = 34, DecOffset = 35,
 };
 enum BuiltIn : uint32_t {

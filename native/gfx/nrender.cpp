@@ -471,6 +471,7 @@ struct Renderer {
     std::deque<uint32_t> inflight;          // submitted, in order
     std::vector<uint32_t> idle_subs;
     uint64_t serial_next = 1, serial_done = 0;
+    std::atomic<uint64_t> serial_done_seen{0};  // serial_done, readable without the lock
     std::deque<uint64_t> frame_ends;        // last submission serial of each recent frame
     Heap heap;
     Swapchain sc;
@@ -786,6 +787,13 @@ struct Renderer {
     uint64_t oldest_ring() const;
     uint64_t ring_oldest = 0;  // a lower bound of oldest_ring()
     VkSemaphore timeline = VK_NULL_HANDLE;  // value = serial of the last completed submission
+    // end-of-pipe work (after_gpu): run by the completion thread when its serial is done
+    struct Done { uint64_t serial; std::function<void()> fn; };
+    std::mutex done_m;
+    std::condition_variable done_cv;
+    std::deque<Done> done_q;
+    std::thread done_thread;
+    void completion_loop();
     // images and geometry regions dropped while recordings that may use them are in progress
     struct Dead { uint64_t tag; std::unique_ptr<Image> img; std::array<uint64_t, 3> geo; };
     std::mutex grave_m;
@@ -1238,6 +1246,7 @@ void Renderer::retire_one() {
     for (auto& b : sb.staging) free_buffer(b);
     sb.staging.clear();
     serial_done = std::max(serial_done, sb.serial);
+    if (serial_done > serial_done_seen.load()) serial_done_seen.store(serial_done);
     sb.state = Sub::Idle;
     idle_subs.push_back(i);
     reap();
@@ -2190,6 +2199,20 @@ GeoEntry* Renderer::geo_lookup_res(uint64_t addr, uint64_t size, int index_size,
     if (!ext || ext < size) return nullptr;
     if (e.valid) {
         if (e.res == res) {
+            // D1_NG_GEO_VERIFY: (diagnostics) unchanged really? (a write the engine did not announce)
+            static const bool verify = std::getenv("D1_NG_GEO_VERIFY") != nullptr;
+            if (verify && hash_bytes(reinterpret_cast<const void*>(addr), size) != e.hash) {
+                __atomic_fetch_add(&st.geo_stale, 1, __ATOMIC_RELAXED);
+                static std::atomic<int> told{0};
+                if (told++ < 60) {
+                    char ds[256] = "";
+                    if (opt.describe) opt.describe(addr, ds, sizeof ds);
+                    log("ng geo: engine %s buffer changed without an event: %#llx +%llu (resource %#llx, base %#llx) | %s",
+                        index_size ? "index" : "vertex", (unsigned long long)addr, (unsigned long long)size, (unsigned long long)res,
+                        (unsigned long long)rbase, ds);
+                }
+                e.hash = hash_bytes(reinterpret_cast<const void*>(addr), size);
+            }
             __atomic_fetch_add(&st.geo_hits, 1, __ATOMIC_RELAXED);
             __atomic_fetch_add(&st.geo_res_hits, 1, __ATOMIC_RELAXED);
             geo_hit_out = {geo_blocks[size_t(e.block)].buf.buf, e.off, e.size, e.vfirst, e.vlast};
@@ -5048,6 +5071,47 @@ void cpu_wrote(uint64_t addr, uint64_t size) {
     std::lock_guard lk(g->dyn_m);
     g->dyn_q.push_back({addr, size});
 }
+void after_gpu(std::function<void()> fn) {
+    if (!g) return fn();
+    uint64_t serial;
+    {
+        std::lock_guard lk(g->m);
+        serial = g->serial_next - 1;
+        g->retire_completed();
+    }
+    std::unique_lock dl(g->done_m);
+    if (g->done_q.empty() && g->serial_done_seen.load() >= serial) {
+        dl.unlock();
+        return fn();  // (nothing pending: as a GPU that is already idle)
+    }
+    if (!g->done_thread.joinable()) g->done_thread = std::thread([] { g->completion_loop(); });
+    g->done_q.push_back({serial, std::move(fn)});
+    g->done_cv.notify_one();
+}
+
+void Renderer::completion_loop() {
+    for (;;) {
+        Done d;
+        {
+            std::unique_lock dl(done_m);
+            done_cv.wait(dl, [&] { return !done_q.empty(); });
+            d = std::move(done_q.front());
+        }
+        if (timeline && serial_done_seen.load() < d.serial) {  // (without the lock: recording goes on)
+            VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+            wi.semaphoreCount = 1, wi.pSemaphores = &timeline, wi.pValues = &d.serial;
+            vkWaitSemaphores(ctx.device, &wi, UINT64_MAX);
+        }
+        {
+            std::lock_guard lk(m);  // the results of every submission up to it, into guest memory
+            wait_serial(d.serial);
+        }
+        d.fn();
+        std::lock_guard dl(done_m);
+        done_q.pop_front();
+    }
+}
+
 void submit_recorded(const std::vector<uint32_t>& handles) {
     if (!g) return;
     std::lock_guard lk(g->m);

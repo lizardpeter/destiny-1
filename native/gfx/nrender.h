@@ -6,6 +6,7 @@
 // register values and resource descriptors (T#, S#, V#, render-target descriptors) that the
 // engine's device object keeps, plus pointers to the Gnm shader objects.
 #pragma once
+#include <functional>
 #include <cstdint>
 #include <vector>
 
@@ -102,6 +103,7 @@ void execute(const std::vector<Draw*>& draws);
 // addr = kLateCb | stage << 4 | slot, and the list's draws read one ring region per slot,
 // filled at submission (fill_late) from the bindings in effect when the list starts.
 constexpr uint64_t kLateCb = 1ull << 62;
+constexpr uint8_t kEopLabel = 0xE0;  // Draw::prim of a WriteData that is an end-of-pipe label
 struct LateCb { uint8_t stage, slot; uint32_t size; uint64_t off; };
 bool list_recording();  // on (D1_ND_RECORD, default on) and no per-draw diagnostics running
 // false: not recorded (the caller executes the list's draws at submission instead)
@@ -117,6 +119,11 @@ void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj);
 // unlock, a copy-queue write; size 0: the resource starting at addr): copies of it are stale.
 void cpu_wrote(uint64_t addr, uint64_t size);
 void discard_recorded(uint32_t handle);                       // never submitted
+// Runs `fn` once everything submitted so far has completed on the GPU and its results (render
+// targets the game reads back, occlusion counts) are in guest memory - where the console's
+// end-of-pipe label writes and interrupts happen. In submission order, on the renderer's
+// completion thread; at once (in order) when nothing is pending.
+void after_gpu(std::function<void()> fn);
 // The video-out buffer at `addr` was flipped: present it to the window (if any), dump it when
 // frames are being written (dump = true), and limit how far the CPU runs ahead.
 void flip(uint64_t addr, uint32_t width, uint32_t height, uint64_t frame, bool dump);

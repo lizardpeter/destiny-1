@@ -197,11 +197,18 @@ Id Module::label() { return id(); }
 void Module::place_label(Id l) { put(body_, OpLabel, {l}); }
 void Module::op(Opcode o, std::initializer_list<uint32_t> words) { put(body_, o, words); }
 void Module::op_v(Opcode o, const std::vector<uint32_t>& words) { put(body_, o, words); }
+// Float arithmetic is NoContraction: GCN rounds every v_mul / v_add / v_mad result (v_mad_f32
+// is not fused), so a GPU compiler must not fuse a multiply and an add into an FMA. Without
+// it, two shaders computing the same position (a depth pre-pass and the colour pass) can be
+// compiled differently and disagree in the last bit - depth-equal tests then fail at random
+// (flickering sky, lights and decals on GPUs whose compilers fuse, e.g. Intel's).
+static bool exact_float(Opcode o) { return o == OpFAdd || o == OpFSub || o == OpFMul || o == OpFDiv; }
 Id Module::op_r(Opcode o, Id type, std::initializer_list<uint32_t> operands) {
     const Id r = id();
     std::vector<uint32_t> w{type, r};
     w.insert(w.end(), operands.begin(), operands.end());
     put(body_, o, w);
+    if (exact_float(o)) decorate(r, DecNoContraction);
     return r;
 }
 Id Module::op_rv(Opcode o, Id type, const std::vector<uint32_t>& operands) {
@@ -209,6 +216,7 @@ Id Module::op_rv(Opcode o, Id type, const std::vector<uint32_t>& operands) {
     std::vector<uint32_t> w{type, r};
     w.insert(w.end(), operands.begin(), operands.end());
     put(body_, o, w);
+    if (exact_float(o)) decorate(r, DecNoContraction);
     return r;
 }
 Id Module::ext(Id type, Glsl inst, std::initializer_list<Id> args) {
