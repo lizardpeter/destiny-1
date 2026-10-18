@@ -94,6 +94,9 @@ void print_stats();
 void request_passlog(uint32_t frames);
 // Frame timing for the title bar: presented frames and the GPU name.
 uint64_t presented_frames();
+// running totals: pipelines and shaders created, textures uploaded, texture bytes copied
+struct Counters { uint64_t pipelines, shaders, textures, tex_bytes, draws; };
+Counters counters();
 const char* gpu_name();
 
 // Testing switches flipped at run time (F5..F8 in the window), to narrow down rendering

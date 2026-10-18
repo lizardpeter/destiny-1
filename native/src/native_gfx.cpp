@@ -1906,7 +1906,29 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
         if (log_reloads) log("ng flip %llu", (unsigned long long)gpu_flip_count());
         const auto f0 = std::chrono::steady_clock::now();
         ng::flip(uint64_t(addr), width, height, gpu_flip_count(), dump);
-        nr::g_flip_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - f0).count());
+        const uint64_t flip_ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - f0).count());
+        nr::g_flip_ns += flip_ns;
+        {  // frames that take more than 40 ms (hitches): what they did
+            static auto last = std::chrono::steady_clock::now();
+            static uint64_t exec0 = 0, faults0 = 0;
+            static ng::Counters c0 = ng::counters();
+            const auto now = std::chrono::steady_clock::now();
+            const double ms = std::chrono::duration<double, std::milli>(now - last).count();
+            const ng::Counters c = ng::counters();
+            const uint64_t faults = wt::g_faults.load();
+            static int told = 0;
+            if (ms > 40.0 && told < 300) {
+                ++told;
+                const char* gs = game_state();
+                log("slow frame: %.1f ms | recording %.1f ms, present %.1f ms | new pipelines %llu, shaders %llu, textures %llu "
+                    "(%.1f MiB) | %llu draws, %llu write faults (%s)",
+                    ms, double(nr::g_exec_ns >= exec0 ? nr::g_exec_ns - exec0 : nr::g_exec_ns) / 1e6, double(flip_ns) / 1e6,
+                    (unsigned long long)(c.pipelines - c0.pipelines), (unsigned long long)(c.shaders - c0.shaders),
+                    (unsigned long long)(c.textures - c0.textures), double(c.tex_bytes - c0.tex_bytes) / 1048576.0,
+                    (unsigned long long)(c.draws - c0.draws), (unsigned long long)(faults - faults0), gs ? gs : "?");
+            }
+            last = now, exec0 = nr::g_exec_ns, faults0 = faults, c0 = c;
+        }
         // title bar: frames per second over the last second; log stats every minute or so
         static auto t0 = std::chrono::steady_clock::now();
         static uint64_t n0 = 0;

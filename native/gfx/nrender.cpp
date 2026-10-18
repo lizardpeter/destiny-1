@@ -520,16 +520,41 @@ struct Renderer {
     // bumped whenever a render target appears or the image bound at an address changes: what
     // T#s on render targets resolve to (pipeline memo below)
     uint64_t targets_gen = 1;
+    uint64_t gen_why[8] = {};  // (diagnostics: which bump)
+    std::vector<uint64_t> ambiguous_bases;  // sorted
+    // what a pipeline sees of a render target sampled as a texture: dimensionality and kind
+    static uint32_t target_attrs(const Image* i) {
+        if (!i) return 0;
+        return 1u | uint32_t(i->is3d) << 1 | uint32_t(i->depth) << 2 |
+               (i->depth ? 0u : is_int_format(i->format) ? (is_sint_format(i->format) ? 16u : 8u) : 0u);
+    }
     template <class M> void set_base(M& m, uint64_t base, Image* img) {
         auto [it, added] = m.try_emplace(base, img);
-        if (added || it->second != img) it->second = img, ++targets_gen;
-        else if (auto ib = images_by_base.find(base); ib != images_by_base.end() && ib->second.size() > 1) {
+        if (added || it->second != img) {
+            if (added) (++targets_gen, ++gen_why[0]);
+            else if (target_attrs(it->second) != target_attrs(img) &&
+                     !std::binary_search(ambiguous_bases.begin(), ambiguous_bases.end(), base)) {  // (see below)
+                ambiguous_bases.insert(std::upper_bound(ambiguous_bases.begin(), ambiguous_bases.end(), base), base);
+                (++targets_gen, ++gen_why[0]);
+            }
+            it->second = img, ++views_gen;
+        } else if (auto ib = images_by_base.find(base); ib != images_by_base.end() && ib->second.size() > 1) {
             // (target_for picks the most recently bound of same-size images at one address)
-            int same = 0;
-            for (Image* c : ib->second) same += c->w == img->w && c->h == img->h;
-            if (same > 1) ++targets_gen;
+            bool same_size = false, other_attrs = false;
+            for (Image* c : ib->second)
+                if (c != img && c->w == img->w && c->h == img->h) same_size = true, other_attrs |= target_attrs(c) != target_attrs(img);
+            if (same_size) ++views_gen;
+            // an address whose sampled image alternates between kinds: pipeline() keys draws
+            // that sample it by what it resolves to (instead of invalidating every pipeline)
+            if (other_attrs && !std::binary_search(ambiguous_bases.begin(), ambiguous_bases.end(), base)) {
+                ambiguous_bases.insert(std::upper_bound(ambiguous_bases.begin(), ambiguous_bases.end(), base), base);
+                (++targets_gen, ++gen_why[1]);
+            }
         }
     }
+    // bumped whenever what a T# resolves to may change (textures uploaded or dropped, render
+    // targets bound): the recording threads' view caches are valid for one value
+    std::atomic<uint64_t> views_gen{1};
     // what draw() last set in the current command buffer (invalid: set everything)
     struct DrawState {
         bool valid = false;
@@ -1291,7 +1316,7 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
             retired.push_back(std::move(old->second));
         }
         images_by_base[base].push_back(n.get());
-        ++targets_gen;
+        (++targets_gen, ++gen_why[2]);
         targets[key] = std::move(n);
         ++st.targets;
     }
@@ -1368,7 +1393,7 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
         n->base = base;
         img = n.get();
         images_by_base[base].push_back(img);
-        ++targets_gen;
+        (++targets_gen, ++gen_why[3]);
         targets[key] = std::move(n);
         ++st.targets;
     }
@@ -1422,7 +1447,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         // the game rewrote the texture's memory (streaming): copy it again (keeping the old
         // copy until the new one is known to be complete)
         prev = std::move(it->second);
-        textures.erase(it);
+        textures.erase(it); ++views_gen;
         ++st.tex_reloads;
     }
     LoadTimer load_timer{this, t_in};
@@ -1447,7 +1472,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                 log("native renderer: texture %llx %ux%u f%u type %u mips %u layers %u needs %llu bytes, mapping has %llu: not drawn",
                     (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.type, sf.levels, sf.layers,
                     (unsigned long long)sf.total_size, (unsigned long long)ext);
-            textures[key] = nullptr;
+            textures[key] = nullptr; ++views_gen;
             return nullptr;
         }
         // a rewrite of the same texture (per-frame tables, streaming into the same slot): copy
@@ -1546,17 +1571,17 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                     prev->torn++, prev->checked = submit_no, prev->last_used = submit_no;
                     subs[cur].dead.push_back(std::move(img));
                     Image* keep = prev.get();
-                    textures[key] = std::move(prev);
+                    textures[key] = std::move(prev); ++views_gen;
                     return keep;
                 }
                 img->version = ~0ull;  // copy it again next frame
             }
-            textures[key] = std::move(img);
+            textures[key] = std::move(img); ++views_gen;
             if (!out) textures.erase(key);
         }
     }
     if (prev) subs[cur].dead.push_back(std::move(prev));
-    if (!out) textures[key] = nullptr;
+    if (!out) textures[key] = nullptr; ++views_gen;
     return out;
 }
 
@@ -1856,7 +1881,7 @@ void Renderer::evict_textures() {
         if (cur != UINT32_MAX) subs[cur].dead.push_back(std::move(it->second));
         else if (!inflight.empty()) subs[inflight.back()].dead.push_back(std::move(it->second));
         else destroy_image(it->second.get());
-        textures.erase(it);
+        textures.erase(it); ++views_gen;
     }
     if (!drop.empty()) st.evicted += drop.size();
 }
@@ -1876,7 +1901,9 @@ Image* Renderer::target_for(const fmt::TSharp& ts) {
     return best ? best : img;
 }
 
+thread_local Image* tv_texture = nullptr;  // (texture_view: the uploaded texture it returned a view of, if any)
 VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
+    tv_texture = nullptr;
     const auto vt = view_type(dim);
     if (!t) return view(dummy[int(dim)].get(), vt, {}, 0, false);
     const auto ts = fmt::decode_tsharp(t);
@@ -1909,6 +1936,7 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
     Image* img = it != textures.end() ? it->second.get() : nullptr;
     if (!img) return view(dummy[int(dim)].get(), vt, {}, 0, false);
     img->last_used = submit_no;
+    tv_texture = img;
     // MIN_LOD: the streaming system has not loaded the finer mips yet (their memory is still
     // zero): start the view at the first mip it allows
     const uint32_t first = std::min(std::max(ts.base_level, (ts.min_lod + 255) >> 8), std::max(ts.last_level, ts.base_level));
@@ -2047,6 +2075,11 @@ Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth)
         for (uint32_t m = dr.tex_mask[s]; m; m &= m - 1) {
             const uint32_t* t = dr.tex[s][__builtin_ctz(m)];
             k = mix(mix(k, uint64_t(t[0]) | uint64_t(t[1]) << 32), uint64_t(t[2]) | uint64_t(t[3]) << 32);
+            if (!ambiguous_bases.empty()) {
+                const uint64_t base = (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8;
+                if (std::binary_search(ambiguous_bases.begin(), ambiguous_bases.end(), base))
+                    k = mix(k, target_attrs(target_for(fmt::decode_tsharp(t))));
+            }
         }
     PipeMemo& e = pipe_memo[k & (pipe_memo.size() - 1)];
     if (e.key == k && e.gen == targets_gen) return ++st.memo_hits, e.p;
@@ -2755,18 +2788,47 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
             w.descriptorCount = 1;
             const uint32_t slot = b.api_slot & 15;
             if (b.kind == gcn::Binding::Texture) {
-                auto lk = guard(tex_m);
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                images[s][nw[s]] = {VK_NULL_HANDLE, texture_view(dr.T(s, slot), slot_dim(dr.T(s, slot))),
-                                    VK_IMAGE_LAYOUT_GENERAL};
-                if (dr.T(s, slot))
-                    if (Image* ri = target_for(fmt::decode_tsharp(dr.T(s, slot))))
-                        images[s][nw[s]].imageView = texture_view(dr.T(s, slot), ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D);
+                // per-thread cache of resolved views (valid while views_gen is unchanged: the
+                // shared maps are only taken on a miss)
+                struct TvEntry { uint64_t key = 0, gen = 0; VkImageView view = VK_NULL_HANDLE; Image* tex = nullptr; };
+                static thread_local TvEntry tvc[2048];
+                const uint32_t* T = dr.T(s, slot);
+                const gcn::TexDim dim = slot_dim(T);
+                const uint64_t key = (T ? hash_bytes(T, 32) : 0x5A5A) ^ (uint64_t(dim) + 1) * 0x9E3779B97F4A7C15ull;
+                const uint64_t gen = views_gen.load(std::memory_order_acquire);
+                TvEntry& e = tvc[key & 2047];
+                VkImageView v;
+                if (e.key == key && e.gen == gen && e.view) {
+                    v = e.view;
+                    if (e.tex) e.tex->last_used = submit_no;  // (keeps it from being dropped as unused)
+                } else {
+                    auto lk = guard(tex_m);
+                    v = texture_view(T, dim);
+                    Image* tex = tv_texture;
+                    if (T)
+                        if (Image* ri = target_for(fmt::decode_tsharp(T)))
+                            v = texture_view(T, ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D), tex = nullptr;
+                    e = {key, gen, v, tex};
+                }
+                images[s][nw[s]] = {VK_NULL_HANDLE, v, VK_IMAGE_LAYOUT_GENERAL};
                 w.pImageInfo = &images[s][nw[s]];
             } else if (b.kind == gcn::Binding::Sampler) {
-                auto lk = guard(tex_m);
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                images[s][nw[s]] = {sampler(dr.S(s, slot)), VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
+                struct SmpEntry { uint64_t key = 0; VkSampler smp = VK_NULL_HANDLE; };
+                static thread_local SmpEntry smc[512];
+                const uint32_t* S = dr.S(s, slot);
+                const uint64_t key = S ? hash_bytes(S, 16) | 1 : 0;
+                SmpEntry& e = smc[key & 511];
+                VkSampler smp;
+                if (key && e.key == key) {
+                    smp = e.smp;
+                } else {
+                    auto lk = guard(tex_m);
+                    smp = sampler(S);
+                    if (key) e = {key, smp};
+                }
+                images[s][nw[s]] = {smp, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
                 w.pImageInfo = &images[s][nw[s]];
             } else {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -3092,7 +3154,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         reload_all = false;
         for (auto& [k, img] : textures)
             if (img) subs[cur].dead.push_back(std::move(img));
-        textures.clear();
+        textures.clear(); ++views_gen;
         log("native renderer: dropped every texture (D1_NG_SNAP_RELOAD)");
     }
     // resources first (copies cannot run inside a render pass): targets, then textures
@@ -3220,7 +3282,7 @@ bool Renderer::target_current(uint64_t base) {
     if (img->depth || img->tv_version == ~0ull || !opt.version || opt.version(base, img->tv_size) == img->tv_version)
         return true;
     target_by_base.erase(it);
-    ++targets_gen;
+    (++targets_gen, ++gen_why[4]);
     target_bases.erase(base);
     img->tv_version = ~0ull, img->tv_frame = 0;
     ++st.target_writes;
@@ -3912,6 +3974,11 @@ void request_passlog(uint32_t frames) {
     if (std::getenv("D1_NG_SNAP_DEBUG")) g->debug = true, g->debug_from = g->passlog_frame, g->debug_lines = 0;
     if (std::getenv("D1_NG_SNAP_RELOAD")) g->reload_all = true;  // (testing) copy every texture again
 }
+Counters counters() {
+    if (!g) return {};
+    return {g->st.pipelines, g->st.shaders, g->st.textures, g->st.bytes_tex, g->st.draws};
+}
+
 uint64_t presented_frames() { return g ? g->sc.presented : 0; }
 const char* gpu_name() { return g ? g->ctx.name : ""; }
 
@@ -3963,6 +4030,10 @@ void print_stats() {
             n / std::max(1.0, double(s.frames - s.t_frames)), 100.0 * double(g->par_draws) / n, double(s.t_pipe) / n, double(s.t_geo) / n,
             double(s.t_desc) / n, double(s.t_cmd) / n, (unsigned long long)s.memo_hits, (unsigned long long)s.memo_misses,
             (unsigned long long)s.memo_gen);
+    if (std::getenv("D1_NG_LOG_GEN"))
+        log("native renderer: target generation bumps: new/changed binding %llu, same-size alias %llu, new color %llu, new depth %llu, CPU rewrite %llu",
+            (unsigned long long)g->gen_why[0], (unsigned long long)g->gen_why[1], (unsigned long long)g->gen_why[2],
+            (unsigned long long)g->gen_why[3], (unsigned long long)g->gen_why[4]);
     s.memo_hits = s.memo_misses = s.memo_gen = 0, g->par_draws = g->par_runs = 0;
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: pre-pass per frame: targets %.2f ms, texture checks %.2f ms (%.0f, %.0f unwatched), texture loads %.2f ms "
