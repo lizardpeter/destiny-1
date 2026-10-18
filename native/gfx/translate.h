@@ -49,6 +49,9 @@ struct ShaderDesc {
     uint8_t tex_kind[16] = {};       // per texture API slot: 0 float, 1 uint, 2 sint (T# number format)
     // vertex: inputs whose format comes from the V# at draw time and is an integer format
     uint32_t uint_inputs = 0, sint_inputs = 0;  // bit per input location
+    // inputs fetched as integers (uint_inputs / sint_inputs say which) and converted to float in
+    // the shader: SCALED vertex formats on GPUs that cannot read them as vertex attributes
+    uint32_t scaled_inputs = 0;
     // pixel: PS attribute index -> vertex parameter location (SPI_PS_INPUT_CNTL OFFSET, from
     // the Gnm semantic tables of the PS and the VS it runs with); 0xFF = not exported (reads 0)
     bool remap_inputs = false;

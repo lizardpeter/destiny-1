@@ -375,12 +375,19 @@ void Translator::emit_fetch_call() {
             // integer formats stay integers; everything else arrives as float
             // (MUBUF: the format, and so the type, comes from the V# at draw time)
             const bool mubuf = in.enc == Enc::MUBUF;
-            const bool is_sint = mubuf ? (d_.sint_inputs >> a.location & 1) != 0 : in.nfmt == 5;
-            const bool is_int = is_sint || (mubuf ? (d_.uint_inputs >> a.location & 1) != 0 : in.nfmt == 4);
+            const bool scaled = (d_.scaled_inputs >> a.location & 1) != 0;
+            const bool is_sint = (mubuf || scaled) ? (d_.sint_inputs >> a.location & 1) != 0 : in.nfmt == 5;
+            const bool is_int = is_sint || ((mubuf || scaled) ? (d_.uint_inputs >> a.location & 1) != 0 : in.nfmt == 4);
             const Id vt = is_sint ? m_.t_vec(ti_, 4) : is_int ? tv4u_ : tv4f_;
             const Id var = global(m_.t_ptr(SCInput, vt), SCInput);
             m_.decorate(var, DecLocation, {a.location});
             Id val = ld(var, vt);
+            if (scaled && is_int) {  // integer fetch of a SCALED format: the value as float
+                val = m_.op_r(is_sint ? OpConvertSToF : OpConvertUToF, tv4f_, {val});
+                for (uint32_t c = 0; c < a.components; ++c)
+                    st(vreg(a.vgpr + c), f2u(m_.op_r(OpCompositeExtract, tf_, {val, c})));
+                continue;
+            }
             if (is_sint) val = m_.op_r(OpBitcast, tv4u_, {val});
             for (uint32_t c = 0; c < a.components; ++c) {
                 Id comp = m_.op_r(OpCompositeExtract, is_int ? tu_ : tf_, {val, c});

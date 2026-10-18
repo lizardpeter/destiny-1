@@ -361,6 +361,7 @@ struct Stats {
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     // engine resources: uses with an unchanged epoch, moves with the same contents, real changes
     uint64_t res_hits = 0, res_moves = 0, res_changed = 0, geo_res_hits = 0, geo_res_moves = 0, geo_res_changed = 0;
+    uint64_t res_verify_ok = 0, res_verify_missed = 0;
     // (census) memory still write-tracked: textures by key -> bytes, geometry lookups
     std::unordered_map<uint64_t, uint64_t> unreg_tex;
     uint64_t unreg_geo = 0, unreg_geo_bytes = 0;
@@ -420,6 +421,7 @@ struct Sub {
     uint32_t q_used = 0;
     struct ZRec { uint64_t dest; uint32_t boundary; };
     std::vector<ZRec> zrecs;
+    std::vector<std::array<uint64_t, 4>> copies;  // (D1_NG_VERIFY_LATE) kind, address, size, hash when recorded
 };
 
 // Copies of guest vertex / index buffers kept on the GPU while the game does not write them.
@@ -613,7 +615,15 @@ struct Renderer {
         struct Late { uint64_t off = 0; uint32_t size = 0; };
         Late late[kStages][16];
         std::vector<LateCb> late_list;
+        // D1_NG_VERIFY_LATE: what was copied while recording, compared again at submission
+        struct Copy { uint8_t kind; uint64_t addr, size, hash; };
+        std::vector<Copy> copies;
     };
+    static bool verify_late() { static const bool v = std::getenv("D1_NG_VERIFY_LATE") != nullptr; return v; }
+    void note_copy(uint8_t kind, uint64_t addr, uint64_t size) {
+        if (verify_late() && rc().lr && size && size <= (1u << 20)) rc().copies.push_back({kind, addr, size, hash_bytes(reinterpret_cast<const void*>(addr), size)});
+    }
+    uint64_t late_checked[3] = {}, late_changed[3] = {};
     Recorder up_rec;  // uploads and target set-up for lists recorded on engine threads
     // the loader thread: engine resources prepared when the engine binds or moves them
     struct LoadJob { bool tex; uint32_t t[8]; uint64_t base, size, res, obj; };
@@ -644,6 +654,8 @@ struct Renderer {
     std::mutex dyn_m;
     std::vector<std::pair<uint64_t, uint64_t>> dyn_q;              // (address, size) written, not applied yet
     std::map<uint64_t, std::pair<uint64_t, uint64_t>> dyn_mem;     // base -> (size, generation)   [under m]
+    std::unordered_set<uint64_t> dyn_targets;                       // (bases of render targets among them)
+    uint64_t dyn_target_bumps = 0;
     uint64_t dyn_events = 0, dyn_bumps = 0, dyn_verify_hits = 0, dyn_verify_missed = 0;
     void apply_cpu_writes() {
         std::vector<std::pair<uint64_t, uint64_t>> q;
@@ -657,7 +669,17 @@ struct Renderer {
             auto it = dyn_mem.upper_bound(a);
             if (it != dyn_mem.begin()) --it;
             for (; it != dyn_mem.end() && it->first < end; ++it)
-                if (it->first + std::max<uint64_t>(it->second.first, 1) > a) ++it->second.second, ++dyn_bumps;
+                if (it->first + std::max<uint64_t>(it->second.first, 1) > a) {
+                    ++it->second.second, ++dyn_bumps;
+                    if (dyn_targets.count(it->first)) {
+                        ++dyn_target_bumps;
+                        static const bool log_t = std::getenv("D1_NG_LOG_DYN") != nullptr;
+                        static int told = 0;
+                        if (log_t && told++ < 60)
+                            log("native renderer: CPU write %#llx +%llu marks render target %#llx (+%llu) rewritten", (unsigned long long)a,
+                                (unsigned long long)n, (unsigned long long)it->first, (unsigned long long)it->second.first);
+                    }
+                }
         }
     }
     // write tracking, or (dynamic_copy) the generation of the range
@@ -762,7 +784,56 @@ struct Renderer {
     void evict_textures();
     VkSampler sampler(const uint32_t* s);
     Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in = 0,
-                   uint32_t sint_in = 0);
+                   uint32_t sint_in = 0, uint32_t scaled_in = 0);
+    // what this GPU supports per format (cached): vertex buffers, sampling, rendering
+    std::mutex fmt_m;
+    std::unordered_map<uint32_t, VkFormatProperties> fmt_props;
+    VkFormatProperties format_props(VkFormat f) {
+        std::lock_guard lk(fmt_m);
+        auto it = fmt_props.find(uint32_t(f));
+        if (it != fmt_props.end()) return it->second;
+        VkFormatProperties p{};
+        vkGetPhysicalDeviceFormatProperties(ctx.gpu, f, &p);
+        fmt_props[uint32_t(f)] = p;
+        return p;
+    }
+    bool vertex_ok(VkFormat f) {
+        // D1_NG_NO_SCALED=1: (testing) as on a GPU without SCALED vertex formats
+        static const bool no_scaled = std::getenv("D1_NG_NO_SCALED") != nullptr;
+        if (no_scaled) {
+            switch (f) {
+            case VK_FORMAT_R8_USCALED: case VK_FORMAT_R8_SSCALED: case VK_FORMAT_R8G8_USCALED: case VK_FORMAT_R8G8_SSCALED:
+            case VK_FORMAT_R16_USCALED: case VK_FORMAT_R16_SSCALED: case VK_FORMAT_R16G16_USCALED: case VK_FORMAT_R16G16_SSCALED:
+            case VK_FORMAT_R8G8B8A8_USCALED: case VK_FORMAT_R8G8B8A8_SSCALED: case VK_FORMAT_R16G16B16A16_USCALED:
+            case VK_FORMAT_R16G16B16A16_SSCALED: case VK_FORMAT_A2B10G10R10_USCALED_PACK32: case VK_FORMAT_A2B10G10R10_SSCALED_PACK32:
+                return false;
+            default: break;
+            }
+        }
+        return (format_props(f).bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0;
+    }
+    // a vertex attribute's format on this GPU: SCALED formats it cannot read are fetched as
+    // integers and converted in the shader (scaled_u / scaled_s)
+    VkFormat vertex_format_here(uint32_t dfmt, uint32_t nfmt, bool& scaled_u, bool& scaled_s) {
+        scaled_u = scaled_s = false;
+        VkFormat f = vertex_format(dfmt, nfmt);
+        if (f == VK_FORMAT_UNDEFINED) return VK_FORMAT_R32G32B32A32_SFLOAT;
+        if (vertex_ok(f)) return f;
+        if (nfmt == 2 || nfmt == 3) {
+            const VkFormat i = vertex_format(dfmt, nfmt == 2 ? 4 : 5);
+            if (i != VK_FORMAT_UNDEFINED && vertex_ok(i)) {
+                (nfmt == 2 ? scaled_u : scaled_s) = true;
+                static std::atomic<int> told{0};
+                if (told++ < 8) log("native renderer: vertex format %d is not supported by this GPU: read as %d and converted in the shader", int(f), int(i));
+                return i;
+            }
+        }
+        static std::mutex lm;
+        static std::unordered_set<int> told;
+        std::lock_guard lk(lm);
+        if (told.insert(int(f)).second) log("native renderer: vertex format %d (data format %u, number format %u) is NOT supported by this GPU", int(f), dfmt, nfmt);
+        return f;
+    }
     Pipeline* pipeline(const Draw& dr, Image* const* colors, Image* depth);
     Pipeline* pipeline_resolve(const Draw& dr, Image* const* colors, Image* depth);
     void begin_pass(Image* const* colors, Image* depth, bool secondaries = false);
@@ -1341,11 +1412,30 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
     ici.tiling = VK_IMAGE_TILING_OPTIMAL;
     ici.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     const bool bc = f >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && f <= VK_FORMAT_BC7_SRGB_BLOCK;
+    // only what this GPU supports for the format (asking for more is invalid: drivers may
+    // then produce garbage)
+    const VkFormatFeatureFlags ff = format_props(f).optimalTilingFeatures;
     if (depth) ici.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    else if (!bc) ici.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    else if (!bc && (ff & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) ici.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    {
+        static std::mutex lm;
+        static std::unordered_set<int> told;
+        const char* why = !(ff & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) ? "cannot be sampled"
+                        : depth && !(ff & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? "cannot be a depth target"
+                        : !(ff & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) ? "cannot be copied to"
+                        : nullptr;
+        std::lock_guard lk(lm);
+        if (why && told.insert(int(f)).second) log("native renderer: image format %d %s on this GPU", int(f), why);
+        if (!depth && !bc && !(ff & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) && told.insert(int(f) | 1 << 30).second)
+            log("native renderer: image format %d cannot be rendered to on this GPU (textures only)", int(f));
+    }
     ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     const uint64_t t0 = now_ns();
-    if (vkCreateImage(ctx.device, &ici, nullptr, &img->image) != VK_SUCCESS) return nullptr;
+    if (const VkResult r = vkCreateImage(ctx.device, &ici, nullptr, &img->image); r != VK_SUCCESS) {
+        static std::atomic<int> told{0};
+        if (told++ < 20) log("native renderer: vkCreateImage failed (%d): format %d %ux%ux%u, %u levels, %u layers", int(r), int(f), w, h, d, levels, layers);
+        return nullptr;
+    }
     VkMemoryRequirements req;
     vkGetImageMemoryRequirements(ctx.device, img->image, &req);
     const uint64_t t1 = now_ns();
@@ -1537,6 +1627,7 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
             img->tv_size = sf.total_size;
         }
         img->tv_version = guest_region_extent(base) >= img->tv_size ? mem_watch(base, img->tv_size) : ~0ull;
+        if (dynamic_copy) dyn_targets.insert(base);
     }
     return img;
 }
@@ -1638,6 +1729,22 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
             // often) the same contents at the new address keep the image
             if (img->res_val == res) {
                 ++st.res_hits;
+                // D1_NG_VERIFY_RES=1: (testing) unchanged really? (a write the engine did not announce)
+                static const bool verify_res = std::getenv("D1_NG_VERIFY_RES") != nullptr;
+                if (verify_res && img->src_size && guest_region_extent(img->src_addr) >= img->src_size) {
+                    const uint64_t h = hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size);
+                    if (h != img->content) {
+                        ++st.res_verify_missed;
+                        static int told = 0;
+                        if (told++ < 40) {
+                            const auto tv = fmt::decode_tsharp(t);
+                            log("native renderer: engine texture changed without an event: %#llx %ux%u fmt %u.%u type %u levels %u-%u (%llu bytes) res %#llx",
+                                (unsigned long long)img->src_addr, tv.width, tv.height, tv.dfmt, tv.nfmt, tv.type, tv.base_level, tv.last_level,
+                                (unsigned long long)img->src_size, (unsigned long long)res);
+                        }
+                        img->content = h;
+                    } else ++st.res_verify_ok;
+                }
                 st.t_tex_hit += now_ns() - t_in;
                 return img;
             }
@@ -2278,10 +2385,11 @@ VkSampler Renderer::sampler(const uint32_t* s) {
 }
 
 Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in,
-                         uint32_t sint_in) {
+                         uint32_t sint_in, uint32_t scaled_in) {
     const uint8_t* obj = vs ? dr.vs : dr.ps;
     uint64_t key = mix(mix(uint64_t(obj), vs), hash_bytes(dims, 16 * sizeof(gcn::TexDim)));
     key = mix(mix(key, hash_bytes(kinds, 16)), uint64_t(uint_in) | uint64_t(sint_in) << 32);
+    if (scaled_in) key = mix(key, scaled_in);
     if (!vs) key = mix(key, uint64_t(dr.vs));  // the input mapping depends on the VS
     auto it = shaders.find(key);
     if (it != shaders.end()) return it->second.get();
@@ -2293,7 +2401,7 @@ Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const
     d.code = g.code, d.code_size = g.code_size, d.slots = g.slots, d.user_sgprs = g.user_sgprs;
     d.ps_input_addr = g.ps_input_addr, d.fetch = g.fetch, d.fetch_size = g.fetch_size;
     for (int i = 0; i < 16; ++i) d.tex_dims[i] = dims[i], d.tex_kind[i] = kinds[i];
-    d.uint_inputs = uint_in, d.sint_inputs = sint_in;
+    d.uint_inputs = uint_in, d.sint_inputs = sint_in, d.scaled_inputs = scaled_in;
     if (!vs) {
         const GnmShader v = parse_shader(dr.vs, true);
         d.remap_inputs = true;
@@ -2462,7 +2570,18 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
             if (nf == 4) uin |= 1u << a.location;
             if (nf == 5) sin |= 1u << a.location;
         }
-    if (uin | sin) vs = shader(dr, true, dims[0], kinds[0], uin, sin);
+    // SCALED formats this GPU cannot read as vertex attributes: integer fetch + conversion
+    uint32_t scl = 0;
+    for (const auto& a : vs->res.attribs) {
+        if (a.location >= 32) continue;
+        const uint32_t* v = dr.vb[a.vb_slot & 15];
+        const uint32_t df = a.dfmt == 0xFF ? (v[3] >> 15 & 0xF) : a.dfmt, nf = a.dfmt == 0xFF ? (v[3] >> 12 & 7) : a.nfmt;
+        bool su, ss;
+        vertex_format_here(df, nf, su, ss);
+        if (su) uin |= 1u << a.location, scl |= 1u << a.location;
+        if (ss) sin |= 1u << a.location, scl |= 1u << a.location;
+    }
+    if (uin | sin | scl) vs = shader(dr, true, dims[0], kinds[0], uin, sin, scl);
     Shader* ps = dr.ps ? shader(dr, false, dims[1], kinds[1]) : nullptr;  // no pixel shader: depth-only
     if (!vs->ok || (ps && !ps->ok)) return nullptr;
     VkPrimitiveTopology topo;
@@ -2541,8 +2660,8 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
         const uint32_t stride = v[1] >> 16 & 0x3FFF;
         uint32_t dfmt = a.dfmt, nfmt = a.nfmt;
         if (dfmt == 0xFF) dfmt = v[3] >> 15 & 0xF, nfmt = v[3] >> 12 & 7;
-        VkFormat f = vertex_format(dfmt, nfmt);
-        if (f == VK_FORMAT_UNDEFINED) f = VK_FORMAT_R32G32B32A32_SFLOAT;
+        bool su, ss;
+        const VkFormat f = vertex_format_here(dfmt, nfmt, su, ss);
         if (std::none_of(vbind.begin(), vbind.end(), [&](auto& x) { return x.binding == a.vb_slot; }))
             vbind.push_back({a.vb_slot, stride, a.index_vgpr == 0 ? VK_VERTEX_INPUT_RATE_VERTEX : VK_VERTEX_INPUT_RATE_INSTANCE});
         vattr.push_back({a.location, a.vb_slot, f, a.offset});
@@ -3136,6 +3255,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         const uint64_t off = rec_ring(r, std::max<uint64_t>(size, 16), 256);
         if (off == UINT64_MAX) return skip("ring full");
         std::memcpy(ring.map + off, reinterpret_cast<const void*>(src), size);
+        if (dr.inline_vertices.empty()) note_copy(1, src, size);
         r.bytes_vtx += size;
         if (size < 16) std::memset(ring.map + off + size, 0, 16 - size);
         // the binding starts at vertex `vfirst`; a stride-0 stream is one record for every vertex
@@ -3217,7 +3337,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                         rc().late_list.push_back({uint8_t(s), uint8_t(slot), want, L.off});
                     }
                     off = L.off, size = L.size;
-                } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size;
+                } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size, note_copy(0, c.addr, c.size);
                 else off = rec_ring(r, size), std::memset(ring.map + (off == UINT64_MAX ? 0 : off), 0, size);
                 if (off == UINT64_MAX) return skip("ring full");
                 bufs[s][nw[s]] = {ring.buf, off, size};
@@ -3256,6 +3376,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
     } else if (indexed) {
         if (dr.index_addr < 0x10000) return skip("null index buffer");
         ioff = rec_copy(r, reinterpret_cast<const void*>(dr.index_addr), uint64_t(count) * (dr.index32 ? 4 : 2));
+        note_copy(2, dr.index_addr, uint64_t(count) * (dr.index32 ? 4 : 2));
         r.bytes_idx += uint64_t(count) * (dr.index32 ? 4 : 2);
         if (ioff == UINT64_MAX) return skip("ring full");
     }
@@ -3827,6 +3948,7 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     for (auto& row : R.late)
         for (auto& l : row) l = {};
     R.late_list.clear();
+    R.copies.clear();
     R.q_on = false;
     R.pred_cur = -1;
     // uploads and new targets into the shared slot
@@ -3906,6 +4028,8 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     queue_readbacks();
     vkEndCommandBuffer(R.cmd);
     subs[R.cur].state = Sub::Recorded;
+    subs[R.cur].copies.clear();
+    for (const auto& c : R.copies) subs[R.cur].copies.push_back({c.kind, c.addr, c.size, c.hash});
     handle = R.cur;
     late = R.late_list;
     R.cur = UINT32_MAX, R.cmd = VK_NULL_HANDLE;
@@ -3921,6 +4045,23 @@ void Renderer::submit_recorded(const std::vector<uint32_t>& handles) {
         tr = &up_rec;
         submit();
         tr = prev_tr;
+    }
+    if (verify_late()) {
+        static int told = 0;
+        for (uint32_t h : handles)
+            if (h < subs.size())
+                for (const auto& c : subs[h].copies) {
+                    const bool same = hash_bytes(reinterpret_cast<const void*>(c[1]), c[2]) == c[3];
+                    ++late_checked[c[0]], late_changed[c[0]] += !same;
+                    if (!same && told++ < 40)
+                        log("native renderer: %s at %#llx (%llu bytes) changed between the list's end and its submission",
+                            c[0] == 0 ? "constants" : c[0] == 1 ? "vertices" : "indices", (unsigned long long)c[1], (unsigned long long)c[2]);
+                }
+        static uint64_t n = 0;
+        if (++n % 600 == 0)
+            log("native renderer: copies changed between list end and submission: constants %llu of %llu, vertices %llu of %llu, indices %llu of %llu",
+                (unsigned long long)late_changed[0], (unsigned long long)late_checked[0], (unsigned long long)late_changed[1],
+                (unsigned long long)late_checked[1], (unsigned long long)late_changed[2], (unsigned long long)late_checked[2]);
     }
     for (uint32_t h : handles)
         if (h < subs.size() && subs[h].state == Sub::Recorded) submit_sub(h);
@@ -4807,6 +4948,10 @@ void print_stats() {
             "buffers %llu kept, %llu moved with the same contents, %llu changed",
             (unsigned long long)s.res_hits, (unsigned long long)s.res_moves, (unsigned long long)s.res_changed,
             (unsigned long long)s.geo_res_hits, (unsigned long long)s.geo_res_moves, (unsigned long long)s.geo_res_changed);
+    if (s.res_verify_ok || s.res_verify_missed)
+        log("native renderer: verify engine textures: %llu unchanged, %llu CHANGED WITHOUT AN EVENT", (unsigned long long)s.res_verify_ok,
+            (unsigned long long)s.res_verify_missed);
+    s.res_verify_ok = s.res_verify_missed = 0;
     s.res_hits = s.res_moves = s.res_changed = s.geo_res_hits = s.geo_res_moves = s.geo_res_changed = 0;
     if (const double f = double(s.frames - s.t_frames); f > 0) {
         uint64_t texels = 0, big = 0;
@@ -4819,11 +4964,11 @@ void print_stats() {
             double(s.why_inline) / f, double(s.why_ib_noid) / f, double(s.why_ib_range) / f);
         s.why_vb_noid = s.why_vb_range = s.why_ib_noid = s.why_ib_range = s.why_inline = 0;
         if (g->dynamic_copy)
-            log("native renderer: dynamic memory (no write tracking): %llu CPU writes announced, %llu copies made stale, %zu ranges tracked%s",
-                (unsigned long long)g->dyn_events, (unsigned long long)g->dyn_bumps, g->dyn_mem.size(),
+            log("native renderer: dynamic memory (no write tracking): %llu CPU writes announced, %llu copies made stale (%llu render targets), %zu ranges tracked%s",
+                (unsigned long long)g->dyn_events, (unsigned long long)g->dyn_bumps, (unsigned long long)g->dyn_target_bumps, g->dyn_mem.size(),
                 std::getenv("D1_NG_VERIFY_DYN") ? (" | verify: " + std::to_string(g->dyn_verify_hits) + " unchanged, " +
                                                    std::to_string(g->dyn_verify_missed) + " CHANGED WITHOUT AN EVENT").c_str() : "");
-        g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = 0;
+        g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = g->dyn_target_bumps = 0;
         s.unreg_tex.clear(), s.unreg_geo = s.unreg_geo_bytes = 0;
     }
     if (g->load_on) {
