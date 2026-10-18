@@ -361,6 +361,10 @@ struct Stats {
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     // engine resources: uses with an unchanged epoch, moves with the same contents, real changes
     uint64_t res_hits = 0, res_moves = 0, res_changed = 0, geo_res_hits = 0, geo_res_moves = 0, geo_res_changed = 0;
+    // (census) memory still write-tracked: textures by key -> bytes, geometry lookups
+    std::unordered_map<uint64_t, uint64_t> unreg_tex;
+    uint64_t unreg_geo = 0, unreg_geo_bytes = 0;
+    uint64_t why_vb_noid = 0, why_vb_range = 0, why_ib_noid = 0, why_ib_range = 0, why_inline = 0;
     std::unordered_map<std::string, uint64_t> skip;
 };
 
@@ -633,6 +637,41 @@ struct Renderer {
     }
     std::atomic<uint32_t> late_hint[kStages][16] = {};  // largest inherited constant buffer seen per slot
     bool list_rec = false;
+    bool dynamic_copy = false;  // engine resource events on: memory that is no resource is copied per draw, never write-tracked
+    // Dynamic memory without write tracking: the CPU writes the engine announces (dynamic
+    // texture unlocks, copy-queue writes) bump a generation per tracked range (dynamic textures,
+    // small render targets the CPU may rewrite); a copy is current while its generation is.
+    std::mutex dyn_m;
+    std::vector<std::pair<uint64_t, uint64_t>> dyn_q;              // (address, size) written, not applied yet
+    std::map<uint64_t, std::pair<uint64_t, uint64_t>> dyn_mem;     // base -> (size, generation)   [under m]
+    uint64_t dyn_events = 0, dyn_bumps = 0, dyn_verify_hits = 0, dyn_verify_missed = 0;
+    void apply_cpu_writes() {
+        std::vector<std::pair<uint64_t, uint64_t>> q;
+        {
+            std::lock_guard lk(dyn_m);
+            q.swap(dyn_q);
+        }
+        for (auto [a, n] : q) {
+            ++dyn_events;
+            const uint64_t end = a + std::max<uint64_t>(n, 1);
+            auto it = dyn_mem.upper_bound(a);
+            if (it != dyn_mem.begin()) --it;
+            for (; it != dyn_mem.end() && it->first < end; ++it)
+                if (it->first + std::max<uint64_t>(it->second.first, 1) > a) ++it->second.second, ++dyn_bumps;
+        }
+    }
+    // write tracking, or (dynamic_copy) the generation of the range
+    uint64_t mem_watch(uint64_t base, uint64_t size) {
+        if (!dynamic_copy) return opt.watch ? opt.watch(base, size) : ~0ull;
+        auto& e = dyn_mem[base];
+        e.first = std::max(e.first, size);
+        return e.second + 1;
+    }
+    uint64_t mem_version(uint64_t base, uint64_t size) {
+        if (!dynamic_copy) return opt.version ? opt.version(base, size) : ~0ull;
+        auto it = dyn_mem.find(base);
+        return it == dyn_mem.end() ? ~0ull : it->second.second + 1;
+    }
     std::atomic<uint64_t> lr_lists{0}, lr_ns{0}, lr_wait_ns{0}, lr_sub_ns{0};  // (statistics)
     bool record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late);
     void pre_pass(const std::vector<Draw*>& draws);
@@ -935,6 +974,10 @@ bool Renderer::init(const Options& o) {
         log("native renderer: command lists recorded %s", list_rec ? "on the engine's threads as they end" : "at submission");
     }
     start_loader();
+    {
+        const char* v = std::getenv("D1_NG_DYNAMIC_COPY");
+        dynamic_copy = opt.res_current && (!v || std::atoi(v) != 0);
+    }
     return true;
 }
 
@@ -1485,7 +1528,7 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
     img->tile_mode = c[5] & 0x1F, img->pitch = ((c[1] & 0x7FF) + 1) * 8;
     img->bpp = fmt::data_format(fmt::color_to_data_format(format)).bpp;
     // rendered to (once a frame): remember the memory's version (see target_current)
-    if (bind && opt.watch && !layered && img->tv_frame != st.frames + 1 && uint64_t(w) * h <= 512 * 512 && img->bpp) {
+    if (bind && (opt.watch || dynamic_copy) && !layered && img->tv_frame != st.frames + 1 && uint64_t(w) * h <= 512 * 512 && img->bpp) {
         img->tv_frame = st.frames + 1;
         if (!img->tv_size) {
             tiling::Surface sf;
@@ -1493,7 +1536,7 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
             tiling::layout(sf);
             img->tv_size = sf.total_size;
         }
-        img->tv_version = guest_region_extent(base) >= img->tv_size ? opt.watch(base, img->tv_size) : ~0ull;
+        img->tv_version = guest_region_extent(base) >= img->tv_size ? mem_watch(base, img->tv_size) : ~0ull;
     }
     return img;
 }
@@ -1614,14 +1657,28 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
     }
     if (found) {
         Image* img = it->second.get();
+        if (!res && st.unreg_tex.size() < 100000) st.unreg_tex[key] = uint64_t(img->w) * img->h * std::max(1u, img->bpp / 8);
         // rewritten textures are noticed at the next submission that uses them: the game may rewrite
         // a texture between two submissions of one frame (the null GPU finishes work at once)
-        if (img->checked == rc().submit_no || !img->src_size || !opt.version) {
+        if (img->checked == rc().submit_no || !img->src_size || (!opt.version && !dynamic_copy)) {
             st.t_tex_hit += now_ns() - t_in;
             return img;
         }
-        const uint64_t v = opt.version(img->src_addr, img->src_size);
+        const uint64_t v = mem_version(img->src_addr, img->src_size);
         if (v == img->version) {
+            // D1_NG_VERIFY_DYN=1: (testing) is it really unchanged? (a CPU write without an event)
+            static const bool verify = std::getenv("D1_NG_VERIFY_DYN") != nullptr;
+            if (verify && dynamic_copy && img->content) {
+                if (guest_region_extent(img->src_addr) >= img->src_size &&
+                    hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size) != img->content) {
+                    ++dyn_verify_missed;
+                    static int told = 0;
+                    if (told++ < 30)
+                        log("native renderer: dynamic texture %#llx (%llu bytes, %ux%u fmt %d) changed without an event", (unsigned long long)img->src_addr,
+                            (unsigned long long)img->src_size, img->w, img->h, int(img->format));
+                    img->content = hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size);
+                } else ++dyn_verify_hits;
+            }
             img->checked = rc().submit_no;
             st.t_tex_hit += now_ns() - t_in;
             return img;
@@ -1635,6 +1692,7 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
     }
     LoadTimer load_timer{this, t_in};
     const auto ts = fmt::decode_tsharp(t);
+    if (!res && st.unreg_tex.size() < 100000) st.unreg_tex[key] = uint64_t(ts.width) * ts.height;
     const auto fi = fmt::data_format(ts.dfmt);
     const VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
     tsharp_bases.insert(ts.base);  // memory read as a texture: never a readback target
@@ -1675,9 +1733,10 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
         if (img && res) {  // an engine resource: its events say when it changes (no write tracking)
             img->res_val = res, img->src_addr = ts.base, img->src_size = sf.total_size, img->version = ~0ull;
             img->content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
-        } else if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
+        } else if (img && (opt.watch || dynamic_copy)) {  // protect first, then copy: a later write shows up as a new version
             const uint64_t tw = now_ns();
-            img->version = opt.watch(ts.base, sf.total_size);
+            img->version = mem_watch(ts.base, sf.total_size);
+            if (dynamic_copy && std::getenv("D1_NG_VERIFY_DYN")) img->content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
             st.t_watch += now_ns() - tw;
             if (img->version != ~0ull) img->src_addr = ts.base, img->src_size = sf.total_size, img->checked = rc().submit_no;
         }
@@ -1751,7 +1810,7 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
                     ts.height, ts.dfmt, ts.nfmt, fv[0], fv[1], fv[2], fv[3], fv[4], fv[5], fv[6], fv[7]);
             }
             // written while we copied (another thread is filling it): the copy may be torn
-            if (out && !res && img->src_size && opt.version(img->src_addr, img->src_size) != img->version) {
+            if (out && !res && img->src_size && !dynamic_copy && opt.version(img->src_addr, img->src_size) != img->version) {
                 ++st.tex_torn;
                 if (prev && prev->torn < 2) {  // show the previous contents one more frame
                     prev->torn++, prev->checked = rc().submit_no, prev->last_used = rc().submit_no;
@@ -1990,6 +2049,8 @@ GeoEntry* Renderer::geo_lookup(uint64_t addr, uint64_t size, int index_size, uin
     if (addr < 0x10000 || !size || size >= (64ull << 20) || (debug_toggles() & 8)) return nullptr;
     if (res && addr >= rbase) return geo_lookup_res(addr, size, index_size, index_count, res, rbase);
     if (!opt.watch || !opt.version || size >= (16ull << 20)) return nullptr;
+    __atomic_fetch_add(&st.unreg_geo, 1, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&st.unreg_geo_bytes, size, __ATOMIC_RELAXED);
     const uint64_t key = addr | size << 40;  // exact: addr < 2^40, size <= 16 MiB
     GeoShard& sh = geo_shards[(key * 0x9E3779B97F4A7C15ull) >> 58];
     std::unique_lock shard_lock(sh.m);
@@ -2980,16 +3041,20 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
     // vertices the draw can reference: [first, last] from the indices
     uint32_t vfirst = 0, vlast = dr.count ? dr.count - 1 : 0;
     bool ige = false;  // cached index buffer
+    const bool dyn_copy = dynamic_copy;
     VkBuffer ige_buf = VK_NULL_HANDLE;
     uint64_t ige_off = 0;
     if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count && dr.prim != 0x13) {
         GeoHit h;
         const uint64_t ibytes = uint64_t(dr.count) * (dr.index32 ? 4 : 2);
         const bool ires = dr.ires.id && dr.index_addr >= dr.ires.base && dr.index_addr + ibytes <= dr.ires.base + dr.ires.size;
-        if (geo_get(dr.index_addr, ibytes, dr.index32 ? 4 : 2, dr.count, h, ires ? dr.ires.id : 0, dr.ires.base))
+        if (!dr.ires.id) __atomic_fetch_add(&st.why_ib_noid, 1, __ATOMIC_RELAXED);
+        else if (!ires) __atomic_fetch_add(&st.why_ib_range, 1, __ATOMIC_RELAXED);
+        // (memory that is no engine resource is dynamic data: copied for the draw, not cached)
+        if ((ires || !dyn_copy) && geo_get(dr.index_addr, ibytes, dr.index32 ? 4 : 2, dr.count, h, ires ? dr.ires.id : 0, dr.ires.base))
             ige = true, ige_buf = h.buf, ige_off = h.off, vfirst = h.vfirst, vlast = h.vlast;
     }
-    else if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
+    if (!ige && dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
         vfirst = UINT32_MAX, vlast = 0;
         if (dr.index32) {
             const uint32_t* ix = reinterpret_cast<const uint32_t*>(dr.index_addr);
@@ -3026,8 +3091,23 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         uint64_t size = stride ? uint64_t(last - first + 1) * stride : 16;
         uint64_t src = base + uint64_t(first) * stride;
         // an engine resource: the whole buffer, by its identity
+        {
+            const Draw::Res& R = dr.vres[slot];
+            if (!dr.inline_vertices.empty()) __atomic_fetch_add(&st.why_inline, 1, __ATOMIC_RELAXED);
+            else if (!R.id) __atomic_fetch_add(&st.why_vb_noid, 1, __ATOMIC_RELAXED);
+            else if (!(stride && base >= R.base && src < R.base + R.size)) {
+                __atomic_fetch_add(&st.why_vb_range, 1, __ATOMIC_RELAXED);
+                static std::atomic<int> told{0};
+                if (told++ < 10)
+                    log("ng geo: vertex range outside its buffer: base %#llx src %#llx size %llu stride %u records %u first %u | buffer %#llx +%llu",
+                        (unsigned long long)base, (unsigned long long)src, (unsigned long long)size, stride, records, first,
+                        (unsigned long long)R.base, (unsigned long long)R.size);
+            }
+        }
+        // (the last record may end past the buffer by its element's offset in the stride: the
+        // binding ends with the buffer, no fetch reads past it)
         if (const Draw::Res& R = dr.vres[slot]; R.id && dr.inline_vertices.empty() && stride && base >= R.base &&
-                                                 src + size <= R.base + R.size) {
+                                                 src < R.base + R.size) {
             GeoHit h;
             if (geo_get(R.base, R.size, 0, 0, h, R.id, R.base)) {
                 vbufs[slot] = h.buf, voffs[slot] = h.off + (src - R.base);
@@ -3036,8 +3116,9 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                 continue;
             }
         }
-        // the whole buffer from the geometry cache
-        if (dr.inline_vertices.empty() && stride && base >= 0x10000) {
+        // the whole buffer from the geometry cache (write-tracked; not with engine resource events:
+        // what is not an engine resource is dynamic data, copied below for the draw)
+        if (dr.inline_vertices.empty() && stride && base >= 0x10000 && !dyn_copy) {
             GeoHit h;
             if (geo_get(base, uint64_t(records) * stride, 0, 0, h)) {
                 vbufs[slot] = h.buf, voffs[slot] = h.off + uint64_t(first) * stride;
@@ -3447,6 +3528,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
 // distinct target set and T# once per recording: thousands of draws share a few).
 void Renderer::pre_pass(const std::vector<Draw*>& draws) {
     const uint64_t tp = now_ns();
+    apply_cpu_writes();
     if (reload_all) {
         reload_all = false;
         for (auto& [k, img] : textures)
@@ -3783,6 +3865,10 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
                 } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
                     std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
                 }
+                if (dynamic_copy) {
+                    std::lock_guard dl(dyn_m);
+                    dyn_q.push_back({d->caller, d->count});
+                }
             }
             break;
         case Draw::Eop:
@@ -3860,7 +3946,7 @@ bool Renderer::target_current(uint64_t base) {
     auto it = target_by_base.find(base);
     if (it == target_by_base.end()) return true;
     Image* img = it->second;
-    if (img->depth || img->tv_version == ~0ull || !opt.version || opt.version(base, img->tv_size) == img->tv_version)
+    if (img->depth || img->tv_version == ~0ull || (!opt.version && !dynamic_copy) || mem_version(base, img->tv_size) == img->tv_version)
         return true;
     target_by_base.erase(it);
     (++targets_gen, ++gen_why[4]);
@@ -4537,6 +4623,11 @@ void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj) {
     if (!g || !res) return;
     g->prefetch({false, {}, base, size, res, obj});
 }
+void cpu_wrote(uint64_t addr, uint64_t size) {
+    if (!g || !g->dynamic_copy || addr < 0x10000) return;
+    std::lock_guard lk(g->dyn_m);
+    g->dyn_q.push_back({addr, size});
+}
 void submit_recorded(const std::vector<uint32_t>& handles) {
     if (!g) return;
     std::lock_guard lk(g->m);
@@ -4633,6 +4724,33 @@ const char* debug_toggle_text() {
     if (v & 8) std::strcat(buf, " [F8 geometry cache off]");
     return buf;
 }
+void describe_owner(uint64_t a, char* out, size_t n) {
+    if (!g || !n) return;
+    out[0] = 0;
+    std::lock_guard lk(g->m);
+    for (auto& [k, img] : g->textures)
+        if (img && a >= img->src_addr && a < img->src_addr + img->src_size) {
+            std::snprintf(out, n, "texture %ux%u fmt %d levels %u at %#llx (+%#llx), %s", img->w, img->h, int(img->format), img->levels,
+                          (unsigned long long)img->src_addr, (unsigned long long)(a - img->src_addr),
+                          img->res_val ? "engine resource" : "write-tracked");
+            return;
+        }
+    for (auto& [k, up] : g->targets)
+        if (up && up->base && a >= up->base && a < up->base + std::max<uint64_t>(up->tv_size, uint64_t(up->w) * up->h * std::max(1u, up->bpp / 8))) {
+            std::snprintf(out, n, "render target %ux%u fmt %d at %#llx", up->w, up->h, int(up->format), (unsigned long long)up->base);
+            return;
+        }
+    for (auto& sh : g->geo_shards) {
+        std::lock_guard sl(sh.m);
+        for (auto& [k, e] : sh.map)
+            if (!(k >> 63) && e.valid && a >= (k & 0xFFFFFFFFFFull) && a < (k & 0xFFFFFFFFFFull) + e.size) {
+                std::snprintf(out, n, "geometry %#llx +%llu (%s)", (unsigned long long)(k & 0xFFFFFFFFFFull), (unsigned long long)e.size,
+                              e.misses ? "rewritten before" : "first write");
+                return;
+            }
+    }
+    std::snprintf(out, n, "nothing kept now");
+}
 void print_stats() {
     if (!g) return;
     std::lock_guard lk(g->m);
@@ -4690,6 +4808,24 @@ void print_stats() {
             (unsigned long long)s.res_hits, (unsigned long long)s.res_moves, (unsigned long long)s.res_changed,
             (unsigned long long)s.geo_res_hits, (unsigned long long)s.geo_res_moves, (unsigned long long)s.geo_res_changed);
     s.res_hits = s.res_moves = s.res_changed = s.geo_res_hits = s.geo_res_moves = s.geo_res_changed = 0;
+    if (const double f = double(s.frames - s.t_frames); f > 0) {
+        uint64_t texels = 0, big = 0;
+        for (auto& [k, v] : s.unreg_tex) texels += v, big += v > 65536;
+        log("native renderer: memory that is no engine resource: %zu dynamic textures (%.1f KiB, %llu over 64K) | %.0f write-tracked geometry lookups per frame (%.2f MiB per frame)",
+            s.unreg_tex.size(), double(texels) / 1024.0, (unsigned long long)big, double(s.unreg_geo) / f,
+            double(s.unreg_geo_bytes) / f / 1048576.0);
+        log("native renderer: write-tracked geometry because: vertex buffer not an engine resource %.0f, outside its buffer %.0f, inline %.0f | "
+            "index buffer not an engine resource %.0f, outside its buffer %.0f (per frame)", double(s.why_vb_noid) / f, double(s.why_vb_range) / f,
+            double(s.why_inline) / f, double(s.why_ib_noid) / f, double(s.why_ib_range) / f);
+        s.why_vb_noid = s.why_vb_range = s.why_ib_noid = s.why_ib_range = s.why_inline = 0;
+        if (g->dynamic_copy)
+            log("native renderer: dynamic memory (no write tracking): %llu CPU writes announced, %llu copies made stale, %zu ranges tracked%s",
+                (unsigned long long)g->dyn_events, (unsigned long long)g->dyn_bumps, g->dyn_mem.size(),
+                std::getenv("D1_NG_VERIFY_DYN") ? (" | verify: " + std::to_string(g->dyn_verify_hits) + " unchanged, " +
+                                                   std::to_string(g->dyn_verify_missed) + " CHANGED WITHOUT AN EVENT").c_str() : "");
+        g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = 0;
+        s.unreg_tex.clear(), s.unreg_geo = s.unreg_geo_bytes = 0;
+    }
     if (g->load_on) {
         size_t q;
         {

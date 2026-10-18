@@ -113,11 +113,16 @@ void submit_recorded(const std::vector<uint32_t>& handles);  // in this order
 // `obj` is the resource object (to drop the work if it changes again meanwhile).
 void prefetch_texture(const uint32_t* tsharp, uint64_t res, uint64_t obj);
 void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj);
+// The CPU wrote [addr, addr + size) of memory that is no engine resource (a dynamic texture's
+// unlock, a copy-queue write; size 0: the resource starting at addr): copies of it are stale.
+void cpu_wrote(uint64_t addr, uint64_t size);
 void discard_recorded(uint32_t handle);                       // never submitted
 // The video-out buffer at `addr` was flipped: present it to the window (if any), dump it when
 // frames are being written (dump = true), and limit how far the CPU runs ahead.
 void flip(uint64_t addr, uint32_t width, uint32_t height, uint64_t frame, bool dump);
 void print_stats();
+// (diagnostics) what the renderer keeps a copy of at a guest address
+void describe_owner(uint64_t addr, char* out, size_t n);
 // Log the passes of the next `frames` frames (diagnostics).
 void request_passlog(uint32_t frames);
 // Frame timing for the title bar: presented frames and the GPU name.

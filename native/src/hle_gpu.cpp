@@ -211,7 +211,7 @@ static void frame_end() {
 }
 
 bool native_gfx_active();                    // native_gfx.cpp: the native renderer runs
-bool native_gfx_on_fault(void* addr);        // a write to a page it watches
+bool native_gfx_on_fault(void* uc, void* addr);  // a write to a page it watches
 void native_gfx_on_unmap(uint64_t addr, uint64_t size);
 bool gpu_active() { return gpu_real() || native_gfx_active(); }
 
@@ -833,7 +833,7 @@ void gpu_on_unmap(uint64_t addr, uint64_t size) {
 bool native_gfx_research_fault(void* uc, void* addr);  // native_gfx.cpp (D1_ND_POOL_WATCH)
 bool gpu_on_fault(void* uc, void* addr) {
     if (native_gfx_research_fault(uc, addr)) return true;
-    if (native_gfx_on_fault(addr)) return true;
+    if (native_gfx_on_fault(uc, addr)) return true;
     if (!gpu_real()) return false;
     const uint64_t t0 = now_ns();
     if (!render::on_fault(uc, addr)) return false;

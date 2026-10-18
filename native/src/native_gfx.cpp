@@ -39,6 +39,7 @@
 #ifndef _WIN32
 #include <sys/syscall.h>
 #include <ucontext.h>
+#include <dlfcn.h>
 #include <unistd.h>
 #endif
 
@@ -638,7 +639,22 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
             const uint64_t obj = resolve_handle(h);
             const uint64_t base = field<uint64_t>(obj, 0x28) + off + field<uint32_t>(dev, 0x1DF8 + 4 * stream);
             build_vsharp(d->vb[i], base, fmt, stride, ds->vb_count[stream]);
-            if (resreg::g_on) d->vres[i] = {resreg::get(obj), field<uint64_t>(obj, 0x28), field<uint32_t>(obj, 0)};
+            if (resreg::g_on) {
+                d->vres[i] = {resreg::get(obj), field<uint64_t>(obj, 0x28), field<uint32_t>(obj, 0)};
+                // D1_ND_LOG_UNREG: (research) vertex buffers that are no engine resource
+                static const bool log_unreg = getenv("D1_ND_LOG_UNREG") != nullptr;
+                if (log_unreg && !d->vres[i].id) {
+                    static std::mutex lm;
+                    static std::unordered_map<uint32_t, int> seen;
+                    std::lock_guard lk(lm);
+                    if (seen.size() < 40 && !seen[h]++) {
+                        const uint32_t* q = reinterpret_cast<const uint32_t*>(obj);
+                        log("nd unregistered vertex buffer: handle %#x pool %u obj %#llx | %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x | caller %#llx",
+                            h, ((uint32_t(int32_t(h) >> 13) >> 18) | 0x3FF) & uint32_t(int32_t(h) >> 13), (unsigned long long)obj, q[0], q[1], q[2], q[3],
+                            q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], (unsigned long long)(caller ? caller - g_base : 0));
+                    }
+                }
+            }
         }
     }
     for (int s = 0; s < 2; ++s) {
@@ -1267,6 +1283,27 @@ D1_SYSV void h_mips(uint32_t handle, uint64_t base, uint64_t lo) {
     ++counts[{5, 0}];
     reg(5, 1, handle);
 }
+// The engine's dynamic textures (a table of 0xE0-byte slots at 0x26F23B0, also used for render
+// targets) are written by the CPU between lock (0x818F80) and unlock (0x818FA0), like a PC
+// engine's Map / Unmap: the unlock is the event that the slot's memory changed.
+// (replaced, not hooked: the engine's unlock only clears the slot's locked bit, 0x81A640)
+D1_SYSV void h_unlock(uint64_t idx) {
+    const uint64_t e = nr::g_base + 0x26F23B0 + (idx & 0xFFFFFFFFull) * 0xE0;
+    const uint64_t ptr = field<uint64_t>(e, (field<uint32_t>(e, 0) & 8) ? 0x48 : 0x40);
+    *reinterpret_cast<uint8_t*>(e + 2) &= 0xFB;
+    static const bool log_unlock = getenv("D1_ND_LOG_UNLOCK") != nullptr;
+    if (log_unlock) {
+        static std::atomic<int> told{0};
+        if (told++ < 40) {
+            const auto ts = fmt::decode_tsharp(reinterpret_cast<const uint32_t*>(e + 4));
+            log("nd texture unlock: slot %llu memory %#llx pitch %u | T# at +4: base %#llx %ux%u fmt %u.%u tile %u type %u",
+                (unsigned long long)(idx & 0xFFFFFFFFull), (unsigned long long)ptr, field<uint32_t>(e, 0xD8),
+                (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt, ts.tiling, ts.type);
+        }
+    }
+    ng::cpu_wrote(ptr, 0);
+}
+
 // the callbacks are called through the table (0x254EE38 bind, 0x254EE40 re-point, 0x254EE48
 // release): our wrappers go into it once the graphics layer has registered it (0xCFCC0)
 using RegFn = D1_SYSV void (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
@@ -1289,6 +1326,7 @@ void install() {
     nr::resreg::init();
     g_research = getenv("D1_ND_RES_EVENTS") != nullptr;
     ok &= hook(0xCFCC0, &h_register, o_register, "resource_callbacks_register");
+    if (!replace_eboot_function(0x818FA0, reinterpret_cast<const void*>(&h_unlock))) ok = false, log("nd: replacing texture_unlock failed");
     patch_table();  // (already registered)
     ok &= hook(0x7D3560, &h_copy, o_copy, "resource_move_copy");
     ok &= hook(0x7D37B0, &h_swap, o_swap, "resource_move_commit");
@@ -2023,7 +2061,54 @@ bool on_fault(uint64_t addr) {
 }
 }  // namespace wt
 
-bool native_gfx_on_fault(void* addr) { return nr::g_base && ng::active() && wt::on_fault(uint64_t(addr)); }
+// D1_NG_LOG_FAULTS: per writing code address, the faults and a sample address (what the
+// renderer keeps there is named in the periodic census)
+namespace faultlog {
+std::mutex m;
+struct Site { uint64_t n = 0, sample = 0; };
+std::unordered_map<uint64_t, Site> sites;
+void note(void* uc, uint64_t addr) {
+    uint64_t rip = 0;
+#if defined(__linux__)
+    rip = uint64_t(static_cast<ucontext_t*>(uc)->uc_mcontext.gregs[REG_RIP]);
+#else
+    (void)uc;
+#endif
+    std::lock_guard lk(m);
+    Site& s = sites[rip >= nr::g_base && rip < nr::g_base + 0x4000000 ? rip - nr::g_base : rip | 1ull << 63];
+    if (!s.n++) s.sample = addr;
+}
+void print() {
+    std::vector<std::pair<uint64_t, Site>> v;
+    {
+        std::lock_guard lk(m);
+        v.assign(sites.begin(), sites.end());
+        sites.clear();
+    }
+    std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.second.n > b.second.n; });
+    for (size_t i = 0; i < v.size() && i < 24; ++i) {
+        char owner[160] = "";
+        ng::describe_owner(v[i].second.sample, owner, sizeof owner);
+        char where[200] = "";
+#if defined(__linux__)
+        if (v[i].first >> 63) {
+            Dl_info di{};
+            const uint64_t a = v[i].first & ~(1ull << 63);
+            if (dladdr(reinterpret_cast<void*>(a), &di) && di.dli_fname)
+                std::snprintf(where, sizeof where, " [%s+%#llx %s]", di.dli_fname, (unsigned long long)(a - uint64_t(di.dli_fbase)),
+                              di.dli_sname ? di.dli_sname : "");
+        }
+#endif
+        log("native gfx: write faults from %s%#llx%s: %llu (e.g. %#llx: %s)", v[i].first >> 63 ? "host " : "eboot+",
+            (unsigned long long)(v[i].first & ~(1ull << 63)), where, (unsigned long long)v[i].second.n, (unsigned long long)v[i].second.sample, owner);
+    }
+}
+}  // namespace faultlog
+bool native_gfx_on_fault(void* uc, void* addr) {
+    if (!nr::g_base || !ng::active() || !wt::on_fault(uint64_t(addr))) return false;
+    if (wt::g_log_faults) faultlog::note(uc, uint64_t(addr));
+    return true;
+}
 bool native_gfx_active() { return nr::g_base && ng::active(); }
 void native_gfx_on_unmap(uint64_t addr, uint64_t size) {
     if (native_gfx_active()) wt::forget(addr, size);
@@ -2059,7 +2144,11 @@ void native_gfx_install() {
         if (!getenv("D1_NG_NOCACHE")) {
             opt.watch = [](uint64_t a, uint64_t n) { return wt::watch(a, n); };
             opt.version = [](uint64_t a, uint64_t n) { return wt::version(a, n); };
-            opt.res_current = [](uint64_t obj) { return nr::resreg::get(obj); };
+            // (engine resource events: the native device layer with D1_ND_RES on, as nd::install decides)
+            const char* nd_v = getenv("D1_ND");
+            const char* res_v = getenv("D1_ND_RES");
+            if ((!nd_v || atoi(nd_v) != 0) && (!res_v || atoi(res_v) != 0))
+                opt.res_current = [](uint64_t obj) { return nr::resreg::get(obj); };
             opt.describe = [](uint64_t a, char* out, size_t n) { wt::describe(a, out, n); };
         }
         if (const char* v = getenv("D1_NG_FRAMES_IN_FLIGHT")) opt.frames_in_flight = uint32_t(std::max(1, std::atoi(v)));
@@ -2404,6 +2493,7 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
         nr::g_exec_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         nr::g_frame_executed = true;
         for (ng::Draw* d : cpu_events) {
+            ng::cpu_wrote(d->caller, d->kind == ng::Draw::Dma ? d->count : d->inline_vertices.size());
             if (d->kind == ng::Draw::Dma) {
                 if (d->caller < 0x10000 || guest_region_extent(d->caller) < d->count) continue;
                 if (d->prim == 2) {
@@ -2647,7 +2737,7 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                 dropped0 = nr::g_dropped, late0 = nr::g_late;
                 faults0 = faults;
                 ng::print_stats();
-                if (wt::g_log_faults) wt::print_census();
+                if (wt::g_log_faults) wt::print_census(), faultlog::print();
             }
             t0 = now, n0 = n;
             nr::g_exec_ns = nr::g_flip_ns = 0;

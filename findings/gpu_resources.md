@@ -86,3 +86,36 @@ The renderer (`gfx/nrender.cpp`):
 - Neither is write-protected or version-checked.
 - Unregistered memory (dynamic textures, inline vertices) keeps write tracking.
 - `D1_ND_RES=0` turns the event path off.
+
+## Dynamic memory: what is no engine resource (2026-10-18, later)
+
+After the resource events, a fault census (`D1_NG_LOG_FAULTS`: writing code address and what
+the renderer kept there) showed three kinds of memory still write-tracked.
+
+- **Dynamic geometry: about 170 vertex and 107 index buffers per frame.** These sit in pool
+  1028 (the engine's global pool) with memory around `0x5_6269_xxxx`.
+  - They come in pairs and triples (handles `…18/19`, `…1A/1B`, `…1C/1D/1E`): double- and
+    triple-buffered buffers the CPU fills every frame.
+  - Native: copied for each draw (the vertex range it uses), never cached or tracked, as a PC
+    engine treats dynamic buffers. About 0.1 MiB per frame in patrol.
+- **Dynamic textures: about 11, about 600 KiB.**
+  - The engine writes them only through a lock / unlock API over a table of 0xE0-byte slots at
+    `0x26F23B0`: lock `0x818F80 -> 0x81A600`, unlock `0x818FA0 -> 0x81A640`, descriptor
+    `0x818DD0`.
+    - Slot memory: `+0x40` (or `+0x48` when flag bit 3 of `+0` is set).
+    - Row pitch: `+0xD8`. Locked bit: bit 2 of byte `+2`.
+  - Only five functions lock slots: `0x33E600`, `0x8439E0`, `0x88FE50`, `0x8A3620`,
+    `0x8CC630`.
+    - `0x88FE50` refreshes two double-buffered tables every frame: slots 6/7 (pitch 512) and
+      8/9 (32x32, pitch 64) at `0x578B00000..`.
+  - Native: the unlock is replaced (it only clears the locked bit) and announces "the CPU wrote
+    this memory", the equivalent of Unmap.
+- **Small render targets the CPU may rewrite** (light tables): announced the same way. Copies
+  are kept per address generation, bumped by those announcements and by the copy-queue /
+  WRITE_DATA writes the renderer executes itself.
+- **Our own readbacks** of small targets used to fault on our own protection. With nothing
+  protected, they no longer do.
+
+Result: no page is write-protected any more, so there are 0 write faults in patrol and orbit,
+on both Linux and Windows. `D1_NG_VERIFY_DYN=1` hashes every dynamic texture at every use:
+525 checks, 0 changed without an event.
