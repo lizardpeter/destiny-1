@@ -1850,6 +1850,28 @@ void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t*
         }
     }
     nd::g_lists_run += lists.size();
+    if (static const bool st = getenv("D1_ND_LIST_STATS") != nullptr; st) {  // draws per context per frame
+        static uint64_t per_ctx[nd::kMaxCtx] = {}, lists_ctx[nd::kMaxCtx] = {}, last_flip = 0, frames = 0;
+        for (nd::List* l : lists) {
+            const int c = nd::ctx_of_dev(l->dev);
+            if (c < 0) continue;
+            ++lists_ctx[c];
+            for (auto& it : l->items) per_ctx[c] += it.d && it.d->kind <= ng::Draw::Auto;
+        }
+        if (gpu_flip_count() != last_flip) {
+            last_flip = gpu_flip_count();
+            if (++frames % 300 == 0) {
+                std::string t;
+                for (int c = 0; c < nd::g_ndevs.load(); ++c) {
+                    char b[64];
+                    std::snprintf(b, sizeof b, " ctx%d %.0f draws/%.1f lists", c, per_ctx[c] / 300.0, lists_ctx[c] / 300.0);
+                    t += b;
+                    per_ctx[c] = lists_ctx[c] = 0;
+                }
+                log("nd: per frame:%s", t.c_str());
+            }
+        }
+    }
     {
         static std::atomic<int> told{0};
         if (getenv("D1_ND_LOG") && told++ < 60)
