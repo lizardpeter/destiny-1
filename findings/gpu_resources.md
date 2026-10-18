@@ -70,7 +70,12 @@ they are wrapped through the table entries instead.
 - Moves are constant: about 27,600 vertex-buffer and 40,000 texture re-points.
   - 83,543 of 83,556 re-points carried identical contents.
   - The 13 others: 4 handle swaps (`0x7D37B0`), 9 same-size textures with new contents.
-- Conclusion: a resource's contents change only with an event on it.
+- Conclusion: a resource's contents change only with an event on it, or through a GPU copy
+  command (DMA_DATA) in a command list.
+  - The engine copies streamed mips and new glyphs (fmt 134 / 138 textures, e.g. 1024x512)
+    into resource textures on the copy queue, just before the draws that use them.
+  - Such a copy carries no resource event: the renderer marks every texture in the written
+    memory stale and copies it again (about 3 per second in patrol).
   - The renderer keeps its copy per resource and epoch.
   - After an event, it compares contents once, so a move costs a hash and nothing else.
 
