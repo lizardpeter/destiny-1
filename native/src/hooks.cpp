@@ -272,8 +272,9 @@ static void timing_trace(float dt, float f2, int32_t slot) {
     auto* globals = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x273EB28);
     if (!globals) return;
     const float* facing = reinterpret_cast<const float*>(globals + 0x20 + 0x18);
-    log("timing: wall %.4f dt %.5f f2 %.5f game %.4f facing %.5f %.5f", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(),
-        dt, f2, game, facing[0], facing[1]);
+    const float* pos = reinterpret_cast<const float*>(globals + 0x90);  // the local player's position
+    log("timing: wall %.4f dt %.5f f2 %.5f game %.4f facing %.5f %.5f pos %.3f %.3f %.3f", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(),
+        dt, f2, game, facing[0], facing[1], pos[0], pos[1], pos[2]);
 }
 
 static D1_SYSV void player_control_hook(float dt, float f2, int32_t slot, uint32_t player, void* state,
@@ -1727,7 +1728,8 @@ static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, flo
         // the frame too, set before the call so this frame's ticks use it. It is kept a
         // consistent pair, 1 / an integer rate (30..1000): a nominal off the console's exact
         // 1/30 (29 ticks a second at 33.366 ms) hid the orbit character screen's character.
-        const int32_t rate = std::clamp<int32_t>(int32_t(1.0 / double(elapsed) + 0.5), 30, 1000);
+        static const int32_t forced = [] { const char* e = getenv("D1_TICK_RATE_FORCE"); return e ? std::atoi(e) : 0; }();  // research
+        const int32_t rate = forced > 0 ? forced : std::clamp<int32_t>(int32_t(1.0 / double(elapsed) + 0.5), 30, 1000);
         *reinterpret_cast<int64_t*>(tc + 0x08) = (1000000 + rate / 2) / rate;
         if (gt && !nominal30) {
             *reinterpret_cast<int32_t*>(gt + 4) = rate;
@@ -1736,6 +1738,19 @@ static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, flo
         g_real_tick = 1.0f / float(rate);
     }
     g_game_time_orig(elapsed, dt, ticks, dt2, ticks2);
+    {  // every 10 s: game time against real time (should match)
+        static auto since = std::chrono::steady_clock::now();
+        static double sum_elapsed = 0, sum_game = 0;
+        static int frames = 0, ticks_total = 0;
+        sum_elapsed += elapsed, sum_game += double(*dt) * *ticks, ticks_total += *ticks, ++frames;
+        const auto now = std::chrono::steady_clock::now();
+        if (const double wall = std::chrono::duration<double>(now - since).count(); wall >= 10.0) {
+            const char* gs = game_state();
+            log("timing: %.1f s real, %.1f s measured by the game, %.1f s of game time | %d frames, %d ticks (%s)", wall,
+                sum_elapsed, sum_game, frames, ticks_total, gs ? gs : "?");
+            since = now, sum_elapsed = sum_game = 0, frames = ticks_total = 0;
+        }
+    }
     static const bool trace = getenv("D1_TIMING_TRACE") != nullptr;
     if (trace) {
         static int n = 0;

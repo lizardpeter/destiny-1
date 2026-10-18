@@ -351,7 +351,7 @@ struct Stats {
     uint64_t bytes_geo = 0, geo_hits = 0, tex_reloads = 0, tex_torn = 0, geo_torn = 0, readbacks = 0, target_writes = 0, mips_filled = 0, tex_inplace = 0;                 // geometry cache uploads
     // CPU time per phase (ns): targets+textures pre-pass, then per draw: targets+pipeline,
     // geometry, descriptors, commands; frames counted for averages
-    uint64_t geo_stale = 0, predicated = 0, zpass_dumps = 0, t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0;
+    uint64_t geo_stale = 0, predicated = 0, zpass_dumps = 0, t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0, t_draws = 0, memo_hits = 0, memo_misses = 0, memo_gen = 0;
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
     std::unordered_map<std::string, uint64_t> skip;
 };
@@ -396,6 +396,8 @@ struct Sub {
     // small render targets the CPU reads: copied to the ring, written to guest memory when done
     struct Readback { uint64_t base; tiling::Surface sf; uint64_t off; };
     std::vector<Readback> readbacks;
+    Buffer rb;             // their copies, in host-cached memory (the ring may be write-combined VRAM)
+    uint64_t rb_used = 0;
     // occlusion counting (ZPASS_DONE dumps): one query per stretch of draws between two dumps
     // (and render pass boundaries); a dump's counter is the sum of the stretches before it
     VkQueryPool qpool = VK_NULL_HANDLE;
@@ -494,6 +496,33 @@ struct Renderer {
     void destroy_image(Image* img);
     VkImageView view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level, bool depth_aspect, bool stencil_aspect = false);
     uint64_t ring_alloc(uint64_t size, uint64_t align = 256);
+    Buffer make_readback_buffer(uint64_t size);
+    // bumped whenever a render target appears or the image bound at an address changes: what
+    // T#s on render targets resolve to (pipeline memo below)
+    uint64_t targets_gen = 1;
+    template <class M> void set_base(M& m, uint64_t base, Image* img) {
+        auto [it, added] = m.try_emplace(base, img);
+        if (added || it->second != img) it->second = img, ++targets_gen;
+        else if (auto ib = images_by_base.find(base); ib != images_by_base.end() && ib->second.size() > 1) ++targets_gen;
+    }
+    // what draw() last set in the current command buffer (invalid: set everything)
+    struct DrawState {
+        bool valid = false;
+        VkPipeline pipe = VK_NULL_HANDLE;
+        uint32_t vmask = 0;
+        VkBuffer vb[16]{};
+        VkDeviceSize voff[16]{}, vsize[16]{};
+        VkViewport vp{};
+        VkRect2D sc{};
+        uint32_t sref = 0, cmask = 0, wmask = 0;
+        float bias[2]{};
+        VkBuffer ib = VK_NULL_HANDLE;
+        VkDeviceSize ioff = 0;
+        VkIndexType itype = VK_INDEX_TYPE_UINT16;
+    } dstate;
+    // pipeline() results by a hash of everything they depend on, valid for one targets_gen
+    struct PipeMemo { uint64_t key = 0, gen = 0; Pipeline* p = nullptr; };
+    std::vector<PipeMemo> pipe_memo = std::vector<PipeMemo>(1u << 14);
     uint64_t ring_copy(const void* src, uint64_t size);
     // submissions
     void begin_record();
@@ -558,11 +587,13 @@ struct Renderer {
     Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in = 0,
                    uint32_t sint_in = 0);
     Pipeline* pipeline(const Draw& dr, Image* const* colors, Image* depth);
+    Pipeline* pipeline_resolve(const Draw& dr, Image* const* colors, Image* depth);
     void begin_pass(Image* const* colors, Image* depth);
     void end_pass();
     void queue_readbacks();
     bool target_current(uint64_t base);
-    void fill_missing_mips(uint8_t* staging, const std::vector<uint64_t>& off, const std::vector<uint64_t>& sizes,
+    uint32_t first_missing_mip(const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d);
+    void fill_missing_mips(uint32_t first, uint8_t* staging, const std::vector<uint64_t>& off, const std::vector<uint64_t>& sizes,
                            const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d);
     void skip(const char* why) {
         ++st.skipped;
@@ -712,6 +743,7 @@ void Renderer::begin_record() {
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(sb.cmd, &bi);
+    dstate.valid = false;
     cmd = sb.cmd;
     barrier();  // earlier submissions' writes before anything here
 }
@@ -783,10 +815,11 @@ void Renderer::retire_one() {
     st.t_wait += now_ns() - tw;
     write_zpass_results(sb);
     for (const auto& rb : sb.readbacks)  // the GPU's results where the game reads them
-        if (guest_region_extent(rb.base) >= rb.sf.total_size)
-            tiling::tile(rb.sf, 0, ring.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
+        if (sb.rb.map && guest_region_extent(rb.base) >= rb.sf.total_size)
+            tiling::tile(rb.sf, 0, sb.rb.map + rb.off, reinterpret_cast<uint8_t*>(rb.base));
     st.readbacks += sb.readbacks.size();
     sb.readbacks.clear();
+    sb.rb_used = 0;
     for (auto& b : sb.staging) free_buffer(b);
     sb.staging.clear();
     for (auto& img : sb.dead) destroy_image(img.get());
@@ -850,6 +883,34 @@ Buffer Renderer::make_buffer(uint64_t size, VkBufferUsageFlags usage, bool host,
         vkMapMemory(ctx.device, b.mem, 0, VK_WHOLE_SIZE, 0, &p);
         b.map = static_cast<uint8_t*>(p);
     }
+    return b;
+}
+
+// Memory the CPU reads after the GPU wrote it: host-cached where offered (reading uncached or
+// write-combined memory is very slow), plain host-visible otherwise.
+Buffer Renderer::make_readback_buffer(uint64_t size) {
+    Buffer b;
+    b.size = size;
+    VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bci.size = size;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (vkCreateBuffer(ctx.device, &bci, nullptr, &b.buf) != VK_SUCCESS) return Buffer{};
+    VkMemoryRequirements req;
+    vkGetBufferMemoryRequirements(ctx.device, b.buf, &req);
+    const VkMemoryPropertyFlags hv = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    uint32_t t = find_memory_type(ctx, req.memoryTypeBits, hv | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    if (t == UINT32_MAX) t = find_memory_type(ctx, req.memoryTypeBits, hv);
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    ai.allocationSize = req.size;
+    ai.memoryTypeIndex = t;
+    if (t == UINT32_MAX || vkAllocateMemory(ctx.device, &ai, nullptr, &b.mem) != VK_SUCCESS) {
+        vkDestroyBuffer(ctx.device, b.buf, nullptr);
+        return Buffer{};
+    }
+    vkBindBufferMemory(ctx.device, b.buf, b.mem, 0);
+    void* p = nullptr;
+    vkMapMemory(ctx.device, b.mem, 0, VK_WHOLE_SIZE, 0, &p);
+    b.map = static_cast<uint8_t*>(p);
     return b;
 }
 
@@ -1130,11 +1191,12 @@ Image* Renderer::color_target(const uint32_t* c, bool bind) {
             retired.push_back(std::move(old->second));
         }
         images_by_base[base].push_back(n.get());
+        ++targets_gen;
         targets[key] = std::move(n);
         ++st.targets;
     }
     target_bases.insert(base);
-    if (bind || !target_by_base.count(base)) target_by_base[base] = img, img->bound_serial = ++bind_serial;
+    if (bind || !target_by_base.count(base)) set_base(target_by_base, base, img), img->bound_serial = ++bind_serial;
     img->last_used = submit_no;
     img->bind_slice = std::min(slice, img->d - 1);
     img->tile_mode = c[5] & 0x1F, img->pitch = ((c[1] & 0x7FF) + 1) * 8;
@@ -1206,19 +1268,20 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
         n->base = base;
         img = n.get();
         images_by_base[base].push_back(img);
+        ++targets_gen;
         targets[key] = std::move(n);
         ++st.targets;
     }
     const uint64_t read_base = uint64_t(d[2]) << 8;  // Z_READ_BASE
     if (bind) img->bound_serial = ++bind_serial;
     target_bases.insert(base), target_bases.insert(read_base);
-    if (bind || !target_by_base.count(base)) target_by_base[base] = img;
-    if (bind || !target_by_base.count(read_base)) target_by_base[read_base] = img;
+    if (bind || !target_by_base.count(base)) set_base(target_by_base, base, img);
+    if (bind || !target_by_base.count(read_base)) set_base(target_by_base, read_base, img);
     if (sfmt)  // the stencil plane lives at its own address; shaders read it as an 8-bit texture
         for (const uint64_t sb : {uint64_t(d[3]) << 8, uint64_t(d[5]) << 8})
             if (sb && sb != base) {
                 target_bases.insert(sb);
-                if (bind || !stencil_by_base.count(sb)) stencil_by_base[sb] = img;
+                if (bind || !stencil_by_base.count(sb)) set_base(stencil_by_base, sb, img);
                 static std::unordered_set<uint64_t> told;
                 if (told.size() < 32 && told.insert(sb).second)
                     log("native renderer: depth target %llx %ux%u has its stencil at %llx", (unsigned long long)base, w, h,
@@ -1330,13 +1393,27 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                     uint64_t o = 0;
                     for (uint32_t lv = 0; lv < sf.levels; ++lv) level_off[lv] = o, o += (sizes[lv] + 15) & ~15ull;
                 }
+                // the staging memory may be the GPU's (write-combined): only ever written here.
+                // Mips to rebuild are made in cached memory from the level above, then copied.
+                const uint64_t tf0 = now_ns();
+                const uint32_t missing = first_missing_mip(ts, fi, sf, is3d);
                 const uint64_t td = now_ns();
-                for (uint32_t lv = 0; lv < sf.levels; ++lv)
-                    tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), sb.map + level_off[lv]);
-                const uint64_t tf = now_ns();
-                st.t_detile += tf - td;
-                fill_missing_mips(sb.map, level_off, sizes, ts, fi, sf, is3d);
-                st.t_fill += now_ns() - tf;
+                st.t_fill += td - tf0;
+                if (missing < sf.levels) {
+                    static thread_local std::vector<uint8_t> scratch;
+                    scratch.resize(total);
+                    for (uint32_t lv = 0; lv < missing; ++lv)
+                        tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), scratch.data() + level_off[lv]);
+                    const uint64_t tf = now_ns();
+                    st.t_detile += tf - td;
+                    fill_missing_mips(missing, scratch.data(), level_off, sizes, ts, fi, sf, is3d);
+                    std::memcpy(sb.map, scratch.data(), total);
+                    st.t_fill += now_ns() - tf;
+                } else {
+                    for (uint32_t lv = 0; lv < sf.levels; ++lv)
+                        tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), sb.map + level_off[lv]);
+                    st.t_detile += now_ns() - td;
+                }
                 for (uint32_t lv = 0; lv < sf.levels; ++lv) {
                     VkBufferImageCopy r{};
                     r.bufferOffset = base_off + off;
@@ -1388,9 +1465,12 @@ Image* Renderer::upload_texture(const uint32_t* t) {
 // coarser level here read black - the speckled snow, whose sparkle cube is blended by LOD.
 // Rebuild them from the level above: 2x2 averages for 8-bit RGBA, every other block for BCn
 // (point-sampled, but the right colours), every other texel otherwise.
-void Renderer::fill_missing_mips(uint8_t* staging, const std::vector<uint64_t>& off, const std::vector<uint64_t>& sizes,
-                                 const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d) {
-    if (sf.levels < 2 || is3d || !fi.bpp || fi.bpp % 8) return;
+// The first mip level the game never wrote (all zero) while level 0 has data, or sf.levels.
+// Read from guest memory (the tiled bytes): a few spread samples per level decide quickly that
+// a level has data; only levels whose samples are all zero are scanned in full (small ones) or
+// taken as unwritten (large ones).
+uint32_t Renderer::first_missing_mip(const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d) {
+    if (sf.levels < 2 || is3d || !fi.bpp || fi.bpp % 8) return sf.levels;
     auto zero = [](const uint8_t* p, uint64_t n) {
         uint64_t acc = 0, i = 0;
         for (; i + 8 <= n; i += 8) {
@@ -1401,17 +1481,30 @@ void Renderer::fill_missing_mips(uint8_t* staging, const std::vector<uint64_t>& 
         for (; i < n; ++i) acc |= p[i];
         return acc == 0;
     };
-    // checked in guest memory (the same bytes, tiled): the staging copy may be write-combined
-    // memory, which is very slow to read
-    const uint8_t* guest = reinterpret_cast<const uint8_t*>(ts.base);
-    if (zero(guest + sf.mips[0].offset, sf.mips[0].size)) return;
-    uint32_t first = sf.levels;
-    for (uint32_t lv = 1; lv < sf.levels; ++lv)
-        if (zero(guest + sf.mips[lv].offset, sf.mips[lv].size)) {
-            first = lv;
-            break;
+    auto level_zero = [&](const uint8_t* p, uint64_t n) {
+        if (n <= 4096) return zero(p, n);
+        constexpr uint64_t kSamples = 32, kSpan = 64;
+        for (uint64_t k = 0; k < kSamples; ++k) {
+            const uint64_t at = (n - kSpan) * k / (kSamples - 1);
+            if (!zero(p + at, kSpan)) return false;
         }
-    if (first == sf.levels) return;
+        return n > (256u << 10) || zero(p, n);
+    };
+    const uint8_t* guest = reinterpret_cast<const uint8_t*>(ts.base);
+    if (level_zero(guest + sf.mips[0].offset, sf.mips[0].size)) return sf.levels;
+    for (uint32_t lv = 1; lv < sf.levels; ++lv)
+        if (level_zero(guest + sf.mips[lv].offset, sf.mips[lv].size)) return lv;
+    return sf.levels;
+}
+
+// Mip levels the game never wrote (all zero) while level 0 has data: the console fills them on
+// the GPU (the 256x256 environment cube maps have only level 0 in memory), so sampling a
+// coarser level here read black - the speckled snow, whose sparkle cube is blended by LOD.
+// Rebuild levels first.. from the level above (in cached memory): 2x2 averages for 8-bit RGBA,
+// every other block for BCn (point-sampled, but the right colours), every other texel otherwise.
+void Renderer::fill_missing_mips(uint32_t first, uint8_t* staging, const std::vector<uint64_t>& off, const std::vector<uint64_t>& sizes,
+                                 const fmt::TSharp& ts, const fmt::FormatInfo& fi, const tiling::Surface& sf, bool is3d) {
+    if (first < 1 || first >= sf.levels) return;
     const uint32_t bs = fi.bpp / 8;
     const bool rgba8 = !fi.block && fi.bpp == 32;
     for (uint32_t lv = first; lv < sf.levels; ++lv) {
@@ -1818,7 +1911,31 @@ gcn::TexDim slot_dim(const uint32_t* t) {
     return t ? tex_dim(fmt::decode_tsharp(t).type) : gcn::TexDim::Tex2D;
 }
 
+// Memoized: a draw's pipeline depends only on its shaders, primitive, render state, vertex
+// formats, target formats and its T#s' type / format / address (and what render target an
+// address is) - hashed here in far less time than resolving them again for every draw.
 Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth) {
+    uint64_t k = mix(mix(uint64_t(dr.vs), uint64_t(dr.ps)), uint64_t(dr.prim) | uint64_t(dr.tex_mask[0]) << 8 | uint64_t(dr.tex_mask[1]) << 24);
+    k = mix(mix(k, uint64_t(dr.blend) | uint64_t(dr.target_mask) << 32), uint64_t(dr.su_sc_mode) | uint64_t(dr.depth_ctl) << 32);
+    k = mix(k, dr.stencil_ctl);
+    for (int i = 0; i < 8; ++i) k = mix(k, uint64_t(colors[i]));
+    k = mix(k, uint64_t(depth));
+    for (int i = 0; i < 16; ++i) k = mix(k, uint64_t(dr.vb[i][1] >> 16) | uint64_t(dr.vb[i][3]) << 32);
+    for (int s = 0; s < 2; ++s)
+        for (uint32_t m = dr.tex_mask[s]; m; m &= m - 1) {
+            const uint32_t* t = dr.tex[s][__builtin_ctz(m)];
+            k = mix(mix(k, uint64_t(t[0]) | uint64_t(t[1]) << 32), uint64_t(t[2]) | uint64_t(t[3]) << 32);
+        }
+    PipeMemo& e = pipe_memo[k & (pipe_memo.size() - 1)];
+    if (e.key == k && e.gen == targets_gen) return ++st.memo_hits, e.p;
+    ++st.memo_misses;
+    if (e.key == k) ++st.memo_gen;
+    Pipeline* p = pipeline_resolve(dr, colors, depth);
+    e = {k, targets_gen, p};
+    return p;
+}
+
+Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image* depth) {
     // per texture slot: the image dimensionality (a T# on a render target samples our 2D
     // target image) and whether it is sampled with integer types
     gcn::TexDim dims[2][16];
@@ -2249,6 +2366,7 @@ void Renderer::masked_stencil_clear(Image* depth, uint32_t value, uint32_t write
         if (vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &pipe) != VK_SUCCESS) pipe = VK_NULL_HANDLE;
     }
     if (!pipe) return;
+    dstate.valid = false;  // (its own pipeline and dynamic state)
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
     const VkViewport v{0, 0, float(pass_w), float(pass_h), 0, 1};
     vkCmdSetViewport(cmd, 0, 1, &v);
@@ -2581,7 +2699,10 @@ void Renderer::draw(const Draw& dr) {
             if (p->ps && !p->ps->res.problems.empty()) pl.tex += " [" + p->ps->res.problems[0] + "]";
         }
     }
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
+    // state the previous draw in this command buffer already set is not set again (bindings
+    // and dynamic state last for the whole command buffer)
+    DrawState& ds = dstate;
+    if (!ds.valid || ds.pipe != p->pipeline) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline), ds.pipe = p->pipeline;
     for (int s = 0; s < 2; ++s)
         if (nw[s] && s == 1 && p->push_ps) {
             push_fn(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 1, nw[s], writes[s]);
@@ -2592,8 +2713,18 @@ void Renderer::draw(const Draw& dr) {
             vkUpdateDescriptorSets(ctx.device, nw[s], writes[s], 0, nullptr);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, uint32_t(s), 1, &set, 0, nullptr);
         }
-    for (uint32_t slot = 0; slot < 16; ++slot)
-        if (vmask >> slot & 1) vkCmdBindVertexBuffers2(cmd, slot, 1, &vbufs[slot], &voffs[slot], &vsizes[slot], nullptr);
+    if (!ds.valid) ds.vmask = 0;
+    for (uint32_t slot = 0; slot < 16;) {  // runs of changed bindings, one call each
+        auto same = [&](uint32_t k) {
+            return !(vmask >> k & 1) || ((ds.vmask >> k & 1) && ds.vb[k] == vbufs[k] && ds.voff[k] == voffs[k] && ds.vsize[k] == vsizes[k]);
+        };
+        if (same(slot)) { ++slot; continue; }
+        uint32_t end = slot + 1;
+        while (end < 16 && (vmask >> end & 1) && !same(end)) ++end;
+        vkCmdBindVertexBuffers2(cmd, slot, end - slot, &vbufs[slot], &voffs[slot], &vsizes[slot], nullptr);
+        for (uint32_t k = slot; k < end; ++k) ds.vb[k] = vbufs[k], ds.voff[k] = voffs[k], ds.vsize[k] = vsizes[k], ds.vmask |= 1u << k;
+        slot = end;
+    }
     // viewport (GCN y points down the screen: flip with a negative height)
     VkViewport vp{};
     vp.x = float(dr.vp[0]), vp.width = float(dr.vp[2] > 0 ? dr.vp[2] : int32_t(pass_w));
@@ -2602,20 +2733,24 @@ void Renderer::draw(const Draw& dr) {
     const float range = dr.zfar - dr.znear;
     float zmin = range != 0 ? dr.znear / range : 0.0f, zmax = range != 0 ? zmin + dr.zk / range : 1.0f;
     vp.minDepth = std::clamp(zmin, 0.0f, 1.0f), vp.maxDepth = std::clamp(zmax, 0.0f, 1.0f);
-    vkCmdSetViewport(cmd, 0, 1, &vp);
+    if (!ds.valid || std::memcmp(&ds.vp, &vp, sizeof vp) != 0) vkCmdSetViewport(cmd, 0, 1, &vp), ds.vp = vp;
     const int32_t sx = std::max(0, dr.vp[0]), sy = std::max(0, dr.vp[1]);
     VkRect2D sc{{sx, sy},
                 {std::min<uint32_t>(pass_w - std::min<uint32_t>(pass_w, sx), uint32_t(std::max(1.0f, vp.width))),
                  std::min<uint32_t>(pass_h - std::min<uint32_t>(pass_h, sy), uint32_t(std::max(1.0f, -vp.height)))}};
-    vkCmdSetScissor(cmd, 0, 1, &sc);
+    if (!ds.valid || std::memcmp(&ds.sc, &sc, sizeof sc) != 0) vkCmdSetScissor(cmd, 0, 1, &sc), ds.sc = sc;
     {
         uint32_t sref, swm;
         stencil_dynamic(dr.stencil_ctl, dr.depth_ctl, dr.stencil_ref, sref, swm);
-        vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, sref);
-        vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, dr.stencil_ref >> 8 & 0xFF);
-        vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, swm);
+        const uint32_t cmask = dr.stencil_ref >> 8 & 0xFF;
+        if (!ds.valid || ds.sref != sref) vkCmdSetStencilReference(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, sref), ds.sref = sref;
+        if (!ds.valid || ds.cmask != cmask) vkCmdSetStencilCompareMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, cmask), ds.cmask = cmask;
+        if (!ds.valid || ds.wmask != swm) vkCmdSetStencilWriteMask(cmd, VK_STENCIL_FACE_FRONT_AND_BACK, swm), ds.wmask = swm;
     }
-    vkCmdSetDepthBias(cmd, dr.poly_offset, 0.0f, dr.poly_scale);
+    if (!ds.valid || ds.bias[0] != dr.poly_offset || ds.bias[1] != dr.poly_scale)
+        vkCmdSetDepthBias(cmd, dr.poly_offset, 0.0f, dr.poly_scale), ds.bias[0] = dr.poly_offset, ds.bias[1] = dr.poly_scale;
+    if (!ds.valid) ds.ib = VK_NULL_HANDLE;
+    ds.valid = true;
     const bool predicated = pred_cur >= 0 && ctx.conditional_rendering && pred_buf.buf;
     if (predicated) {
         VkConditionalRenderingBeginInfoEXT cr{VK_STRUCTURE_TYPE_CONDITIONAL_RENDERING_BEGIN_INFO_EXT};
@@ -2626,7 +2761,8 @@ void Renderer::draw(const Draw& dr) {
         ++st.predicated;
     }
     if (indexed) {
-        vkCmdBindIndexBuffer(cmd, index_buf, ioff, itype);
+        if (ds.ib != index_buf || ds.ioff != ioff || ds.itype != itype)
+            vkCmdBindIndexBuffer(cmd, index_buf, ioff, itype), ds.ib = index_buf, ds.ioff = ioff, ds.itype = itype;
         vkCmdDrawIndexed(cmd, count, std::max(1u, dr.instances), 0, -int32_t(vfirst), 0);
     } else {
         vkCmdDraw(cmd, count, std::max(1u, dr.instances), 0, 0);
@@ -2789,6 +2925,7 @@ bool Renderer::target_current(uint64_t base) {
     if (img->depth || img->tv_version == ~0ull || !opt.version || opt.version(base, img->tv_size) == img->tv_version)
         return true;
     target_by_base.erase(it);
+    ++targets_gen;
     target_bases.erase(base);
     img->tv_version = ~0ull, img->tv_frame = 0;
     ++st.target_writes;
@@ -2969,15 +3106,19 @@ void Renderer::queue_readbacks() {
         sf.tile_mode = img->tile_mode, sf.bpp = img->bpp, sf.width = img->w, sf.height = img->h, sf.pitch = img->pitch;
         tiling::layout(sf);
         const uint64_t bytes = uint64_t(img->w) * img->h * (img->bpp / 8);
-        const uint64_t off = ring_alloc(bytes, 16);
-        if (off == UINT64_MAX) break;
+        Sub& sb = subs[cur];
+        constexpr uint64_t kReadbackBytes = 4ull << 20;
+        if (!sb.rb.buf) sb.rb = make_readback_buffer(kReadbackBytes);
+        const uint64_t off = (sb.rb_used + 255) & ~255ull;
+        if (!sb.rb.map || off + bytes > kReadbackBytes) break;
+        sb.rb_used = off + bytes;
         if (!any) barrier(), any = true;
         VkBufferImageCopy r{};
         r.bufferOffset = off;
         r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         r.imageExtent = {img->w, img->h, 1};
-        vkCmdCopyImageToBuffer(cmd, img->image, VK_IMAGE_LAYOUT_GENERAL, ring.buf, 1, &r);
-        subs[cur].readbacks.push_back({img->base, sf, off});
+        vkCmdCopyImageToBuffer(cmd, img->image, VK_IMAGE_LAYOUT_GENERAL, sb.rb.buf, 1, &r);
+        sb.readbacks.push_back({img->base, sf, off});
         static std::unordered_set<uint64_t> seen;
         if (seen.size() < 64 && seen.insert(img->base ^ uint64_t(img->w) << 40 ^ uint64_t(img->h) << 52).second)
             log("native renderer: reading back target %llx %ux%u (format %d, tile mode %u) to guest memory",
@@ -3521,6 +3662,12 @@ void print_stats() {
             "commands %.2f ms, submit %.2f ms, waiting for the GPU %.2f ms", double(s.t_pre) / f / 1e6,
             double(s.t_pipe) / f / 1e6, double(s.t_geo) / f / 1e6, double(s.t_desc) / f / 1e6, double(s.t_cmd) / f / 1e6,
             double(s.t_submit) / f / 1e6, double(s.t_wait) / f / 1e6);
+    if (const double n = double(s.draws - s.t_draws); n > 0)
+        log("native renderer: per draw (%.0f draws per frame): pipeline %.0f ns, geometry %.0f ns, descriptors %.0f ns, commands %.0f ns"
+            " | pipeline memo %llu hits, %llu misses (%llu by target changes)",
+            n / std::max(1.0, double(s.frames - s.t_frames)), double(s.t_pipe) / n, double(s.t_geo) / n, double(s.t_desc) / n,
+            double(s.t_cmd) / n, (unsigned long long)s.memo_hits, (unsigned long long)s.memo_misses, (unsigned long long)s.memo_gen);
+    s.memo_hits = s.memo_misses = s.memo_gen = 0;
     if (const double f = double(s.frames - s.t_frames); f > 0)
         log("native renderer: pre-pass per frame: targets %.2f ms, texture checks %.2f ms (%.0f, %.0f unwatched), texture loads %.2f ms "
             "(detile %.2f, mip check %.2f, protect %.2f, new images %.2f)",
@@ -3538,7 +3685,7 @@ void print_stats() {
     s.t_vkimg = s.t_heap = s.heap_scans = s.heap_blocks_new = 0;
     s.t_detile = s.t_fill = s.t_watch = s.t_mkimg = 0;
     s.t_tgt = s.t_tex_hit = s.t_tex_load = s.tex_checks = s.tex_unwatched = 0;
-    s.t_pre = s.t_pipe = s.t_geo = s.t_desc = s.t_cmd = s.t_submit = s.t_wait = 0, s.t_frames = s.frames;
+    s.t_pre = s.t_pipe = s.t_geo = s.t_desc = s.t_cmd = s.t_submit = s.t_wait = 0, s.t_frames = s.frames, s.t_draws = s.draws;
     std::string why;
     for (auto& [k, v] : s.skip) why += " " + k + "=" + std::to_string(v);
     if (!why.empty()) log("native renderer: skipped:%s", why.c_str());
