@@ -8,6 +8,7 @@
 // shadPS4 / null GPU path draws as before) and the native side only records what a frame
 // uses: device instances, threads, draws, shaders, vertex declarations, state combinations
 // (future Vulkan pipelines), textures and buffers. The numbers size the native design.
+#include <deque>
 #include <map>
 #include <atomic>
 #include <chrono>
@@ -43,6 +44,7 @@
 namespace d1 {
 
 void* hook_eboot_function(uint64_t off, const void* host);  // hooks.cpp
+bool replace_eboot_function(uint64_t off, const void* host);  // hooks.cpp
 uint64_t guest_region_extent(uint64_t addr);                // hle_kernel.cpp
 uint64_t gpu_flip_count();                                  // hle_gpu.cpp
 uint64_t gpu_queue_wait_ns();                               // hle_gpu.cpp
@@ -294,6 +296,8 @@ D1_SYSV void h_apply_targets(uint64_t dev) {
 // command buffers the game submits (by their DCB write position) and executed by our own
 // Vulkan renderer (gfx/nrender.cpp). The original functions still run, so the null GPU keeps
 // the game's fences and flips going.
+bool nd_push(uint64_t dev, ng::Draw* d);  // native device layer: into the context's command list
+
 namespace nr {
 
 uint64_t g_base = 0;  // eboot base
@@ -404,7 +408,9 @@ uint32_t vertex_count(uint32_t prim, uint32_t n) {
 ng::Draw* alloc_draw();
 
 // Common state of every draw, read from the device object.
+thread_local uint64_t t_capture_dev = 0;  // (the device context of the last capture: push() files it there)
 ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
+    t_capture_dev = dev;
     auto* d = alloc_draw();
     d->caller = caller ? caller - g_base : 0;
     d->prim = uint8_t(eb<uint32_t>(0x15D13C0 + uint64_t(engine_prim) * 4));
@@ -528,6 +534,7 @@ Inbox& inbox() {
     return *ib;
 }
 void push(ng::Draw* d) {
+    if (nd_push(t_capture_dev, d)) return;
     d->seq = g_seq.fetch_add(1, std::memory_order_relaxed);
     d->frame = uint32_t(gpu_flip_count());
     Inbox& ib = inbox();
@@ -896,11 +903,379 @@ D1_SYSV void r_dispatch(uint64_t dev, uint64_t cs, uint32_t x, uint32_t y, uint3
     }
 }
 
+
 template <class F>
 bool hook(uint64_t off, F host, F& orig, const char* name) {
     orig = reinterpret_cast<F>(hook_eboot_function(off, reinterpret_cast<const void*>(host)));
     if (!orig) log("native gfx: hooking %s (eboot+%#llx) failed", name, (unsigned long long)off);
     return orig != nullptr;
+}
+
+// ---------------------------------------------------------------------------- native device layer
+// D1_ND=1: no Sony graphics code and no emulated GPU. The engine's device layer
+// (findings/gpu_device_layer.md) still runs - it is the game's code - but every Gnm / Gnmx
+// function it calls that would build PS4 command buffers is replaced: they do nothing, or
+// record what they mean into the calling context's command list (constant buffer bindings,
+// end-of-list labels, end-of-pipe events, occlusion dumps, predication, GPU copies). Each
+// device context's list (cmdlist_begin .. cmdlist_end) gets a token in its command buffer so
+// the engine's own bookkeeping submits it in its order; at submission the lists named by
+// the tokens are executed by the Vulkan renderer and their labels written
+// (findings/gpu_device_sync_contract.md). Nothing parses PS4 packets.
+namespace nd {
+bool g_on = false;
+constexpr uint32_t kMagic = 0x4E44544Bu;  // token: NOP {magic, id lo, id hi}
+struct Item {
+    ng::Draw* d = nullptr;  // null: a constant buffer binding
+    nr::CbEvent cb{};
+};
+struct List {
+    uint64_t id = 0, dev = 0;
+    std::vector<Item> items;
+    std::vector<uint8_t*> chunks;  // command-buffer allocations (constants, inline data), arena chunks
+    size_t used = 0;
+    bool eop = false;
+    uint64_t made = 0;  // flip count when begun (cleanup of lists never submitted)
+};
+std::mutex g_lists_m;
+std::unordered_map<uint64_t, List*> g_lists;  // ended, waiting for their submission
+std::atomic<uint64_t> g_next{1};
+// device contexts as they appear (the main one and the render jobs' workers)
+constexpr int kMaxCtx = 16;
+std::atomic<uint64_t> g_devs[kMaxCtx];
+std::atomic<int> g_ndevs{0};
+std::mutex g_devs_m;
+struct Ctx { std::atomic<List*> cur{nullptr}; };
+Ctx g_ctx[kMaxCtx];
+std::atomic<uint64_t> g_lists_made{0}, g_lists_run{0}, g_orphans{0};
+
+uint64_t dev_addr(int i) { return g_devs[i].load(std::memory_order_acquire); }
+int ctx_of_dev(uint64_t dev) {
+    if (!dev) return -1;
+    const int n = g_ndevs.load(std::memory_order_acquire);
+    for (int i = 0; i < n; ++i)
+        if (g_devs[i].load(std::memory_order_relaxed) == dev) return i;
+    std::lock_guard lk(g_devs_m);
+    const int m = g_ndevs.load(std::memory_order_relaxed);
+    for (int i = n; i < m; ++i)
+        if (g_devs[i].load(std::memory_order_relaxed) == dev) return i;
+    if (m >= kMaxCtx) return -1;
+    g_devs[m].store(dev, std::memory_order_relaxed);
+    g_ndevs.store(m + 1, std::memory_order_release);
+    log("nd: device context %d at %#llx", m, (unsigned long long)dev);
+    return m;
+}
+int ctx_of_cb(uint64_t cb) {  // a GfxContext (its draw command buffer is at +0): D+0x60 or D+0xEC0
+    const int n = g_ndevs.load(std::memory_order_acquire);
+    for (int i = 0; i < n; ++i) {
+        const uint64_t d = g_devs[i].load(std::memory_order_relaxed);
+        if (cb == d + 0x60 || cb == d + 0xEC0) return i;
+    }
+    return -1;
+}
+List* list_of(int c) {
+    if (c < 0) return nullptr;
+    List* l = g_ctx[c].cur.load(std::memory_order_relaxed);
+    if (!l) {  // recorded outside a begin .. end (should not happen): an implicit list
+        l = new List;
+        l->id = g_next++, l->dev = dev_addr(c), l->made = gpu_flip_count();
+        g_ctx[c].cur.store(l, std::memory_order_relaxed);
+        static std::atomic<int> told{0};
+        if (told++ < 5) log("nd: context %d recorded outside a command list", c);
+    }
+    return l;
+}
+void begin_list(uint64_t dev) {
+    const int c = ctx_of_dev(dev);
+    if (c < 0) return;
+    if (List* old = g_ctx[c].cur.exchange(nullptr)) {  // begun again without an end: keep it for its token
+        std::lock_guard lk(g_lists_m);
+        g_lists[old->id] = old;
+    }
+    auto* l = new List;
+    l->id = g_next++, l->dev = dev, l->made = gpu_flip_count();
+    g_ctx[c].cur.store(l, std::memory_order_relaxed);
+    ++g_lists_made;
+}
+// The token, written where the list's command buffer ends, so the engine sees a non-empty
+// list and submits it (Gnm's own reserve callback grows the buffer when needed).
+void write_token(uint64_t cb, uint64_t id) {
+    using ReserveFn = D1_SYSV bool (*)(uint64_t, uint32_t, uint64_t);
+    uint32_t* p = field<uint32_t*>(cb, 0x10);
+    if (uint64_t(field<uint64_t>(cb, 8) - uint64_t(p)) / 4 < 4) {
+        if (!reinterpret_cast<ReserveFn>(field<uint64_t>(cb, 0x18))(cb, 4, field<uint64_t>(cb, 0x20))) return;
+        p = field<uint32_t*>(cb, 0x10);
+    }
+    p[0] = 0xC0021000u;  // type 3 NOP, 4 dwords
+    p[1] = kMagic, p[2] = uint32_t(id), p[3] = uint32_t(id >> 32);
+    *reinterpret_cast<uint32_t**>(cb + 0x10) = p + 4;
+}
+// end of a list: file it, mark its command buffer
+List* end_list(uint64_t dev) {
+    const int c = ctx_of_dev(dev);
+    {
+        static std::atomic<int> told{0};
+        if (getenv("D1_ND_LOG") && told++ < 60) log("nd: end of a list on context %d (dev %#llx)", c, (unsigned long long)dev);
+    }
+    if (c < 0) return nullptr;
+    List* l = list_of(c);
+    {
+        std::lock_guard lk(g_lists_m);
+        g_lists[l->id] = l;
+    }
+    if (const uint64_t gfx = field<uint64_t>(dev, 0x50)) write_token(gfx, l->id);
+    return l;
+}
+void add(int c, ng::Draw* d) {
+    if (List* l = list_of(c)) l->items.push_back({d, {}});
+    else nr::release_draw(d);
+}
+
+// ---- the engine's device functions around lists
+using Dev1Fn = D1_SYSV void (*)(uint64_t);
+using Dev3Fn = D1_SYSV void (*)(uint64_t, uint64_t, uint64_t);
+using Dev4Fn = D1_SYSV void (*)(uint64_t, uint64_t, uint64_t, uint64_t);
+Dev1Fn o_begin, o_end_submit;
+Dev3Fn o_end;
+Dev4Fn o_begin_inherit;
+D1_SYSV void h_begin(uint64_t dev) {
+    o_begin(dev);
+    begin_list(dev);
+}
+D1_SYSV void h_begin_inherit(uint64_t dev, uint64_t rec, uint64_t a, uint64_t saved) {
+    o_begin_inherit(dev, rec, a, saved);
+    begin_list(dev);
+}
+D1_SYSV void h_end(uint64_t dev, uint64_t rec, uint64_t kind) {
+    end_list(dev);
+    o_end(dev, rec, kind);  // (its end-of-list label lands in the list: still current)
+    if (const int c = ctx_of_dev(dev); c >= 0) g_ctx[c].cur.store(nullptr, std::memory_order_relaxed);
+}
+D1_SYSV void h_end_submit(uint64_t dev) {
+    end_list(dev);
+    const int c = ctx_of_dev(dev);
+    // the label is recorded inside, before the submission it may start: detach the list first
+    // only after the call (the submission reads the filed list, not the context)
+    o_end_submit(dev);
+    if (c >= 0) g_ctx[c].cur.store(nullptr, std::memory_order_relaxed);
+}
+
+// ---- Gnm / Gnmx replacements
+D1_SYSV uint64_t s_noop() { return 0; }
+// Command-buffer allocations hold data the GPU reads through V#s (40-bit addresses): they
+// come from a region in the guest's address range, in 256 KiB chunks a list owns until it
+// has been executed.
+constexpr uint64_t kArenaChunk = 256 << 10, kArenaSize = 1ull << 30;
+std::mutex g_arena_m;
+uint8_t* g_arena = nullptr;
+std::vector<uint32_t> g_arena_free;
+uint8_t* arena_chunk() {
+    std::lock_guard lk(g_arena_m);
+    if (!g_arena) {
+        for (uint64_t at : {0x3F00000000ull, 0x3E00000000ull, 0x3D00000000ull}) {
+            void* p = os::alloc(at, kArenaSize, os::kRead | os::kWrite, false);
+            if (p && uint64_t(p) + kArenaSize < (1ull << 40)) { g_arena = static_cast<uint8_t*>(p); break; }
+        }
+        if (!g_arena) { log("nd: no command-buffer arena below 1 TiB"); return nullptr; }
+        for (uint32_t i = uint32_t(kArenaSize / kArenaChunk); i-- > 0;) g_arena_free.push_back(i);
+        log("nd: command-buffer arena at %p (%llu MiB)", (void*)g_arena, (unsigned long long)(kArenaSize >> 20));
+    }
+    if (g_arena_free.empty()) {
+        static int told = 0;
+        if (told++ < 5) log("nd: command-buffer arena full");
+        return nullptr;
+    }
+    const uint32_t i = g_arena_free.back();
+    g_arena_free.pop_back();
+    return g_arena + uint64_t(i) * kArenaChunk;
+}
+void arena_free(uint8_t* p) {
+    std::lock_guard lk(g_arena_m);
+    g_arena_free.push_back(uint32_t(uint64_t(p - g_arena) / kArenaChunk));
+}
+std::mutex g_global_alloc_m;
+std::vector<uint8_t*> g_global_alloc;
+// allocateFromCommandBuffer(cb, bytes, log2 align): constants and inline data, valid until the
+// list has been executed
+D1_SYSV void* s_alloc(uint64_t cb, uint32_t bytes, uint32_t align_log2) {
+    const uint64_t align = uint64_t(1) << std::min(align_log2, 12u);
+    const int c = ctx_of_cb(cb);
+    List* l = list_of(c);
+    const size_t need = size_t(bytes) + align;
+    if (need > kArenaChunk) {
+        static int told = 0;
+        if (told++ < 5) log("nd: command-buffer allocation of %u bytes", bytes);
+        return nullptr;
+    }
+    if (!l) {  // outside any list (initialisation): kept
+        std::lock_guard lk(g_global_alloc_m);
+        static uint8_t* cur = nullptr;
+        static size_t used = 0;
+        if (!cur || used + need > kArenaChunk) {
+            g_global_alloc_m.unlock();
+            uint8_t* c = arena_chunk();
+            g_global_alloc_m.lock();
+            if (!c) return nullptr;
+            g_global_alloc.push_back(c), cur = c, used = 0;
+        }
+        const uint64_t p = (uint64_t(cur) + used + align - 1) & ~(align - 1);
+        used = size_t(p - uint64_t(cur)) + bytes;
+        return reinterpret_cast<void*>(p);
+    }
+    if (l->chunks.empty() || l->used + need > kArenaChunk) {
+        uint8_t* c = arena_chunk();
+        if (!c) return nullptr;
+        l->chunks.push_back(c);
+        l->used = 0;
+    }
+    const uint64_t base = uint64_t(l->chunks.back());
+    const uint64_t p = (base + l->used + align - 1) & ~(align - 1);
+    l->used = size_t(p - base) + bytes;
+    return reinterpret_cast<void*>(p);
+}
+// EVENT_WRITE_EOP: (cb, event, cache bits, address, data_sel, data, ?, int_sel)
+D1_SYSV void s_eop_label(uint64_t cb, uint32_t, uint32_t, uint64_t addr, uint32_t data_sel, uint64_t data, uint32_t,
+                         uint32_t int_sel) {
+    List* l = list_of(ctx_of_cb(cb));
+    if (!l) return;
+    if (addr >= 0x10000 && (data_sel == 1 || data_sel == 2)) {
+        ng::Draw* d = nr::alloc_draw();
+        d->kind = ng::Draw::WriteData;
+        d->caller = addr;
+        d->inline_vertices.resize(data_sel == 1 ? 4 : 8);
+        std::memcpy(d->inline_vertices.data(), &data, d->inline_vertices.size());
+        l->items.push_back({d, {}});
+    }
+    if (int_sel) l->eop = true;
+}
+D1_SYSV void s_eop_interrupt(uint64_t cb) {
+    if (List* l = list_of(ctx_of_cb(cb))) l->eop = true;
+}
+// occlusion counter dump: (cb, end, results)
+D1_SYSV void s_zpass(uint64_t cb, uint32_t end, uint64_t results) {
+    const int c = ctx_of_cb(cb);
+    if (c < 0 || results < 0x10000) return;
+    ng::Draw* d = nr::alloc_draw();
+    d->kind = ng::Draw::ZPass;
+    d->index_addr = end == 1 ? results + 8 : results;
+    add(c, d);
+}
+// SET_PREDICATION on: (cb, address, ?, draw if visible) / off: (cb)
+D1_SYSV void s_pred_on(uint64_t cb, uint64_t addr, uint32_t, uint32_t visible) {
+    *reinterpret_cast<uint8_t*>(cb + 0x28) |= 1;
+    const int c = ctx_of_cb(cb);
+    if (c < 0) return;
+    ng::Draw* d = nr::alloc_draw();
+    d->kind = ng::Draw::PredOn;
+    d->index_addr = addr & ~15ull, d->count = visible & 1;
+    add(c, d);
+}
+D1_SYSV void s_pred_off(uint64_t cb) {
+    *reinterpret_cast<uint8_t*>(cb + 0x28) &= ~1;
+    const int c = ctx_of_cb(cb);
+    if (c < 0) return;
+    ng::Draw* d = nr::alloc_draw();
+    d->kind = ng::Draw::PredOff;
+    add(c, d);
+}
+// GPU memory copy (the engine's copy queue: streaming, relocation): (cb, dst, src, bytes, last)
+D1_SYSV void s_dma(uint64_t cb, uint64_t dst, uint64_t src, uint32_t bytes) {
+    const int c = ctx_of_cb(cb);
+    if (c < 0 || !bytes) return;
+    ng::Draw* d = nr::alloc_draw();
+    d->kind = ng::Draw::Dma;
+    d->index_addr = src, d->caller = dst, d->count = bytes, d->prim = 0, d->index32 = 0;
+    add(c, d);
+}
+// ConstantUpdateEngine::setConstantBuffers(cue, stage, first, count, V#s): the bindings, in order
+D1_SYSV void s_set_cbs(uint64_t cue, uint32_t stage, uint32_t first, uint32_t count, const uint32_t* vs) {
+    const int s = nr::gnm_stage_index(stage);
+    if (s < 0) return;
+    nr::CueState* cst = nr::cue_state(cue, true);
+    List* l = list_of(ctx_of_cb(cue - 0xC0));
+    for (uint32_t k = 0; k < count && first + k < 16; ++k) {
+        ng::Draw::Cb& cbv = cst->cb[s][first + k];
+        if (!vs) {
+            cbv = {};
+        } else {
+            const uint32_t* v = vs + 4 * k;
+            const uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
+            const uint32_t stride = v[1] >> 16 & 0x3FFF, records = v[2];
+            const uint64_t bytes = stride ? uint64_t(stride) * records : records;
+            cbv = {base, uint32_t(std::min<uint64_t>(bytes, 1u << 20))};
+        }
+        if (l && nr::g_ce_order) l->items.push_back({nullptr, nr::CbEvent{0, 0, uint8_t(s), uint8_t(first + k), cbv}});
+    }
+}
+
+// Chunks outlive their list by a few frames: constant buffers bound on the main context are
+// read by the render jobs' lists submitted after it (the constant update engine shares
+// bindings between contexts), as on the console, where command-buffer memory stays until
+// the GPU is past it.
+std::mutex g_retired_m;
+std::deque<std::pair<uint64_t, std::vector<uint8_t*>>> g_retired;
+void retire_chunks(std::vector<uint8_t*>&& cs) {
+    const uint64_t now = gpu_flip_count();
+    std::lock_guard lk(g_retired_m);
+    while (!g_retired.empty() && g_retired.front().first + 3 <= now) {
+        for (uint8_t* c : g_retired.front().second) arena_free(c);
+        g_retired.pop_front();
+    }
+    if (!cs.empty()) g_retired.emplace_back(now, std::move(cs));
+}
+void free_list(List* l) {
+    retire_chunks(std::move(l->chunks));
+    std::vector<ng::Draw*> ds;
+    for (Item& it : l->items)
+        if (it.d) ds.push_back(it.d);
+    nr::release_draws(ds);
+    delete l;
+}
+
+// Occlusion dumps of lists that were not drawn: every query reads "visible".
+void answer_zpass(uint64_t dest, bool end) {
+    if (guest_region_extent(dest) < 0x80) return;
+    auto* q = reinterpret_cast<uint64_t*>(dest);
+    for (int db = 0; db < 8; ++db) q[db * 2 + (end ? 1 : 0)] = (end ? 1000ull : 0ull) | (1ull << 63);
+}
+
+void install(uint64_t) {
+    g_on = true;
+    bool ok = true;
+    auto rep = [&](uint64_t off, const void* fn) {
+        if (!replace_eboot_function(off, fn)) ok = false, log("nd: replacing eboot+%#llx failed", (unsigned long long)off);
+    };
+    // Gnm / Gnmx functions the device layer calls per frame that write command buffers
+    static const uint32_t kNoops[] = {
+        0xF7E740, 0xF7E7C0, 0xF7E840, 0xF7E8D0, 0xF7E950, 0xF7E9B0, 0xF7EA20, 0xF7EA80, 0xF7EAF0, 0xF7EB50, 0xF7EBB0,
+        0xF7EC30, 0xF7ED40, 0xF7EEC0, 0xF7F1E0, 0xF7F260, 0xF7F320, 0xF7F4A0, 0xF7F790, 0xF7F7E0, 0xF7F840, 0xF7F890,
+        0xF7FA90, 0xF7FCD0, 0xF7FD40, 0xF7FE20, 0xF80340, 0xF80440, 0xF804F0, 0xF80550, 0xF805C0, 0xF80640, 0xF806D0,
+        0xF80730, 0xF80790, 0xF80830, 0xF808A0, 0xF80910, 0xF80E00, 0xF80F10, 0xF81090, 0xF81220,
+        0xF7E5E0, 0xF84DB0, 0xF811C0,  // default hardware state, InsertWaitFlipDone (imports writing packets)
+        0xF8AFD0, 0xF8B0C0, 0xF8B1F0, 0xF8B2E0, 0xF8B410, 0xF8B600, 0xF8B790, 0xF8B8C0, 0xF8B980, 0xF8DF60, 0xF8E680,
+        0xF8E880, 0xF8F0E0, 0xF8F4B0};
+    for (uint32_t off : kNoops) rep(off, reinterpret_cast<const void*>(&s_noop));
+    rep(0xF7FEB0, reinterpret_cast<const void*>(&s_alloc));
+    rep(0xF80C90, reinterpret_cast<const void*>(&s_eop_label));
+    rep(0xF80D70, reinterpret_cast<const void*>(&s_eop_interrupt));
+    rep(0xF80AE0, reinterpret_cast<const void*>(&s_zpass));
+    rep(0xF809F0, reinterpret_cast<const void*>(&s_pred_on));
+    rep(0xF80A80, reinterpret_cast<const void*>(&s_pred_off));
+    rep(0xF8F3A0, reinterpret_cast<const void*>(&s_dma));
+    rep(0xF8B500, reinterpret_cast<const void*>(&s_set_cbs));
+    ok &= hook(0x7DCCE0, &h_begin, o_begin, "cmdlist_begin");
+    ok &= hook(0x7DD6A0, &h_begin_inherit, o_begin_inherit, "cmdlist_begin_inherit");
+    ok &= hook(0x7DCEC0, &h_end, o_end, "cmdlist_end");
+    ok &= hook(0x7DE950, &h_end_submit, o_end_submit, "cmdlist_end_and_submit");
+    log("nd: native device layer: no Gnm command buffers, no emulated GPU (%zu Gnm functions replaced)%s",
+        sizeof kNoops / sizeof kNoops[0] + 8, ok ? "" : " - SOME REPLACEMENTS FAILED");
+}
+}  // namespace nd
+
+bool nd_push(uint64_t dev, ng::Draw* d) {
+    if (!nd::g_on) return false;
+    d->frame = uint32_t(gpu_flip_count());
+    nd::add(nd::ctx_of_dev(dev), d);
+    return true;
 }
 
 }  // namespace
@@ -1197,7 +1572,9 @@ void native_gfx_install() {
         ok &= hook(0x7DF630, &r_alloc_constants, o_alloc_constants, "alloc_constants");
         ok &= hook(0x7DEC20, &r_set_vertex_buffer, o_set_vertex_buffer, "set_vertex_buffer");
         ok &= hook(0x7E0780, &r_dispatch, o_dispatch, "dispatch");
-        ok &= hook(0xF8B500, &r_set_cbs, o_set_cbs, "set_constant_buffers");
+        // the native device layer is the default; D1_ND=0: Gnm command buffers and the emulated GPU as before
+        if (const char* v = getenv("D1_ND"); !v || std::atoi(v) != 0) nd::install(0);
+        else ok &= hook(0xF8B500, &r_set_cbs, o_set_cbs, "set_constant_buffers");
         log("native gfx: rendering natively (every %d frame%s)%s", nr::g_every, nr::g_every == 1 ? "" : "s",
             ok ? "" : " (some hooks failed)");
         return;
@@ -1217,6 +1594,27 @@ void native_gfx_install() {
 
 // hle_gpu.cpp: the game submitted command buffers. Execute the captured draws that belong to
 // them, in submission order.
+static void nr_every_world() {
+    // D1_NG_EVERY_WORLD=<secs>: (testing) draw every frame from <secs> after reaching the world
+    // (or the state named by D1_NG_EVERY_STATE, a prefix, e.g. setup:orbit). With a large
+    // D1_NG_EVERY (e.g. 100000) nothing is drawn before that: a rendered check of a late
+    // screen at about headless speed.
+    static const double every_world = getenv("D1_NG_EVERY_WORLD") ? std::atof(getenv("D1_NG_EVERY_WORLD")) : -1;
+    static const char* every_state = getenv("D1_NG_EVERY_STATE") ? getenv("D1_NG_EVERY_STATE") : "activity:in_world";
+    if (every_world >= 0 && nr::g_every > 1) {
+        static std::chrono::steady_clock::time_point t_world{};
+        const char* gs = game_state();
+        if (gs && std::strncmp(gs, every_state, std::strlen(every_state)) == 0) {
+            if (t_world == std::chrono::steady_clock::time_point{}) t_world = std::chrono::steady_clock::now();
+            else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_world).count() > every_world) {
+                nr::g_every = 1;
+                log("native gfx: now drawing every frame (D1_NG_EVERY_WORLD)");
+                if (getenv("D1_NG_PASSLOG_N")) ng::request_passlog(uint32_t(std::atoi(getenv("D1_NG_PASSLOG_N"))));
+            }
+        }
+    }
+}
+
 bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
     if (!nr::g_base || !ng::active()) return false;
     std::vector<std::pair<uint64_t, uint64_t>> ranges;
@@ -1352,24 +1750,7 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
             log("ng stale: %u of %zu draws in this submission were recorded %u+ frames before the newest (flip %u)", stale,
                 mine.size(), newest - oldest, newest);
     }
-    // D1_NG_EVERY_WORLD=<secs>: (testing) draw every frame from <secs> after reaching the world
-    // (or the state named by D1_NG_EVERY_STATE, a prefix, e.g. setup:orbit). With a large
-    // D1_NG_EVERY (e.g. 100000) nothing is drawn before that: a rendered check of a late
-    // screen at about headless speed.
-    static const double every_world = getenv("D1_NG_EVERY_WORLD") ? std::atof(getenv("D1_NG_EVERY_WORLD")) : -1;
-    static const char* every_state = getenv("D1_NG_EVERY_STATE") ? getenv("D1_NG_EVERY_STATE") : "activity:in_world";
-    if (every_world >= 0 && nr::g_every > 1) {
-        static std::chrono::steady_clock::time_point t_world{};
-        const char* gs = game_state();
-        if (gs && std::strncmp(gs, every_state, std::strlen(every_state)) == 0) {
-            if (t_world == std::chrono::steady_clock::time_point{}) t_world = std::chrono::steady_clock::now();
-            else if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t_world).count() > every_world) {
-                nr::g_every = 1;
-                log("native gfx: now drawing every frame (D1_NG_EVERY_WORLD)");
-                if (getenv("D1_NG_PASSLOG_N")) ng::request_passlog(uint32_t(std::atoi(getenv("D1_NG_PASSLOG_N"))));
-            }
-        }
-    }
+    nr_every_world();
     const bool run = (gpu_flip_count() % uint64_t(nr::g_every)) == 0;
     if (run && !mine.empty()) {
         std::vector<ng::Draw*> draws;
@@ -1386,6 +1767,93 @@ bool native_gfx_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* si
         nr::release_draws(done);
     }
     return run && !mine.empty() && queries;  // (the renderer answered the occlusion dumps)
+}
+
+// ---- native device layer: a submission names its command lists by their tokens
+bool native_device_active() { return nd::g_on; }
+void gnm_signal_eop();  // hle_gpu.cpp
+void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes) {
+    std::vector<nd::List*> lists;
+    {
+        std::lock_guard lk(nd::g_lists_m);
+        for (uint32_t k = 0; k < count; ++k) {
+            const uint32_t* p = dcbs[k];
+            const uint32_t n = p ? sizes[k] / 4 : 0;
+            for (uint32_t i = 0; i < n;) {
+                const uint32_t h = p[i], type = h >> 30;
+                if (type == 3) {
+                    const uint32_t cnt = (h >> 16) & 0x3FFF;
+                    if (((h >> 8) & 0xFF) == 0x10 && cnt == 2 && i + 3 < n && p[i + 1] == nd::kMagic) {
+                        const uint64_t id = p[i + 2] | uint64_t(p[i + 3]) << 32;
+                        if (auto it = nd::g_lists.find(id); it != nd::g_lists.end()) lists.push_back(it->second), nd::g_lists.erase(it);
+                    }
+                    i += cnt + 2;
+                } else if (type == 2) {
+                    i += 1;
+                } else {
+                    i += ((h >> 16) & 0x3FFF) + 2;
+                }
+            }
+        }
+        // lists whose submission never came (a few hundred frames old): dropped
+        static uint64_t sweep = 0;
+        if (++sweep % 256 == 0)
+            for (auto it = nd::g_lists.begin(); it != nd::g_lists.end();)
+                if (it->second->made + 300 < gpu_flip_count()) ++nd::g_orphans, nd::free_list(it->second), it = nd::g_lists.erase(it);
+                else ++it;
+    }
+    // the draws and events in order; constant buffer bindings replayed as the constant update
+    // engine shares them between contexts (in submission order)
+    std::vector<ng::Draw*> draws;
+    bool eop = false;
+    for (nd::List* l : lists) {
+        eop |= l->eop;
+        for (nd::Item& it : l->items) {
+            if (!it.d) {
+                nr::g_ce[it.cb.stage][it.cb.slot] = it.cb.cb;
+                continue;
+            }
+            ng::Draw* d = it.d;
+            if (nr::g_ce_order && d->kind <= ng::Draw::Clear)
+                for (int st = 0; st < 2; ++st)
+                    for (int sl = 0; sl < 16; ++sl)
+                        if (nr::g_ce[st][sl].addr) d->cb[st][sl] = nr::g_ce[st][sl];
+            draws.push_back(d);
+        }
+    }
+    nr_every_world();
+    const bool run = (gpu_flip_count() % uint64_t(nr::g_every)) == 0 && ng::active();
+    if (run && !draws.empty()) {
+        const auto t0 = std::chrono::steady_clock::now();
+        ng::execute(draws);
+        nr::g_exec_ns += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        nr::g_frame_executed = true;
+    } else {
+        // not drawn: the memory effects still happen, in order, and occlusion reads "visible"
+        for (ng::Draw* d : draws) {
+            switch (d->kind) {
+            case ng::Draw::Dma:
+                if (d->caller >= 0x10000 && d->index_addr >= 0x10000 && guest_region_extent(d->caller) >= d->count &&
+                    guest_region_extent(d->index_addr) >= d->count)
+                    std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
+                break;
+            case ng::Draw::WriteData:
+                if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->inline_vertices.size())
+                    std::memcpy(reinterpret_cast<void*>(d->caller), d->inline_vertices.data(), d->inline_vertices.size());
+                break;
+            case ng::Draw::ZPass: nd::answer_zpass(d->index_addr & ~0xFull, (d->index_addr & 0xF) != 0); break;
+            default: break;
+            }
+        }
+    }
+    nd::g_lists_run += lists.size();
+    {
+        static std::atomic<int> told{0};
+        if (getenv("D1_ND_LOG") && told++ < 60)
+            log("nd: submission of %u buffers: %zu lists, %zu items, eop %d, run %d", count, lists.size(), draws.size(), int(eop), int(run));
+    }
+    for (nd::List* l : lists) nd::free_list(l);
+    if (eop) gnm_signal_eop();
 }
 
 // Diagnostics (D1_NG_LOG_WAITS): memory waits still unsatisfied after the null GPU ran the

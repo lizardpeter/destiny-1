@@ -538,7 +538,11 @@ static void run_dcb(const uint32_t* p, uint64_t dwords, int depth) {
 }
 
 
+bool native_device_active();  // native_gfx.cpp (D1_ND): no PS4 command buffers at all
+void native_device_submit(uint32_t count, uint32_t* const* dcbs, const uint32_t* sizes);
+void gnm_signal_eop() { signal_eop(); }
 static void submit_now(uint32_t count, uint32_t* const* dcbs, const uint32_t* dcb_sizes) {
+    if (native_device_active()) return native_device_submit(count, dcbs, dcb_sizes);
     g_rendered = native_gfx_submit(count, dcbs, dcb_sizes);
     for (uint32_t k = 0; k < count; ++k)
         if (dcbs[k] && dcb_sizes[k]) run_dcb(dcbs[k], dcb_sizes[k] / 4, 0);

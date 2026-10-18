@@ -91,6 +91,23 @@ void* hook_eboot_function(uint64_t off, const void* host) {
     return hook_function(rt().modules[0].base + off, host);
 }
 
+// Exported (native_gfx.cpp): replace an eboot function outright (5-byte jmp to a near stub that
+// jumps to the host function; nothing of the original runs). False if no near stub is left.
+bool replace_eboot_function(uint64_t off, const void* host) {
+    const uint64_t guest = rt().modules[0].base + off;
+    uint8_t* stub = near_alloc(14);
+    if (!stub) return false;
+    uint8_t to_host[14] = {0xFF, 0x25, 0, 0, 0, 0};
+    const uint64_t h = reinterpret_cast<uint64_t>(host);
+    std::memcpy(to_host + 6, &h, 8);
+    std::memcpy(stub, to_host, 14);
+    auto* g = reinterpret_cast<uint8_t*>(guest);
+    const int32_t rel = int32_t(reinterpret_cast<int64_t>(stub) - int64_t(guest + 5));
+    g[0] = 0xE9;
+    std::memcpy(g + 1, &rel, 4);
+    return true;
+}
+
 // ---- bootflow prerequisite bypass (eboot+0x792ED0)
 // int check_prerequisite(state*, int prereq, ctx*, int* reason): 0 satisfied, 1 pending, 2 failed.
 // With D1_BYPASS=prereq a failed prerequisite is logged and reported as satisfied.

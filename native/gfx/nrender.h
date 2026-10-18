@@ -20,7 +20,7 @@ struct Draw {
     // Dma / WriteData: CP memory writes (DMA_DATA: src index_addr -> dst caller, count bytes,
     // prim = src_sel, index32 = dst_sel, instances = fill value; WRITE_DATA: inline_vertices -> caller),
     // done in order so draws after them read the new data
-    enum Kind : uint8_t { Indexed, Auto, Clear, ZPass, PredOn, PredOff, Dma, WriteData };
+    enum Kind : uint8_t { Indexed, Auto, Clear, ZPass, PredOn, PredOff, Dma, WriteData, Eop };
     Kind kind = Auto;
     uint8_t prim = 4;           // VGT_DI_PRIM_TYPE
     uint8_t index32 = 0;

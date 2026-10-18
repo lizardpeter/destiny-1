@@ -3157,6 +3157,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
                 }
             }
             break;
+        case Draw::Eop: break;  // (the device layer raises the event after the submission)
         case Draw::WriteData:
             if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->inline_vertices.size())
                 std::memcpy(reinterpret_cast<void*>(d->caller), d->inline_vertices.data(), d->inline_vertices.size());
