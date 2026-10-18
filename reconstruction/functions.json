@@ -7003,5 +7003,65 @@
   "size_bytes": null,
   "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:handle_pool_relocate:6fa10",
   "calls": []
+ },
+ {
+  "va": "0x818f80",
+  "name": "dynamic_texture_lock",
+  "subsystem": "engine.graphics",
+  "class": null,
+  "evidence": "Static decompilation (Ghidra) and runtime instrumentation (D1_ND_LOG_UNLOCK, D1_NG_LOG_FAULTS); findings/gpu_resources.md; names are HYPOTHESIS",
+  "file": "818f80_dynamic_texture_lock.c",
+  "role": "Locks a dynamic texture / render target slot (table 0x26F23B0, 0xE0 bytes) for CPU writes",
+  "size_bytes": null,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:dynamic_texture_lock:818f80",
+  "calls": []
+ },
+ {
+  "va": "0x818fa0",
+  "name": "dynamic_texture_unlock",
+  "subsystem": "engine.graphics",
+  "class": null,
+  "evidence": "Static decompilation (Ghidra) and runtime instrumentation (D1_ND_LOG_UNLOCK, D1_NG_LOG_FAULTS); findings/gpu_resources.md; names are HYPOTHESIS",
+  "file": "818fa0_dynamic_texture_unlock.c",
+  "role": "Unlocks a dynamic texture slot: the CPU write is complete (Unmap equivalent)",
+  "size_bytes": null,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:dynamic_texture_unlock:818fa0",
+  "calls": []
+ },
+ {
+  "va": "0x818dd0",
+  "name": "dynamic_texture_slot",
+  "subsystem": "engine.graphics",
+  "class": null,
+  "evidence": "Static decompilation (Ghidra) and runtime instrumentation (D1_ND_LOG_UNLOCK, D1_NG_LOG_FAULTS); findings/gpu_resources.md; names are HYPOTHESIS",
+  "file": "818dd0_dynamic_texture_slot.c",
+  "role": "Returns slot +4 of a dynamic texture / render target table entry",
+  "size_bytes": null,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:dynamic_texture_slot:818dd0",
+  "calls": []
+ },
+ {
+  "va": "0x81a600",
+  "name": "dynamic_texture_slot_lock",
+  "subsystem": "engine.graphics",
+  "class": null,
+  "evidence": "Static decompilation (Ghidra) and runtime instrumentation (D1_ND_LOG_UNLOCK, D1_NG_LOG_FAULTS); findings/gpu_resources.md; names are HYPOTHESIS",
+  "file": "81a600_dynamic_texture_slot_lock.c",
+  "role": "Slot lock: memory +0x40/+0x48, pitch +0xD8, locked bit",
+  "size_bytes": null,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:dynamic_texture_slot_lock:81a600",
+  "calls": []
+ },
+ {
+  "va": "0x88fe50",
+  "name": "dynamic_tables_update",
+  "subsystem": "engine.graphics",
+  "class": null,
+  "evidence": "Static decompilation (Ghidra) and runtime instrumentation (D1_ND_LOG_UNLOCK, D1_NG_LOG_FAULTS); findings/gpu_resources.md; names are HYPOTHESIS",
+  "file": "88fe50_dynamic_tables_update.c",
+  "role": "Refreshes two double-buffered CPU tables through lock / unlock each frame",
+  "size_bytes": null,
+  "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:dynamic_tables_update:88fe50",
+  "calls": []
  }
 ]
