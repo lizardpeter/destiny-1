@@ -1071,9 +1071,12 @@ std::vector<uint32_t> g_arena_free;
 uint8_t* arena_chunk() {
     std::lock_guard lk(g_arena_m);
     if (!g_arena) {
-        for (uint64_t at : {0x3F00000000ull, 0x3E00000000ull, 0x3D00000000ull}) {
-            void* p = os::alloc(at, kArenaSize, os::kRead | os::kWrite, false);
-            if (p && uint64_t(p) + kArenaSize < (1ull << 40)) { g_arena = static_cast<uint8_t*>(p); break; }
+        // near the top of the guest address range (Windows keeps guest mappings in
+        // 0x2_0000_0000..0x10_0000_0000), exactly there
+        for (uint64_t at : {0xF80000000ull, 0xF00000000ull, 0xE80000000ull, 0xE00000000ull, 0xD00000000ull}) {
+            void* p = os::alloc(at, kArenaSize, os::kRead | os::kWrite, true);
+            if (p == reinterpret_cast<void*>(at)) { g_arena = static_cast<uint8_t*>(p); break; }
+            if (p) os::release(p, kArenaSize);
         }
         if (!g_arena) { log("nd: no command-buffer arena below 1 TiB"); return nullptr; }
         for (uint32_t i = uint32_t(kArenaSize / kArenaChunk); i-- > 0;) g_arena_free.push_back(i);
