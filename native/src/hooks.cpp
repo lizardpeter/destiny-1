@@ -242,6 +242,7 @@ const char* game_state();
 // D1_TIMING_TRACE=1 (research): log every player control update in the world: wall time,
 // the update's dt, the summed dt (game time) and the desired facing (yaw, pitch), to compare
 // runs at different frame rates (with D1_STATE_PRESS scripting turns, fire, movement).
+static float g_real_tick = 0.0f;  // seconds of the current game tick (game_time_hook; 0 = unknown)
 using ImpulseFn = D1_SYSV uint64_t (*)(float, int32_t, float*, float*, void*);
 static ImpulseFn g_impulse_orig = nullptr;
 // Camera kick (recoil) samples (0x900AD0) are per-tick amounts tuned for 30 ticks a second,
@@ -1715,21 +1716,32 @@ static D1_SYSV void time_init_hook(void* cfg) {
 }
 static D1_SYSV void game_time_hook(float elapsed, float* dt, int32_t* ticks, float* dt2, int32_t* ticks2) {
     auto* tc = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BCD08);
+    auto* gt = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BC880);
+    static const bool nominal30 = getenv("D1_TICK_NOMINAL30") != nullptr;  // research: old behaviour
     if (tc && elapsed > 0.0f) {
-        // one tick of the frame's real duration: the game runs at most about two ticks per
+        // One tick of the frame's real duration. The game runs at most about two ticks per
         // frame (0x591710 caps the count), so fixed short ticks lose time whenever a frame
-        // takes longer than two periods (fps = 120 rendering at 50: slow motion)
-        const int64_t period = std::clamp<int64_t>(int64_t(double(elapsed) * 1e6 + 0.5), 1000, 33366);
-        *reinterpret_cast<int64_t*>(tc + 0x08) = period;
+        // takes longer than two periods (fps = 120 rendering at 50: slow motion).
+        // The simulation's tick dt is the nominal tick (game time globals +4 ticks per
+        // second, +8 seconds; 0x591B80; 0x591710 returns it as the tick's dt), so it follows
+        // the frame too, set before the call so this frame's ticks use it. It is kept a
+        // consistent pair, 1 / an integer rate (30..1000): a nominal off the console's exact
+        // 1/30 (29 ticks a second at 33.366 ms) hid the orbit character screen's character.
+        const int32_t rate = std::clamp<int32_t>(int32_t(1.0 / double(elapsed) + 0.5), 30, 1000);
+        *reinterpret_cast<int64_t*>(tc + 0x08) = (1000000 + rate / 2) / rate;
+        if (gt && !nominal30) {
+            *reinterpret_cast<int32_t*>(gt + 4) = rate;
+            *reinterpret_cast<float*>(gt + 8) = 1.0f / float(rate);
+        }
+        g_real_tick = 1.0f / float(rate);
     }
     g_game_time_orig(elapsed, dt, ticks, dt2, ticks2);
-    // the nominal tick (game time globals +4 ticks per second, +8 seconds; 0x591B80) follows
-    // the real tick too: timed effects advance by it every tick (camera kick curves), so a
-    // fixed 1/30 played them several times too fast at high frame rates
-    if (auto* gt = *reinterpret_cast<uint8_t**>(rt().modules[0].base + 0x26BC880); gt && tc) {
-        const int64_t period = *reinterpret_cast<int64_t*>(tc + 0x08);
-        *reinterpret_cast<float*>(gt + 8) = float(double(period) * 1e-6);
-        *reinterpret_cast<int32_t*>(gt + 4) = int32_t(1000000 / period);
+    static const bool trace = getenv("D1_TIMING_TRACE") != nullptr;
+    if (trace) {
+        static int n = 0;
+        const char* gs = game_state();
+        if (gs && std::strcmp(gs, "activity:in_world") == 0 && ++n < 20000)
+            log("timing: frame elapsed %.5f dt %.5f ticks %d dt2 %.5f ticks2 %d real %.5f", elapsed, *dt, *ticks, *dt2, *ticks2, g_real_tick);
     }
     static const int fps = settings().fps;
     if (tc && fps > 0)  // the limiter (0x594A3B) waits for the target period again

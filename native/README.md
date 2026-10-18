@@ -102,6 +102,9 @@ engine-side patch (not done yet).
 | env | effect |
 |---|---|
 | `D1_TRACE=1` | log every firmware call with its first three arguments |
+| `D1_TIMING_TRACE=1` | (research) in the world, log every frame's game time outputs (elapsed, tick dt, tick count) and the player update's dt / nominal / facing and camera kicks |
+| `D1_TICK_NOMINAL30=1` | (research) keep the console's fixed 1/30 nominal tick instead of the frame's real tick |
+| `D1_SEMA_BROADCAST=1` | (research) semaphore signals wake every waiter (the old behaviour) instead of only as many as the count allows |
 | `D1_CALL_STATS=1` | route every implemented import through the logging entry (call counts at exit, the last calls in crash reports); off by default, implemented imports jump straight to their code |
 | `D1_TRACE_CALLS=off[:n][/a[+bytes]],...` | (research) log the first n calls (default 20) of up to 16 eboot functions (hex offsets): six integer arguments, return value and caller; `/a` also dumps the memory argument a (0-5) points at before the call (default 0x80 bytes). Only for functions with at most six integer / pointer arguments |
 | `D1_GAME_LOG=1` or `=<substring>` | re-enable the engine's own logging (stripped thresholds in release) and print it |
@@ -139,6 +142,10 @@ Native renderer (`native/gfx`, the default without shadPS4):
 | `D1_GPU=<n>` | use the n-th Vulkan device |
 | `D1_NG_EVERY=<n>` / `D1_NG_EVERY_WORLD=<s>` / `D1_NG_EVERY_STATE=<state>` | draw every n-th frame only (software rendering); from `<s>` seconds in the world (or in the given state, e.g. `setup:orbit`), every frame. `D1_NG_EVERY=100000` skips drawing until then: rendered checks of a late screen at headless speed |
 | `D1_NG_NOCACHE=1` | no geometry cache and no texture change tracking |
+| `D1_NG_ASYNC=0` | record and submit on the game's submitting thread (default: a separate GPU queue thread, at most 2 flips ahead) |
+| `D1_NG_PUSH_DESCRIPTORS=0` | allocate a descriptor set per draw instead of pushing descriptors |
+| `D1_NG_RING_SYSMEM=1` | keep the upload ring in system memory (default: device-local host-visible memory when the GPU offers it) |
+| `D1_NG_PENDING_STATS=1` | log the pending draw / constant event lookups per submission |
 | `D1_NG_FRAMES_IN_FLIGHT=<n>` | frames the CPU may record ahead of the GPU (default 2) |
 | `D1_NG_READBACK=<pixels>` | largest never-sampled render target written back to guest memory for the CPU (default 4096, 0 off); `D1_NG_LOG_READBACK=1` lists the decisions |
 | `D1_NG_STATS=1` | renderer statistics every 5 s instead of 15 s |

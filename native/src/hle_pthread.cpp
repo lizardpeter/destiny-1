@@ -439,7 +439,8 @@ static int32_t sceKernelSignalSema(Sema* s, int n) {
             return sce_err(22);
         }
         s->count += n;
-        wake_all = s->multi > 0;
+        static const bool broadcast = getenv("D1_SEMA_BROADCAST") != nullptr;  // research: old behaviour
+        wake_all = broadcast || s->multi > 0;
         wake = std::min(n, s->waiters);
     }
     if (wake_all) s->cv.notify_all();
