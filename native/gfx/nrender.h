@@ -43,6 +43,12 @@ struct Draw {
     const uint32_t* T(int s, uint32_t i) const { return (tex_mask[s] >> (i & 15) & 1) ? tex[s][i & 15] : nullptr; }
     const uint32_t* S(int s, uint32_t i) const { return (smp_mask[s] >> (i & 15) & 1) ? smp[s][i & 15] : nullptr; }
     struct Cb { uint64_t addr; uint32_t size; } cb[kStages][16] = {};
+    // Engine resources (the engine's own bookkeeping, see native_gfx.cpp resreg): identity
+    // id << 32 | epoch, 0 when not a registered resource (then write-tracked). A resource's
+    // contents only change when its epoch does: per T# slot, per vertex declaration element
+    // (with the whole buffer's memory), and the index buffer.
+    uint64_t tex_res[kStages][16] = {};
+    struct Res { uint64_t id = 0, base = 0, size = 0; } vres[16], ires;
     // registers
     uint32_t blend = 0, target_mask = 0xF, su_sc_mode = 0, clip = 0, depth_ctl = 0, stencil_ctl = 0, stencil_ref = 0;
     float poly_offset = 0, poly_scale = 0;

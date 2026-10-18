@@ -830,7 +830,9 @@ void gpu_on_unmap(uint64_t addr, uint64_t size) {
     native_gfx_on_unmap(addr, size);
     if (gpu_real()) render::on_unmap(addr, size);
 }
+bool native_gfx_research_fault(void* uc, void* addr);  // native_gfx.cpp (D1_ND_POOL_WATCH)
 bool gpu_on_fault(void* uc, void* addr) {
+    if (native_gfx_research_fault(uc, addr)) return true;
     if (native_gfx_on_fault(addr)) return true;
     if (!gpu_real()) return false;
     const uint64_t t0 = now_ns();

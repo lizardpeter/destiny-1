@@ -321,6 +321,9 @@ struct Image {
     // small render targets: the memory's version when the GPU last rendered it (write
     // tracking); a CPU write since then makes the memory, not the image, the current contents
     uint64_t tv_version = ~0ull, tv_size = 0, tv_frame = 0;
+    // textures of engine resources: the resource's id << 32 | epoch when copied, and a hash of
+    // the guest memory then (a new epoch with the same contents - a move - keeps the image)
+    uint64_t res_val = 0, content = 0;
     uint64_t bound_serial = 0;  // render targets: when last bound for drawing
 };
 
@@ -356,6 +359,8 @@ struct Stats {
     // geometry, descriptors, commands; frames counted for averages
     uint64_t geo_stale = 0, predicated = 0, zpass_dumps = 0, t_bind = 0, t_view = 0, t_vkimg = 0, t_heap = 0, heap_scans = 0, heap_blocks_new = 0, t_detile = 0, t_fill = 0, t_watch = 0, t_mkimg = 0, t_tgt = 0, t_tex_hit = 0, t_tex_load = 0, tex_checks = 0, tex_unwatched = 0, t_pre = 0, t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, t_frames = 0, t_draws = 0, memo_hits = 0, memo_misses = 0, memo_gen = 0;
     uint64_t t_wait = 0, t_submit = 0;  // waiting for the GPU (fences), vkQueueSubmit2
+    // engine resources: uses with an unchanged epoch, moves with the same contents, real changes
+    uint64_t res_hits = 0, res_moves = 0, res_changed = 0, geo_res_hits = 0, geo_res_moves = 0, geo_res_changed = 0;
     std::unordered_map<std::string, uint64_t> skip;
 };
 
@@ -421,7 +426,8 @@ struct GeoEntry {
     uint32_t misses = 0;
     uint32_t vfirst = 0, vlast = 0;  // index buffers: the vertex range they reference
     bool valid = false;
-    uint64_t hash = 0;  // D1_NG_GEO_VERIFY: of the guest bytes when copied
+    uint64_t hash = 0;  // of the guest bytes when copied (engine resources; D1_NG_GEO_VERIFY)
+    uint64_t res = 0;   // engine resource: id << 32 | epoch when copied
 };
 struct GeoBlock {
     Buffer buf;
@@ -479,9 +485,12 @@ struct Renderer {
     bool geo_alloc(uint64_t size, int& block, uint64_t& off);
     void geo_free_now(int block, uint64_t off, uint64_t size);
     void geo_free_later(int block, uint64_t off, uint64_t size);
-    bool geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, GeoHit& hit);
-    GeoEntry* geo_lookup(uint64_t addr, uint64_t size, int index_size, uint32_t index_count);
+    // res / rbase: an engine resource (id << 32 | epoch) and its memory's start: kept by
+    // identity and epoch instead of write tracking
+    bool geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, GeoHit& hit, uint64_t res = 0, uint64_t rbase = 0);
+    GeoEntry* geo_lookup(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, uint64_t res, uint64_t rbase);
     static thread_local GeoHit geo_hit_out;  // (geo_lookup's result, copied while its shard is locked)
+    GeoEntry* geo_lookup_res(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, uint64_t res, uint64_t rbase);
     void evict_geo();
     uint64_t pcache_saved_pipelines = 0;
     void save_pipeline_cache();
@@ -680,8 +689,17 @@ struct Renderer {
     std::unordered_map<uint64_t, std::vector<Image*>> images_by_base;  // every render target image per address
     uint64_t bind_serial = 0;
     Image* target_for(const fmt::TSharp& ts);
-    VkImageView texture_view(const uint32_t* t, gcn::TexDim dim);
-    Image* upload_texture(const uint32_t* t);
+    VkImageView texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t res = 0);
+    Image* upload_texture(const uint32_t* t, uint64_t res = 0);
+    // the textures map key: the T#, or for an engine resource its identity and the T# without
+    // its base address (a resource the engine moves keeps its key)
+    static uint64_t tex_key(const uint32_t* t, uint64_t res) {
+        if (!res) return hash_bytes(t, 32);
+        uint32_t c[8];
+        std::memcpy(c, t, 32);
+        c[0] = 0, c[1] &= ~0xFFu;
+        return hash_bytes(c, 32, (res >> 32) * 0x9E3779B97F4A7C15ull) | 1;
+    }
     void evict_textures();
     VkSampler sampler(const uint32_t* s);
     Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in = 0,
@@ -1535,21 +1553,46 @@ Image* Renderer::depth_target(const uint32_t* d, bool bind) {
     return img;
 }
 
-Image* Renderer::upload_texture(const uint32_t* t) {
+Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
     const uint64_t t_in = now_ns();
     struct LoadTimer {
         Renderer* r;
         uint64_t t0;
         ~LoadTimer() { r->st.t_tex_load += now_ns() - t0; }
     };
-    const uint64_t key = hash_bytes(t, 32);
+    const uint64_t key = tex_key(t, res);
     ++st.tex_checks;
     std::unique_ptr<Image> prev;
     auto it = textures.find(key);
-    if (it != textures.end()) {
+    bool found = it != textures.end();
+    if (found) {
         Image* img = it->second.get();
         if (!img) return nullptr;
         img->last_used = rc().submit_no;
+        if (res && img->res_val) {
+            // an engine resource: unchanged while its epoch is; after an event (a move, most
+            // often) the same contents at the new address keep the image
+            if (img->res_val == res) {
+                ++st.res_hits;
+                st.t_tex_hit += now_ns() - t_in;
+                return img;
+            }
+            const auto ts0 = fmt::decode_tsharp(t);
+            if (img->src_size && guest_region_extent(ts0.base) >= img->src_size &&
+                hash_bytes(reinterpret_cast<const void*>(ts0.base), img->src_size) == img->content) {
+                img->res_val = res, img->src_addr = ts0.base;
+                ++st.res_moves;
+                st.t_tex_hit += now_ns() - t_in;
+                return img;
+            }
+            ++st.res_changed;
+            prev = std::move(it->second);
+            textures.erase(it), found = false; ++views_gen;
+            ++st.tex_reloads;
+        }
+    }
+    if (found) {
+        Image* img = it->second.get();
         // rewritten textures are noticed at the next submission that uses them: the game may rewrite
         // a texture between two submissions of one frame (the null GPU finishes work at once)
         if (img->checked == rc().submit_no || !img->src_size || !opt.version) {
@@ -1601,14 +1644,17 @@ Image* Renderer::upload_texture(const uint32_t* t) {
         if (prev && prev->format == f && prev->w == ts.width && prev->h == ts.height && prev->d == sf.depth &&
             prev->layers == sf.layers && prev->levels == sf.levels && prev->cube == cube && prev->is3d == is3d) {
             img = std::move(prev);
-            img->torn = 0;
+            img->torn = 0, img->res_val = 0;
             ++st.tex_inplace;
         } else {
             const uint64_t tm = now_ns();
             img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
             st.t_mkimg += now_ns() - tm;
         }
-        if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
+        if (img && res) {  // an engine resource: its events say when it changes (no write tracking)
+            img->res_val = res, img->src_addr = ts.base, img->src_size = sf.total_size, img->version = ~0ull;
+            img->content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
+        } else if (img && opt.watch) {  // protect first, then copy: a later write shows up as a new version
             const uint64_t tw = now_ns();
             img->version = opt.watch(ts.base, sf.total_size);
             st.t_watch += now_ns() - tw;
@@ -1684,7 +1730,7 @@ Image* Renderer::upload_texture(const uint32_t* t) {
                     ts.height, ts.dfmt, ts.nfmt, fv[0], fv[1], fv[2], fv[3], fv[4], fv[5], fv[6], fv[7]);
             }
             // written while we copied (another thread is filling it): the copy may be torn
-            if (out && img->src_size && opt.version(img->src_addr, img->src_size) != img->version) {
+            if (out && !res && img->src_size && opt.version(img->src_addr, img->src_size) != img->version) {
                 ++st.tex_torn;
                 if (prev && prev->torn < 2) {  // show the previous contents one more frame
                     prev->torn++, prev->checked = rc().submit_no, prev->last_used = rc().submit_no;
@@ -1860,13 +1906,69 @@ void Renderer::geo_free_later(int block, uint64_t off, uint64_t size) {
 
 // A GPU copy of guest memory [addr, addr+size), valid for this submission, or null (then the
 // caller copies into the ring). Buffers the game keeps rewriting are not cached for a while.
-bool Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, GeoHit& hit) {
-    GeoEntry* ep = geo_lookup(addr, size, index_size, index_count);
+bool Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, GeoHit& hit, uint64_t res, uint64_t rbase) {
+    GeoEntry* ep = geo_lookup(addr, size, index_size, index_count, res, rbase);
     return ep != nullptr && (hit = geo_hit_out, true);
 }
 
-GeoEntry* Renderer::geo_lookup(uint64_t addr, uint64_t size, int index_size, uint32_t index_count) {
-    if (!opt.watch || !opt.version || addr < 0x10000 || !size || size >= (16ull << 20) || (debug_toggles() & 8)) return nullptr;
+// An engine resource's bytes [addr, addr + size): kept while the resource's epoch is unchanged
+// (the engine only changes them with an event: bind, move, release), compared once after an
+// event (a move keeps the contents), never write-tracked. Keyed by the resource and the offset
+// in it, so a move does not make a new entry.
+GeoEntry* Renderer::geo_lookup_res(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, uint64_t res, uint64_t rbase) {
+    const uint64_t key = (mix(mix(res >> 32, addr - rbase), size) | 1ull << 63);
+    GeoShard& sh = geo_shards[(key * 0x9E3779B97F4A7C15ull) >> 58];
+    std::unique_lock shard_lock(sh.m);
+    GeoEntry& e = sh.map[key];
+    e.last_used = submit_seq.load(std::memory_order_relaxed);
+    const uint64_t ext = guest_region_extent(addr);
+    if (!ext || ext < size) return nullptr;
+    if (e.valid) {
+        if (e.res == res) {
+            __atomic_fetch_add(&st.geo_hits, 1, __ATOMIC_RELAXED);
+            __atomic_fetch_add(&st.geo_res_hits, 1, __ATOMIC_RELAXED);
+            geo_hit_out = {geo_blocks[size_t(e.block)].buf.buf, e.off, e.size, e.vfirst, e.vlast};
+            return &e;
+        }
+        if (e.size == size && hash_bytes(reinterpret_cast<const void*>(addr), size) == e.hash) {  // moved
+            e.res = res;
+            __atomic_fetch_add(&st.geo_res_moves, 1, __ATOMIC_RELAXED);
+            geo_hit_out = {geo_blocks[size_t(e.block)].buf.buf, e.off, e.size, e.vfirst, e.vlast};
+            return &e;
+        }
+        __atomic_fetch_add(&st.geo_res_changed, 1, __ATOMIC_RELAXED);
+        geo_free_later(e.block, e.off, e.size);
+        e.valid = false;
+    }
+    if (!geo_alloc(size, e.block, e.off)) return nullptr;
+    e.size = size;
+    uint8_t* dst = geo_blocks[size_t(e.block)].buf.map + e.off;
+    std::memcpy(dst, reinterpret_cast<const void*>(addr), size);
+    __atomic_fetch_add(&st.bytes_geo, size, __ATOMIC_RELAXED);
+    e.hash = hash_bytes(reinterpret_cast<const void*>(addr), size);  // (of guest memory: compared after a move)
+    if (index_size) {  // the vertex range the indices reference
+        uint32_t lo = UINT32_MAX, hi = 0;
+        if (index_size == 4) {
+            const uint32_t* ix = reinterpret_cast<const uint32_t*>(dst);
+            for (uint32_t i = 0; i < index_count; ++i)
+                if (ix[i] != 0xFFFFFFFFu) lo = std::min(lo, ix[i]), hi = std::max(hi, ix[i]);
+        } else {
+            const uint16_t* ix = reinterpret_cast<const uint16_t*>(dst);
+            for (uint32_t i = 0; i < index_count; ++i)
+                if (ix[i] != 0xFFFF) lo = std::min<uint32_t>(lo, ix[i]), hi = std::max<uint32_t>(hi, ix[i]);
+        }
+        if (lo > hi) lo = hi = 0;
+        e.vfirst = lo, e.vlast = hi;
+    }
+    e.res = res, e.uploaded = e.last_used, e.valid = true;
+    geo_hit_out = {geo_blocks[size_t(e.block)].buf.buf, e.off, e.size, e.vfirst, e.vlast};
+    return &e;
+}
+
+GeoEntry* Renderer::geo_lookup(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, uint64_t res, uint64_t rbase) {
+    if (addr < 0x10000 || !size || size >= (64ull << 20) || (debug_toggles() & 8)) return nullptr;
+    if (res && addr >= rbase) return geo_lookup_res(addr, size, index_size, index_count, res, rbase);
+    if (!opt.watch || !opt.version || size >= (16ull << 20)) return nullptr;
     const uint64_t key = addr | size << 40;  // exact: addr < 2^40, size <= 16 MiB
     GeoShard& sh = geo_shards[(key * 0x9E3779B97F4A7C15ull) >> 58];
     std::unique_lock shard_lock(sh.m);
@@ -2015,7 +2117,7 @@ Image* Renderer::target_for(const fmt::TSharp& ts) {
 }
 
 thread_local Image* tv_texture = nullptr;  // (texture_view: the uploaded texture it returned a view of, if any)
-VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
+VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t res) {
     tv_texture = nullptr;
     const auto vt = view_type(dim);
     if (!t) return view(dummy[int(dim)].get(), vt, {}, 0, false);
@@ -2045,7 +2147,7 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim) {
         }
         return view(img, img->is3d ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D, comp, 0, false);
     }
-    auto it = textures.find(hash_bytes(t, 32));
+    auto it = textures.find(tex_key(t, res));
     Image* img = it != textures.end() ? it->second.get() : nullptr;
     if (!img) return view(dummy[int(dim)].get(), vt, {}, 0, false);
     img->last_used = rc().submit_no;
@@ -2861,7 +2963,9 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
     uint64_t ige_off = 0;
     if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count && dr.prim != 0x13) {
         GeoHit h;
-        if (geo_get(dr.index_addr, uint64_t(dr.count) * (dr.index32 ? 4 : 2), dr.index32 ? 4 : 2, dr.count, h))
+        const uint64_t ibytes = uint64_t(dr.count) * (dr.index32 ? 4 : 2);
+        const bool ires = dr.ires.id && dr.index_addr >= dr.ires.base && dr.index_addr + ibytes <= dr.ires.base + dr.ires.size;
+        if (geo_get(dr.index_addr, ibytes, dr.index32 ? 4 : 2, dr.count, h, ires ? dr.ires.id : 0, dr.ires.base))
             ige = true, ige_buf = h.buf, ige_off = h.off, vfirst = h.vfirst, vlast = h.vlast;
     }
     else if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
@@ -2900,6 +3004,17 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         }
         uint64_t size = stride ? uint64_t(last - first + 1) * stride : 16;
         uint64_t src = base + uint64_t(first) * stride;
+        // an engine resource: the whole buffer, by its identity
+        if (const Draw::Res& R = dr.vres[slot]; R.id && dr.inline_vertices.empty() && stride && base >= R.base &&
+                                                 src + size <= R.base + R.size) {
+            GeoHit h;
+            if (geo_get(R.base, R.size, 0, 0, h, R.id, R.base)) {
+                vbufs[slot] = h.buf, voffs[slot] = h.off + (src - R.base);
+                vsizes[slot] = std::min<uint64_t>(size, R.size - (src - R.base));
+                vmask |= 1u << slot;
+                continue;
+            }
+        }
         // the whole buffer from the geometry cache
         if (dr.inline_vertices.empty() && stride && base >= 0x10000) {
             GeoHit h;
@@ -2949,7 +3064,8 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                 static thread_local TvEntry tvc[2048];
                 const uint32_t* T = dr.T(s, slot);
                 const gcn::TexDim dim = slot_dim(T);
-                const uint64_t key = (T ? hash_bytes(T, 32) : 0x5A5A) ^ (uint64_t(dim) + 1) * 0x9E3779B97F4A7C15ull;
+                const uint64_t tres = T ? dr.tex_res[s][slot & 15] : 0;
+                const uint64_t key = (T ? hash_bytes(T, 32) ^ tres * 0xC2B2AE3D27D4EB4Full : 0x5A5A) ^ (uint64_t(dim) + 1) * 0x9E3779B97F4A7C15ull;
                 const uint64_t gen = views_gen.load(std::memory_order_acquire);
                 TvEntry& e = tvc[key & 2047];
                 VkImageView v;
@@ -2958,11 +3074,11 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                     if (e.tex) e.tex->last_used = rc().submit_no;  // (keeps it from being dropped as unused)
                 } else {
                     auto lk = guard(tex_m);
-                    v = texture_view(T, dim);
+                    v = texture_view(T, dim, tres);
                     Image* tex = tv_texture;
                     if (T)
                         if (Image* ri = target_for(fmt::decode_tsharp(T)))
-                            v = texture_view(T, ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D), tex = nullptr;
+                            v = texture_view(T, ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D, tres), tex = nullptr;
                     e = {key, gen, v, tex};
                 }
                 images[s][nw[s]] = {VK_NULL_HANDLE, v, VK_IMAGE_LAYOUT_GENERAL};
@@ -3336,14 +3452,14 @@ void Renderer::pre_pass(const std::vector<Draw*>& draws) {
         for (int s = 0; s < 2; ++s)
             for (int i = 0; i < 16; ++i)
                 if (const uint32_t* t = d->T(s, i)) {
-                    const uint64_t k = hash_bytes(t, 32);
+                    const uint64_t k = hash_bytes(t, 32) ^ d->tex_res[s][i];
                     Seen& e = seen[k & (seen.size() - 1)];
                     if (e.key == k && e.sub == rc().submit_no) continue;
                     e = {k, rc().submit_no};
                     const uint64_t b = fmt::decode_tsharp(t).base;
                     const bool is_target = target_bases.count(b) != 0;
                     if (is_target) tsharp_bases.insert(b);  // (only render target addresses matter there)
-                    if (!is_target || !target_current(b)) upload_texture(t);
+                    if (!is_target || !target_current(b)) upload_texture(t, d->tex_res[s][i]);
                 }
     barrier();
     st.t_pre += now_ns() - tp;
@@ -4408,6 +4524,12 @@ void print_stats() {
         log("native renderer: new images per frame: vkCreateImage %.2f ms, memory %.2f ms (%.0f free ranges scanned, %llu new blocks), bind %.2f ms, view %.2f ms",
             double(s.t_vkimg) / f / 1e6, double(s.t_heap) / f / 1e6, double(s.heap_scans) / f, (unsigned long long)s.heap_blocks_new, double(s.t_bind) / f / 1e6, double(s.t_view) / f / 1e6);
     s.t_bind = s.t_view = 0;
+    if (s.res_hits || s.geo_res_hits || s.res_moves || s.geo_res_moves)
+        log("native renderer: engine resources (no write tracking): textures %llu kept, %llu moved with the same contents, %llu changed | "
+            "buffers %llu kept, %llu moved with the same contents, %llu changed",
+            (unsigned long long)s.res_hits, (unsigned long long)s.res_moves, (unsigned long long)s.res_changed,
+            (unsigned long long)s.geo_res_hits, (unsigned long long)s.geo_res_moves, (unsigned long long)s.geo_res_changed);
+    s.res_hits = s.res_moves = s.res_changed = s.geo_res_hits = s.geo_res_moves = s.geo_res_changed = 0;
     if (s.zpass_dumps || s.predicated)
         log("native renderer: occlusion: %llu counter dumps, %llu predicated draws%s", (unsigned long long)s.zpass_dumps,
             (unsigned long long)s.predicated, g->ctx.conditional_rendering ? "" : " (no conditional rendering: drawn)");

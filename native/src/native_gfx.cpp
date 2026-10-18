@@ -38,6 +38,7 @@
 
 #ifndef _WIN32
 #include <sys/syscall.h>
+#include <ucontext.h>
 #include <unistd.h>
 #endif
 
@@ -390,6 +391,18 @@ uint64_t resolve_handle(uint32_t h) {
     const uint64_t mask = uint64_t(int64_t(field<int32_t>(pool, 0x34)));
     return (pbase + off) - (mask & field<uint64_t>(pbase + off, 8));
 }
+// the same for a handle that may name an unloaded pool (0 then)
+uint64_t resolve_handle_safe(uint32_t h) {
+    const uint64_t tbl = *reinterpret_cast<const uint64_t*>(eb<uint64_t>(0x1A238A0));
+    const int32_t hs = int32_t(h) >> 13;
+    const uint64_t pool = tbl + uint64_t(((uint32_t(hs) >> 18) | 0x3FF) & uint32_t(hs)) * 0x40;
+    const uint64_t pbase = field<uint64_t>(pool, 0x10);
+    const uint32_t esz = field<uint32_t>(pool, 0x30);
+    if (!pbase || !esz || (h & 0x1FFF) * uint64_t(esz) >= field<uint64_t>(pool, 0x20) - pbase) return 0;
+    const uint64_t off = uint64_t(h & 0x1FFF) * esz;
+    const uint64_t mask = uint64_t(int64_t(field<int32_t>(pool, 0x34)));
+    return (pbase + off) - (mask & field<uint64_t>(pbase + off, 8));
+}
 
 int gnm_stage_index(uint32_t gnm_stage) { return gnm_stage == 1 ? 1 : gnm_stage == 2 ? 0 : -1; }
 
@@ -405,7 +418,191 @@ uint32_t vertex_count(uint32_t prim, uint32_t n) {
     }
 }
 
+// ---------------------------------------------------------------------------- resource registry
+// The engine's GPU resources as the engine itself manages them (findings/gpu_resources.md):
+// every bind / re-point / release / move / mip change of a texture (types 1-3: the object is
+// the T#), vertex buffer (4) or index buffer (6) bumps the object's epoch. The renderer keeps
+// its copy of a registered resource while the epoch is unchanged - no write tracking, no
+// version checks - and compares contents once when it changes (a move usually keeps them).
+// Reads are lock-free (draw capture, every texture slot of every draw).
+namespace resreg {
+constexpr uint32_t kBits = 18;
+constexpr size_t kSlots = size_t(1) << kBits, kProbe = 64;
+struct Slot { std::atomic<uint64_t> key{0}, val{0}; };
+Slot* g_slots = nullptr;
+std::mutex g_wm;
+uint32_t g_next_id = 0;
+size_t g_used = 0;
+std::atomic<uint64_t> g_events{0};
+bool g_on = false;
+inline size_t home(uint64_t k) { return size_t((k * 0x9E3779B97F4A7C15ull) >> (64 - kBits)); }
+// id << 32 | epoch, or 0 when the object is not a registered resource
+inline uint64_t get(uint64_t key) {
+    if (!g_slots || key < 0x10000) return 0;
+    const size_t h = home(key);
+    for (size_t i = 0; i < kProbe; ++i) {
+        Slot& sl = g_slots[(h + i) & (kSlots - 1)];
+        const uint64_t k = sl.key.load(std::memory_order_acquire);
+        if (k == key) return sl.val.load(std::memory_order_acquire);
+        if (!k) return 0;
+    }
+    return 0;
+}
+// an event on the object: a new epoch (insert = false: only if it is registered already)
+void touch(uint64_t key, bool insert) {
+    if (!g_slots || key < 0x10000) return;
+    std::lock_guard lk(g_wm);
+    const size_t h = home(key);
+    for (size_t i = 0; i < kProbe; ++i) {
+        Slot& sl = g_slots[(h + i) & (kSlots - 1)];
+        const uint64_t k = sl.key.load(std::memory_order_relaxed);
+        if (k == key) {
+            const uint64_t v = sl.val.load(std::memory_order_relaxed);
+            sl.val.store((v & ~0xFFFFFFFFull) | ((v + 1) & 0xFFFFFFFFull), std::memory_order_release);
+            ++g_events;
+            return;
+        }
+        if (!k) {
+            if (!insert || g_used * 10 > kSlots * 7) return;  // (full: unregistered, write-tracked as before)
+            sl.val.store(uint64_t(++g_next_id) << 32 | 1, std::memory_order_relaxed);
+            sl.key.store(key, std::memory_order_release);
+            ++g_used, ++g_events;
+            return;
+        }
+    }
+}
+// the resource object a (type, handle) names, 0 for the types the renderer does not track
+uint64_t object_of(uint32_t type, uint32_t handle) {
+    if (handle == 0xFFFFFFFFu || !(type >= 1 && type <= 4) && type != 6) return 0;
+    const uint64_t o = resolve_handle_safe(handle);
+    return o >= 0x10000 ? o : 0;
+}
+void event(uint32_t type, uint32_t handle, bool insert) {
+    if (const uint64_t o = object_of(type, handle)) touch(o, insert);
+}
+// a handle of unknown type (moves): whichever object it names, if registered
+void event_any(uint32_t handle) {
+    if (handle == 0xFFFFFFFFu) return;
+    if (const uint64_t o = resolve_handle_safe(handle)) touch(o, false);
+}
+void init() {
+    if (g_slots) return;
+    g_slots = new Slot[kSlots];
+    g_on = true;
+}
+}  // namespace resreg
+
 ng::Draw* alloc_draw();
+void resev_check_draw(uint64_t dev);  // (below)
+
+// D1_ND_RES_STATS=1: (research) which handle pools the draws' vertex / index buffers and
+// textures come from, logged every 600 flips with each pool's descriptor once
+namespace resstats {
+std::mutex m;
+struct Pool { uint64_t vb = 0, ib = 0, tex = 0; std::unordered_set<uint32_t> handles; bool dumped = false; };
+std::map<uint32_t, Pool> pools;
+uint64_t tex_other = 0, tex_total = 0, vb_total = 0, ib_noobj = 0, last_flip = 0, draws = 0, no_decl = 0, decl_no_handle = 0, decl_zero = 0;
+std::map<uint64_t, uint64_t> tex_other_regions;  // T# pointer >> 24 -> count
+uint32_t pool_of(uint32_t h) {
+    const int32_t hs = int32_t(h) >> 13;
+    return ((uint32_t(hs) >> 18) | 0x3FF) & uint32_t(hs);
+}
+// the pool whose element array holds `p` (UINT32_MAX: none)
+uint32_t pool_holding(uint64_t p) {
+    const uint64_t tbl = *reinterpret_cast<const uint64_t*>(eb<uint64_t>(0x1A238A0));
+    for (uint32_t i = 0; i < 1024; ++i) {
+        const uint64_t d = tbl + uint64_t(i) * 0x40;
+        const uint64_t base = field<uint64_t>(d, 0x10);
+        const uint32_t esz = field<uint32_t>(d, 0x30);
+        if (!base || !esz) continue;
+        if (p >= base && p < base + uint64_t(esz) * 0x2000) return i;
+    }
+    return UINT32_MAX;
+}
+void dump_pool(uint32_t i) {
+    const uint64_t tbl = *reinterpret_cast<const uint64_t*>(eb<uint64_t>(0x1A238A0));
+    const uint64_t* q = reinterpret_cast<const uint64_t*>(tbl + uint64_t(i) * 0x40);
+    std::string t;
+    for (int k = 0; k < 8; ++k) {
+        char b[24];
+        std::snprintf(b, sizeof b, " %016llx", (unsigned long long)q[k]);
+        t += b;
+    }
+    // a name string at one of the fields?
+    for (int k = 0; k < 8; ++k)
+        if (q[k] >= 0x10000 && guest_region_extent(q[k]) >= 4) {
+            const char* c = reinterpret_cast<const char*>(q[k]);
+            bool txt = true;
+            for (int j = 0; j < 4; ++j) txt &= c[j] >= 0x20 && c[j] < 0x7F;
+            if (txt) { t += " | +"; t += std::to_string(k * 8); t += " \""; t.append(c, strnlen(c, 40)); t += "\""; }
+        }
+    log("nd res pool %u:%s", i, t.c_str());
+}
+void note(uint64_t dev, const ng::Draw* d) {
+    std::lock_guard lk(m);
+    for (int st = 0; st < 2; ++st)
+        for (int i = 0; i < 16; ++i)
+            if (d->tex_mask[st] >> i & 1) {
+                ++tex_total;
+                const uint64_t t = field<uint64_t>(dev, 0x1E78 + (st ? 1 : 2) * 0x80 + i * 8);
+                const uint32_t pl = pool_holding(t);
+                if (pl == UINT32_MAX) ++tex_other, ++tex_other_regions[t >> 28];
+                else ++pools[pl].tex;
+            }
+    ++draws;
+    if (!field<uint64_t>(dev, 0x1D60)) ++no_decl;
+    else if (!field<uint32_t>(field<uint64_t>(dev, 0x1D60), 0)) ++decl_zero;
+    if (const uint64_t decl = field<uint64_t>(dev, 0x1D60)) {
+        const uint32_t n = std::min(field<uint32_t>(decl, 0), 16u);
+        uint32_t seen = 0;
+        bool any = false;
+        for (uint32_t i = 0; i < n; ++i)
+            any |= field<uint32_t>(dev, 0x1D78 + 4 * (field<uint8_t>(decl, 0x19 + 8 * i) & 31)) != 0xFFFFFFFFu;
+        if (n && !any) ++decl_no_handle;
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t stream = field<uint8_t>(decl, 0x19 + 8 * i) & 31;
+            const uint32_t h = field<uint32_t>(dev, 0x1D78 + 4 * stream);
+            if (h == 0xFFFFFFFFu || (seen >> stream & 1)) continue;
+            seen |= 1u << stream;
+            Pool& p = pools[pool_of(h)];
+            ++p.vb, ++vb_total;
+            p.handles.insert(h);
+        }
+    }
+    {  // (the kind is set after the capture: the bound index buffer)
+        const uint32_t h = field<uint32_t>(dev, 0x1D68);
+        if (!field<uint64_t>(dev, 0x1D70) || h == 0xFFFFFFFFu) ++ib_noobj;
+        else {
+            Pool& p = pools[pool_of(h)];
+            ++p.ib;
+            p.handles.insert(h);
+        }
+    }
+    if (gpu_flip_count() >= last_flip + 600) {
+        last_flip = gpu_flip_count();
+        std::string t;
+        for (auto& [i, p] : pools) {
+            char b[160];
+            std::snprintf(b, sizeof b, " [pool %u: vb %llu ib %llu tex %llu, %zu handles]", i, (unsigned long long)p.vb,
+                          (unsigned long long)p.ib, (unsigned long long)p.tex, p.handles.size());
+            t += b;
+            if (!p.dumped) p.dumped = true, dump_pool(i);
+        }
+        std::string r;
+        for (auto& [k, v] : tex_other_regions) {
+            char b[48];
+            std::snprintf(b, sizeof b, " %llx0000000:%llu", (unsigned long long)k, (unsigned long long)v);
+            r += b;
+        }
+        log("nd res: %llu draws (%llu without a vertex declaration, %llu with an empty one, %llu with no stream handle)",
+            (unsigned long long)draws, (unsigned long long)no_decl, (unsigned long long)decl_zero, (unsigned long long)decl_no_handle);
+        draws = no_decl = decl_zero = decl_no_handle = 0;
+        log("nd res: %llu vb binds, %llu ib without object, %llu textures (%llu outside pools:%s) |%s", (unsigned long long)vb_total,
+            (unsigned long long)ib_noobj, (unsigned long long)tex_total, (unsigned long long)tex_other, r.c_str(), t.c_str());
+        pools.clear(), tex_other_regions.clear(), tex_other = tex_total = vb_total = ib_noobj = 0;
+    }
+}
+}  // namespace resstats
 
 // Common state of every draw, read from the device object.
 thread_local uint64_t t_capture_dev = 0;  // (the device context of the last capture: push() files it there)
@@ -433,6 +630,7 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
             const uint64_t obj = resolve_handle(h);
             const uint64_t base = field<uint64_t>(obj, 0x28) + off + field<uint32_t>(dev, 0x1DF8 + 4 * stream);
             build_vsharp(d->vb[i], base, fmt, stride, ds->vb_count[stream]);
+            if (resreg::g_on) d->vres[i] = {resreg::get(obj), field<uint64_t>(obj, 0x28), field<uint32_t>(obj, 0)};
         }
     }
     for (int s = 0; s < 2; ++s) {
@@ -441,6 +639,7 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
             if (const uint64_t t = field<uint64_t>(dev, 0x1E78 + gnm * 0x80 + i * 8); t >= 0x10000) {
                 std::memcpy(d->tex[s][i], reinterpret_cast<const void*>(t), 32);
                 d->tex_mask[s] |= uint16_t(1u << i);
+                d->tex_res[s][i] = resreg::g_on ? resreg::get(t) : 0;
             }
             if (const uint64_t p = field<uint64_t>(dev, (s ? 0x2278 : 0x22F8) + i * 8); p >= 0x10000) {
                 std::memcpy(d->smp[s][i], reinterpret_cast<const void*>(p), 16);
@@ -468,6 +667,10 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
     d->znear = field<float>(dev, 0x2588), d->zfar = field<float>(dev, 0x258C), d->zk = eb<float>(0x165FEA0);
     for (int i = 0; i < 5; ++i) std::memcpy(d->color[i], reinterpret_cast<const void*>(dev + kColorTarget0 + 0x2C * i), 44);
     std::memcpy(d->depth, reinterpret_cast<const void*>(dev + 0x26B0), 52);
+    static const bool res_stats = getenv("D1_ND_RES_STATS") != nullptr;
+    if (res_stats) resstats::note(dev, d);
+    static const bool res_events = getenv("D1_ND_RES_EVENTS") != nullptr;
+    if (res_events) resev_check_draw(dev);
     return d;
 }
 
@@ -492,6 +695,8 @@ ng::Draw* alloc_draw() {
     d->count = 0, d->instances = 1, d->index_addr = 0, d->order = 0, d->seq = 0, d->frame = 0, d->caller = 0;
     d->vs = d->ps = nullptr, d->num_vb = 0;
     std::memset(d->vb, 0, sizeof d->vb);
+    for (auto& r : d->vres) r = {};
+    d->ires = {};
     d->tex_mask[0] = d->tex_mask[1] = d->smp_mask[0] = d->smp_mask[1] = 0;
     d->clear_color[0] = d->clear_color[1] = d->clear_color[2] = d->clear_color[3] = 0;
     d->clear_depth = 1, d->clear_stencil = 0;
@@ -688,6 +893,7 @@ D1_SYSV void r_draw_indexed(uint64_t dev, uint64_t prim, uint64_t a, int32_t fir
         const uint32_t isz = ib ? field<uint32_t>(ib, 0x38) : 0;
         d->index32 = isz != 0;
         d->index_addr = ib ? field<uint64_t>(ib, 0x30) + uint64_t(uint32_t((isz * 2 + 2) * first)) : 0;
+        if (ib && nr::resreg::g_on) d->ires = {nr::resreg::get(ib), field<uint64_t>(ib, 0x30), uint64_t(field<uint32_t>(ib, 0x3C)) * (isz ? 4 : 2)};
         d->count = count;
         d->instances = t_instances;
         nr::push(d);
@@ -910,6 +1116,272 @@ bool hook(uint64_t off, F host, F& orig, const char* name) {
     if (!orig) log("native gfx: hooking %s (eboot+%#llx) failed", name, (unsigned long long)off);
     return orig != nullptr;
 }
+
+
+// ---------------------------------------------------------------------------- resource events (research)
+// D1_ND_RES_EVENTS=1: the engine's core resource manager drives the platform graphics layer
+// through a callback table (registered by 0x7D3400 into 0x254EE30..0x254EEA0): bind memory to
+// a resource by type (0x7D2E80), re-point it after a move (0x7D3160), release (0x7D2FE0), GPU
+// copy for a move (0x7D3560), commit a move (0x7D37B0), rebuild a texture for its resident
+// mips (0x7D4480). This counts the events, registers every bound buffer / texture with a hash
+// of its contents, and checks at draws whether what is drawn was bound by an event and is
+// unchanged since.
+namespace resev {
+std::mutex m;
+struct Res { uint32_t type, handle; uint64_t obj, size, hash; uint64_t flip; bool drawn = false; };
+std::map<uint64_t, Res> by_base;  // base address -> resource
+std::map<std::pair<int, uint32_t>, uint64_t> counts;  // (callback, type) -> events
+uint64_t draw_reg = 0, draw_unreg = 0, draw_same = 0, draw_changed = 0, tex_reg = 0, tex_unreg = 0, tex_same = 0, tex_changed = 0;
+uint64_t sample_same = 0, sample_changed = 0, overlaps = 0, tex_by_type[32] = {}, rebind_same = 0, rebind_diff = 0;
+uint64_t hash_full(uint64_t a, uint64_t n);
+// (sampled: the first, middle and last 4 KiB)
+uint64_t hash(uint64_t a, uint64_t n) {
+    if (n <= 12288) return hash_full(a, n);
+    return hash_full(a, 4096) ^ hash_full(a + (n / 2 & ~4095ull), 4096) * 3 ^ hash_full(a + n - 4096, 4096) * 7 ^ n;
+}
+uint64_t hash_full(uint64_t a, uint64_t n) {
+    if (a < 0x10000 || !n || guest_region_extent(a) < n) return 0;
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(a);
+    uint64_t h = 0xcbf29ce484222325ull;
+    uint64_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        uint64_t v;
+        std::memcpy(&v, p + i, 8);
+        h = (h ^ v) * 0x100000001b3ull;
+    }
+    for (; i < n; ++i) h = (h ^ p[i]) * 0x100000001b3ull;
+    return h | 1;
+}
+uint64_t tex_size(const uint32_t* t) {
+    const auto ts = fmt::decode_tsharp(t);
+    const auto fi = fmt::data_format(ts.dfmt);
+    if (!fi.bpp || fi.bpp == 96 || !ts.width) return 0;
+    tiling::Surface sf;
+    sf.tile_mode = ts.tiling, sf.bpp = fi.bpp, sf.block = fi.block, sf.pow2 = ts.pow2;
+    sf.width = ts.width, sf.height = ts.height, sf.pitch = ts.pitch;
+    sf.depth = ts.type == 10 ? ts.depth : 1;
+    sf.layers = (ts.type == 13 || ts.type == 11) ? ts.last_array + 1 : 1;
+    sf.levels = std::min(ts.last_level + 1, tiling::kMaxMips);
+    tiling::layout(sf);
+    return std::min<uint64_t>(sf.total_size, 256ull << 20);
+}
+uint64_t tex_base(const uint32_t* t) { return (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8; }
+// the resource's memory after a bind event
+void reg(int cb, uint32_t type, uint32_t handle) {
+    if (handle == 0xFFFFFFFFu) return;
+    const uint64_t obj = nr::resolve_handle(handle);
+    if (obj < 0x10000) return;
+    uint64_t base = 0, size = 0;
+    switch (type) {
+    case 1: case 2: case 3: base = tex_base(reinterpret_cast<const uint32_t*>(obj)), size = tex_size(reinterpret_cast<const uint32_t*>(obj)); break;
+    case 4: base = field<uint64_t>(obj, 0x28), size = field<uint32_t>(obj, 0); break;
+    case 6: base = field<uint64_t>(obj, 0x30), size = field<uint64_t>(obj, 8); break;
+    case 8: base = tex_base(reinterpret_cast<const uint32_t*>(obj + 8)), size = tex_size(reinterpret_cast<const uint32_t*>(obj + 8)); break;
+    default: return;
+    }
+    if (!base || !size) return;
+    const uint64_t h = hash(base, size);
+    // anything registered in this range before is gone (its memory is reused)
+    auto it = by_base.lower_bound(base > (256ull << 20) ? base - (256ull << 20) : 0);
+    while (it != by_base.end() && it->first < base + size) {
+        if (it->first + it->second.size > base && it->first != base) ++overlaps, it = by_base.erase(it);
+        else ++it;
+    }
+    by_base[base] = {type, handle, obj, size, h, gpu_flip_count()};
+    // a re-point: is the content the same as at the handle's last registration?
+    static std::unordered_map<uint32_t, std::pair<uint64_t, uint64_t>> last;  // handle -> (hash, size)
+    auto& prev = last[handle];
+    if (cb == 1 && prev.first) {
+        if (prev.first == h && prev.second == size) ++rebind_same;
+        else {
+            ++rebind_diff;
+            static int told = 0;
+            if (told++ < 12) log("nd res events: re-point with different content: type %u handle %#x size %llu (was %llu)", type, handle,
+                                 (unsigned long long)size, (unsigned long long)prev.second);
+        }
+    }
+    prev = {h, size};
+}
+using SetFn = D1_SYSV uint64_t (*)(uint32_t, uint32_t, uint64_t);
+SetFn o_bind, o_rebind;
+bool g_research = false;
+D1_SYSV uint64_t h_bind(uint32_t type, uint32_t handle, uint64_t addr) {
+    const uint64_t r = o_bind(type, handle, addr);
+    nr::resreg::event(type, handle, true);
+    if (!g_research) return r;
+    std::lock_guard lk(m);
+    ++counts[{0, type}];
+    reg(0, type, handle);
+    return r;
+}
+D1_SYSV uint64_t h_rebind(uint32_t type, uint32_t handle, uint64_t addr) {
+    const uint64_t r = o_rebind(type, handle, addr);
+    nr::resreg::event(type, handle, true);
+    if (!g_research) return r;
+    std::lock_guard lk(m);
+    ++counts[{1, type}];
+    reg(1, type, handle);
+    return r;
+}
+using RelFn = D1_SYSV void (*)(uint32_t, uint32_t);
+RelFn o_release;
+D1_SYSV void h_release(uint32_t type, uint32_t handle) {
+    o_release(type, handle);
+    nr::resreg::event(type, handle, false);
+    if (!g_research) return;
+    std::lock_guard lk(m);
+    ++counts[{2, type}];
+    if (type >= 1 && type <= 3) reg(2, type, handle);  // (textures: the descriptor now names fewer mips)
+}
+using Two = D1_SYSV void (*)(uint64_t, uint64_t);
+Two o_copy, o_swap;
+D1_SYSV void h_copy(uint64_t a, uint64_t b) {
+    o_copy(a, b);
+    nr::resreg::event_any(uint32_t(a)), nr::resreg::event_any(uint32_t(b));
+    if (!g_research) return;
+    std::lock_guard lk(m);
+    ++counts[{3, 0}];
+}
+D1_SYSV void h_swap(uint64_t a, uint64_t b) {
+    o_swap(a, b);
+    nr::resreg::event_any(uint32_t(a)), nr::resreg::event_any(uint32_t(b));
+    if (!g_research) return;
+    std::lock_guard lk(m);
+    ++counts[{4, 0}];
+}
+using MipFn = D1_SYSV void (*)(uint32_t, uint64_t, uint64_t);
+MipFn o_mips;
+D1_SYSV void h_mips(uint32_t handle, uint64_t base, uint64_t lo) {
+    o_mips(handle, base, lo);
+    nr::resreg::event_any(handle);
+    if (!g_research) return;
+    std::lock_guard lk(m);
+    ++counts[{5, 0}];
+    reg(5, 1, handle);
+}
+// the callbacks are called through the table (0x254EE38 bind, 0x254EE40 re-point, 0x254EE48
+// release): our wrappers go into it once the graphics layer has registered it (0xCFCC0)
+using RegFn = D1_SYSV void (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+                               uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+RegFn o_register;
+void patch_table() {
+    auto slot = [](uint64_t off) { return reinterpret_cast<uint64_t*>(nr::g_base + off); };
+    if (*slot(0x254EE38) && *slot(0x254EE38) != uint64_t(&h_bind)) o_bind = reinterpret_cast<SetFn>(*slot(0x254EE38)), *slot(0x254EE38) = uint64_t(&h_bind);
+    if (*slot(0x254EE40) && *slot(0x254EE40) != uint64_t(&h_rebind)) o_rebind = reinterpret_cast<SetFn>(*slot(0x254EE40)), *slot(0x254EE40) = uint64_t(&h_rebind);
+    if (*slot(0x254EE48) && *slot(0x254EE48) != uint64_t(&h_release)) o_release = reinterpret_cast<RelFn>(*slot(0x254EE48)), *slot(0x254EE48) = uint64_t(&h_release);
+}
+D1_SYSV void h_register(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uint64_t i,
+                        uint64_t j, uint64_t k, uint64_t l, uint64_t mm, uint64_t n, uint64_t o, uint64_t p) {
+    o_register(a, b, c, d, e, f, g, h, i, j, k, l, mm, n, o, p);
+    patch_table();
+    log("nd: engine resource callbacks registered: bind / re-point / release wrapped");
+}
+void install() {
+    bool ok = true;
+    nr::resreg::init();
+    g_research = getenv("D1_ND_RES_EVENTS") != nullptr;
+    ok &= hook(0xCFCC0, &h_register, o_register, "resource_callbacks_register");
+    patch_table();  // (already registered)
+    ok &= hook(0x7D3560, &h_copy, o_copy, "resource_move_copy");
+    ok &= hook(0x7D37B0, &h_swap, o_swap, "resource_move_commit");
+    ok &= hook(0x7D4480, &h_mips, o_mips, "texture_mips");
+    log("nd: engine resource events %s (D1_ND_RES=0 turns them off)", ok ? "hooked" : "NOT HOOKED - resources stay write-tracked");
+    if (!ok) nr::resreg::g_on = false;
+}
+// at a draw: the stream buffers and textures it uses
+void check_draw(uint64_t dev) {
+    std::lock_guard lk(m);
+    auto check = [&](uint64_t base, bool tex, uint64_t size = 0, uint32_t handle = 0) {
+        auto it = by_base.find(base);
+        if (it == by_base.end() && size && base >= 0x10000) {  // first use: registered here
+            by_base[base] = {tex ? 1u : 4u, handle, 0, size, hash(base, size), gpu_flip_count(), true};
+            ++(tex ? tex_unreg : draw_unreg);
+            return;
+        }
+        if (it == by_base.end()) { ++(tex ? tex_unreg : draw_unreg); return; }
+        ++(tex ? tex_reg : draw_reg);
+        if (tex) ++tex_by_type[it->second.type & 31];
+        if (!it->second.drawn) {
+            it->second.drawn = true;
+            if (hash(base, it->second.size) == it->second.hash) ++(tex ? tex_same : draw_same);
+            else ++(tex ? tex_changed : draw_changed);
+        }
+    };
+    if (const uint64_t decl = field<uint64_t>(dev, 0x1D60)) {
+        const uint32_t n = std::min(field<uint32_t>(decl, 0), 16u);
+        uint32_t seen = 0;
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t stream = field<uint8_t>(decl, 0x19 + 8 * i) & 31;
+            const uint32_t h = field<uint32_t>(dev, 0x1D78 + 4 * stream);
+            if (h == 0xFFFFFFFFu || (seen >> stream & 1)) continue;
+            seen |= 1u << stream;
+            const uint64_t obj = nr::resolve_handle(h);
+            if (obj >= 0x10000) check(field<uint64_t>(obj, 0x28), false, field<uint32_t>(obj, 0), h);
+        }
+    }
+    if (const uint64_t ib = field<uint64_t>(dev, 0x1D70))
+        check(field<uint64_t>(ib, 0x30), false, uint64_t(field<uint32_t>(ib, 0x3C)) * (field<uint32_t>(ib, 0x38) ? 4 : 2), field<uint32_t>(dev, 0x1D68));
+    for (int st = 1; st <= 2; ++st)
+        for (int i = 0; i < 16; ++i)
+            if (const uint64_t t = field<uint64_t>(dev, 0x1E78 + st * 0x80 + i * 8); t >= 0x10000)
+                check(tex_base(reinterpret_cast<const uint32_t*>(t)), true, tex_size(reinterpret_cast<const uint32_t*>(t)));
+    static uint64_t last = 0;
+    if (gpu_flip_count() >= last + 600) {
+        last = gpu_flip_count();
+        // a sample of registered resources: still what was bound?
+        uint32_t k = 0;
+        uint64_t bs = 0, bc = 0, ts = 0, tc = 0, bc_pool = 0;
+        for (auto& [b, r] : by_base) {
+            if (++k % 5) continue;
+            const bool same = hash(b, r.size) == r.hash;
+            if (!same && r.type != 4 && r.type != 6) {
+                static int told = 0;
+                if (told++ < 30) {
+                    const uint64_t o = r.handle ? nr::resolve_handle_safe(r.handle) : 0;
+                    const uint32_t* t = o ? reinterpret_cast<const uint32_t*>(o + (r.type == 8 ? 8 : 0)) : nullptr;
+                    const auto ts = t ? fmt::decode_tsharp(t) : fmt::TSharp{};
+                    log("nd res events: texture changed without an event: type %u handle %#x base %#llx size %llu bound flip %llu | now %ux%u fmt %u.%u tile %u levels %u-%u base %#llx",
+                        r.type, r.handle, (unsigned long long)b, (unsigned long long)r.size, (unsigned long long)r.flip, ts.width, ts.height,
+                        ts.dfmt, ts.nfmt, ts.tiling, ts.base_level, ts.last_level, (unsigned long long)ts.base);
+                }
+            }
+            if (r.type == 4) {
+                ++(same ? bs : bc);
+                // changed: does the handle still resolve to a buffer at this address (pool still loaded)?
+                if (!same && r.handle) {
+                    const uint64_t o = nr::resolve_handle_safe(r.handle);
+                    if (o < 0x10000 || field<uint64_t>(o, 0x28) != b) ++bc_pool;
+                }
+            } else ++(same ? ts : tc);
+            r.hash = hash(b, r.size);
+        }
+        log("nd res events: sample of buffers %llu unchanged, %llu changed (%llu of them no longer named by their handle) | textures %llu unchanged, %llu changed",
+            (unsigned long long)bs, (unsigned long long)bc, (unsigned long long)bc_pool, (unsigned long long)ts, (unsigned long long)tc);
+        std::string t;
+        static const char* names[] = {"bind", "rebind", "release", "move-copy", "move-commit", "mips"};
+        for (auto& [k2, v] : counts) {
+            char b[64];
+            std::snprintf(b, sizeof b, " %s/%u:%llu", names[k2.first], k2.second, (unsigned long long)v);
+            t += b;
+        }
+        log("nd res events:%s | registered %zu (%llu overlaps replaced) | re-points with the same content %llu, different %llu", t.c_str(),
+            by_base.size(), (unsigned long long)overlaps, (unsigned long long)rebind_same, (unsigned long long)rebind_diff);
+        log("nd res events: buffer uses %llu registered / %llu not (first use: %llu as bound, %llu changed) | textures %llu / %llu "
+            "(%llu as bound, %llu changed) | sample: %llu unchanged, %llu changed since bound",
+            (unsigned long long)draw_reg, (unsigned long long)draw_unreg, (unsigned long long)draw_same, (unsigned long long)draw_changed,
+            (unsigned long long)tex_reg, (unsigned long long)tex_unreg, (unsigned long long)tex_same, (unsigned long long)tex_changed,
+            (unsigned long long)sample_same, (unsigned long long)sample_changed);
+        {
+            std::string u;
+            for (int i = 0; i < 32; ++i)
+                if (tex_by_type[i]) u += " type" + std::to_string(i) + ":" + std::to_string(tex_by_type[i]), tex_by_type[i] = 0;
+            log("nd res events: draw textures by resource type:%s", u.c_str());
+        }
+        draw_reg = draw_unreg = tex_reg = tex_unreg = 0;
+    }
+}
+}  // namespace resev
+namespace nr { void resev_check_draw(uint64_t dev) { resev::check_draw(dev); } }
 
 // ---------------------------------------------------------------------------- native device layer
 // D1_ND=1: no Sony graphics code and no emulated GPU. The engine's device layer
@@ -1282,6 +1754,7 @@ void answer_zpass(uint64_t dest, bool end) {
 }
 
 void install(uint64_t) {
+    if (const char* v = getenv("D1_ND_RES"); !v || atoi(v) != 0) resev::install();
     g_on = true;
     bool ok = true;
     auto rep = [&](uint64_t off, const void* fn) {
@@ -2003,7 +2476,73 @@ void native_gfx_check_waits(uint32_t count, uint32_t* const* dcbs, const uint32_
 }
 
 // hle_gpu.cpp: the frame in video-out buffer `addr` is being flipped.
+// ---- D1_ND_POOL_WATCH=1: (research) who writes the engine's handle-pool table (*0x1A238A0):
+// the table is write-protected; each write faults, is logged with the writing code address
+// and the descriptor field, and the page is protected again on the next flip.
+namespace poolwatch {
+std::atomic<uint64_t> lo{0}, hi{0};
+std::mutex m;
+struct Site { uint64_t n = 0; uint32_t first_pool = 0; };
+std::map<std::pair<uint64_t, uint32_t>, Site> sites;  // (code offset, field) -> count
+std::atomic<bool> dirty{false};
+void protect() {
+    if (!lo) return;
+    os::protect(reinterpret_cast<void*>(lo.load()), hi - lo, os::kRead);
+}
+void start() {
+    const uint64_t tbl = *reinterpret_cast<const uint64_t*>(nr::eb<uint64_t>(0x1A238A0));
+    if (!tbl) return;
+    lo = tbl & ~0xFFFull;
+    hi = (tbl + 16384ull * 0x40 + 0xFFF) & ~0xFFFull;
+    protect();
+    log("nd pool watch: table %#llx write-protected", (unsigned long long)tbl);
+}
+void tick() {
+    static const bool on = getenv("D1_ND_POOL_WATCH") != nullptr;
+    if (!on || !nr::g_base) return;
+    if (!lo) {
+        if (gpu_flip_count() > 30) start();
+        return;
+    }
+    if (dirty.exchange(false)) protect();
+    static uint64_t last = 0;
+    if (gpu_flip_count() >= last + 300) {
+        last = gpu_flip_count();
+        std::lock_guard lk(m);
+        std::string t;
+        for (auto& [k, v] : sites) {
+            char b[96];
+            std::snprintf(b, sizeof b, " [eboot+%#llx field +%#x: %llu, pool %u]", (unsigned long long)k.first, k.second,
+                          (unsigned long long)v.n, v.first_pool);
+            t += b;
+        }
+        log("nd pool watch:%s", t.c_str());
+    }
+}
+}  // namespace poolwatch
+
+bool native_gfx_research_fault(void* uc, void* addr) {
+    const uint64_t a = uint64_t(addr);
+    if (!poolwatch::lo || a < poolwatch::lo || a >= poolwatch::hi) return false;
+    uint64_t rip = 0;
+#if defined(__linux__)
+    rip = uint64_t(static_cast<ucontext_t*>(uc)->uc_mcontext.gregs[REG_RIP]);
+#elif defined(_WIN32)
+    rip = uint64_t(static_cast<EXCEPTION_POINTERS*>(uc)->ContextRecord->Rip);
+#endif
+    const uint64_t tbl = *reinterpret_cast<const uint64_t*>(nr::eb<uint64_t>(0x1A238A0));
+    {
+        std::lock_guard lk(poolwatch::m);
+        auto& site = poolwatch::sites[{rip - nr::g_base, uint32_t((a - tbl) % 0x40)}];
+        if (!site.n++) site.first_pool = uint32_t((a - tbl) / 0x40);
+    }
+    os::protect(reinterpret_cast<void*>(a & ~0xFFFull), 0x1000, os::kRead | os::kWrite);
+    poolwatch::dirty = true;
+    return true;
+}
+
 void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
+    poolwatch::tick();
     if (!nr::g_base || !ng::active()) return;
     if (nr::g_frame_executed) {
         ++nr::g_executed_frames;
