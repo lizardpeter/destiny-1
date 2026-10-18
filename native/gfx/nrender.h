@@ -85,6 +85,8 @@ struct Options {
     uint64_t (*watch)(uint64_t addr, uint64_t size) = nullptr;
     uint64_t (*version)(uint64_t addr, uint64_t size) = nullptr;
     void (*describe)(uint64_t addr, char* out, size_t n) = nullptr;  // (diagnostics) tracking state of a page
+    // engine resources: the current id << 32 | epoch of a resource object (0: not one)
+    uint64_t (*res_current)(uint64_t obj) = nullptr;
 };
 
 bool init(const Options& opt);
@@ -106,6 +108,11 @@ bool list_recording();  // on (D1_ND_RECORD, default on) and no per-draw diagnos
 bool record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late);
 void fill_late(const LateCb& l, uint64_t src, uint32_t size);
 void submit_recorded(const std::vector<uint32_t>& handles);  // in this order
+// An engine resource was bound, moved or changed (its epoch is `res`): its GPU copy is made on
+// the renderer's loader thread now, as a PC engine uploads at load, not at the first draw.
+// `obj` is the resource object (to drop the work if it changes again meanwhile).
+void prefetch_texture(const uint32_t* tsharp, uint64_t res, uint64_t obj);
+void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj);
 void discard_recorded(uint32_t handle);                       // never submitted
 // The video-out buffer at `addr` was flipped: present it to the window (if any), dump it when
 // frames are being written (dump = true), and limit how far the CPU runs ahead.

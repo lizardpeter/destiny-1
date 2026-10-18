@@ -473,12 +473,20 @@ void touch(uint64_t key, bool insert) {
 }
 // the resource object a (type, handle) names, 0 for the types the renderer does not track
 uint64_t object_of(uint32_t type, uint32_t handle) {
-    if (handle == 0xFFFFFFFFu || !(type >= 1 && type <= 4) && type != 6) return 0;
+    if (handle == 0xFFFFFFFFu || (!(type >= 1 && type <= 4) && type != 6)) return 0;
     const uint64_t o = resolve_handle_safe(handle);
     return o >= 0x10000 ? o : 0;
 }
+// the renderer prepares the resource's GPU copy now (its loader thread)
+void prefetch(uint32_t type, uint64_t o) {
+    if (!o || !ng::active()) return;
+    const uint64_t res = get(o);
+    if (!res) return;
+    if (type >= 1 && type <= 3) ng::prefetch_texture(reinterpret_cast<const uint32_t*>(o), res, o);
+    else if (type == 4) ng::prefetch_buffer(field<uint64_t>(o, 0x28), field<uint32_t>(o, 0), res, o);
+}
 void event(uint32_t type, uint32_t handle, bool insert) {
-    if (const uint64_t o = object_of(type, handle)) touch(o, insert);
+    if (const uint64_t o = object_of(type, handle)) touch(o, insert), prefetch(type, o);
 }
 // a handle of unknown type (moves): whichever object it names, if registered
 void event_any(uint32_t handle) {
@@ -1253,7 +1261,7 @@ using MipFn = D1_SYSV void (*)(uint32_t, uint64_t, uint64_t);
 MipFn o_mips;
 D1_SYSV void h_mips(uint32_t handle, uint64_t base, uint64_t lo) {
     o_mips(handle, base, lo);
-    nr::resreg::event_any(handle);
+    nr::resreg::event(1, handle, false);  // (a texture: its descriptor names other mips now)
     if (!g_research) return;
     std::lock_guard lk(m);
     ++counts[{5, 0}];
@@ -2051,6 +2059,7 @@ void native_gfx_install() {
         if (!getenv("D1_NG_NOCACHE")) {
             opt.watch = [](uint64_t a, uint64_t n) { return wt::watch(a, n); };
             opt.version = [](uint64_t a, uint64_t n) { return wt::version(a, n); };
+            opt.res_current = [](uint64_t obj) { return nr::resreg::get(obj); };
             opt.describe = [](uint64_t a, char* out, size_t n) { wt::describe(a, out, n); };
         }
         if (const char* v = getenv("D1_NG_FRAMES_IN_FLIGHT")) opt.frames_in_flight = uint32_t(std::max(1, std::atoi(v)));
@@ -2527,8 +2536,8 @@ bool native_gfx_research_fault(void* uc, void* addr) {
     uint64_t rip = 0;
 #if defined(__linux__)
     rip = uint64_t(static_cast<ucontext_t*>(uc)->uc_mcontext.gregs[REG_RIP]);
-#elif defined(_WIN32)
-    rip = uint64_t(static_cast<EXCEPTION_POINTERS*>(uc)->ContextRecord->Rip);
+#else
+    (void)uc;  // (Windows: the research log has no code address)
 #endif
     const uint64_t tbl = *reinterpret_cast<const uint64_t*>(nr::eb<uint64_t>(0x1A238A0));
     {

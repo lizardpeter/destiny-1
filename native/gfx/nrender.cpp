@@ -611,6 +611,26 @@ struct Renderer {
         std::vector<LateCb> late_list;
     };
     Recorder up_rec;  // uploads and target set-up for lists recorded on engine threads
+    // the loader thread: engine resources prepared when the engine binds or moves them
+    struct LoadJob { bool tex; uint32_t t[8]; uint64_t base, size, res, obj; };
+    std::mutex load_m;
+    std::condition_variable load_cv;
+    std::deque<LoadJob> load_q;
+    std::thread loader;
+    bool load_on = false;
+    std::atomic<uint64_t> ld_tex{0}, ld_moves{0}, ld_buf{0}, ld_stale{0}, ld_skipped{0}, ld_dropped{0}, ld_ns{0};
+    void start_loader();
+    void load_texture(const LoadJob& j);
+    void load_buffer(const LoadJob& j);
+    void prefetch(const LoadJob& j) {
+        if (!load_on) return;
+        {
+            std::lock_guard lk(load_m);
+            if (load_q.size() >= 20000) load_q.pop_front(), ++ld_dropped;  // (the draws upload what is dropped)
+            load_q.push_back(j);
+        }
+        load_cv.notify_one();
+    }
     std::atomic<uint32_t> late_hint[kStages][16] = {};  // largest inherited constant buffer seen per slot
     bool list_rec = false;
     std::atomic<uint64_t> lr_lists{0}, lr_ns{0}, lr_wait_ns{0}, lr_sub_ns{0};  // (statistics)
@@ -914,6 +934,7 @@ bool Renderer::init(const Options& o) {
                    !std::getenv("D1_NG_DRAWSTATS");
         log("native renderer: command lists recorded %s", list_rec ? "on the engine's threads as they end" : "at submission");
     }
+    start_loader();
     return true;
 }
 
@@ -3562,6 +3583,135 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     if ((rb_sync != bool(debug_toggles() & 2)) && has_rb && !inflight.empty()) wait_serial(subs[inflight.back()].serial);
 }
 
+// ---------------------------------------------------------------------------- loader
+// Engine resources are prepared when the engine binds or moves them, on this thread: textures
+// are detiled without the renderer's lock and committed (image, staging copy in the shared
+// upload slot) under it; buffers go to the geometry cache. A job whose resource changed again
+// (another epoch) before it was done is dropped. Draws that need a resource first still
+// upload it themselves; the loader then finds it done.
+void Renderer::start_loader() {
+    const char* v = std::getenv("D1_NG_PREFETCH");
+    load_on = (!v || std::atoi(v) != 0) && opt.res_current != nullptr;
+    if (!load_on) return;
+    loader = std::thread([this] {
+        for (;;) {
+            LoadJob j;
+            {
+                std::unique_lock lk(load_m);
+                load_cv.wait(lk, [&] { return !load_q.empty(); });
+                j = load_q.front();
+                load_q.pop_front();
+            }
+            const uint64_t t0 = now_ns();
+            if (opt.res_current(j.obj) != j.res) ++ld_stale;
+            else if (j.tex) load_texture(j);
+            else load_buffer(j);
+            ld_ns += now_ns() - t0;
+        }
+    });
+    loader.detach();
+    log("native renderer: engine resources are uploaded when the engine loads or moves them (D1_NG_PREFETCH=0: at first use)");
+}
+
+void Renderer::load_buffer(const LoadJob& j) {
+    if (j.base < 0x10000 || !j.size || j.size >= (64ull << 20) || guest_region_extent(j.base) < j.size) return;
+    if (geo_lookup_res(j.base, j.size, 0, 0, j.res, j.base)) ++ld_buf;
+}
+
+void Renderer::load_texture(const LoadJob& j) {
+    const uint32_t* t = j.t;
+    const auto ts = fmt::decode_tsharp(t);
+    const auto fi = fmt::data_format(ts.dfmt);
+    const VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
+    if (f == VK_FORMAT_UNDEFINED || !fi.bpp || fi.bpp == 96 || !ts.base || ts.width > 16384 || ts.height > 16384) return;
+    tiling::Surface sf;
+    sf.tile_mode = ts.tiling, sf.bpp = fi.bpp, sf.block = fi.block, sf.pow2 = ts.pow2;
+    sf.width = ts.width, sf.height = ts.height, sf.pitch = ts.pitch;
+    const bool is3d = ts.type == 10, cube = ts.type == 11;
+    sf.depth = is3d ? ts.depth : 1;
+    sf.layers = (ts.type == 13 || ts.type == 12 || cube) ? ts.last_array + 1 : 1;
+    if (cube) sf.layers = std::max(6u, sf.layers - sf.layers % 6);
+    sf.levels = std::min(ts.last_level + 1, tiling::kMaxMips);
+    tiling::layout(sf);
+    if (guest_region_extent(ts.base) < sf.total_size) return;
+    const uint64_t key = tex_key(t, j.res);
+    const uint64_t content = hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size);
+    {  // done already, or moved with the same contents
+        std::lock_guard lk(m);
+        if (target_bases.count(ts.base)) return;  // (render target memory: the draws decide)
+        auto it = textures.find(key);
+        if (it != textures.end() && it->second) {
+            Image* img = it->second.get();
+            if (img->res_val == j.res) { ++ld_skipped; return; }
+            if (img->content == content && img->src_size == sf.total_size) {
+                img->res_val = j.res, img->src_addr = ts.base;
+                ++ld_moves;
+                return;
+            }
+        }
+    }
+    // detiled here, without the lock
+    std::vector<uint64_t> sizes(sf.levels), level_off(sf.levels);
+    uint64_t total = 0;
+    for (uint32_t lv = 0; lv < sf.levels; ++lv) {
+        const uint32_t mw = std::max(1u, ts.width >> lv), mh = std::max(1u, ts.height >> lv);
+        const uint32_t ew = fi.block ? (mw + 3) / 4 : mw, eh = fi.block ? (mh + 3) / 4 : mh;
+        sizes[lv] = uint64_t(ew) * eh * (fi.bpp / 8) * std::max(1u, is3d ? std::max(1u, sf.depth >> lv) : sf.layers);
+        level_off[lv] = total;
+        total += (sizes[lv] + 15) & ~15ull;
+    }
+    static thread_local std::vector<uint8_t> scratch;
+    scratch.resize(total);
+    const uint32_t missing = first_missing_mip(ts, fi, sf, is3d);
+    for (uint32_t lv = 0; lv < std::min(missing, sf.levels); ++lv)
+        tiling::detile(sf, lv, reinterpret_cast<const uint8_t*>(ts.base), scratch.data() + level_off[lv]);
+    if (missing < sf.levels) fill_missing_mips(missing, scratch.data(), level_off, sizes, ts, fi, sf, is3d);
+    // changed meanwhile (moved again, or still being written): the next event or the draws redo it
+    if (opt.res_current(j.obj) != j.res || hash_bytes(reinterpret_cast<const void*>(ts.base), sf.total_size) != content) {
+        ++ld_stale;
+        return;
+    }
+    std::lock_guard lk(m);
+    auto it = textures.find(key);
+    if (it != textures.end() && it->second && it->second->res_val == j.res) { ++ld_skipped; return; }
+    // (into the shared upload slot: the image's layout set-up is recorded too)
+    Recorder* const prev_tr = tr;
+    struct Restore { Recorder* p; ~Restore() { tr = p; } } restore{prev_tr};
+    tr = &up_rec;
+    up_rec.lr = true;
+    up_rec.submit_no = submit_seq.load();
+    begin_record();
+    if (up_rec.cur == UINT32_MAX) return;
+    auto img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
+    if (!img) return;
+    Buffer sb;
+    uint64_t base_off = ring_alloc(std::max<uint64_t>(total, 16), 256);
+    const bool own = base_off == UINT64_MAX;
+    if (!own) sb = ring, sb.map = ring.map + base_off;
+    else sb = make_buffer(std::max<uint64_t>(total, 16), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true), base_off = 0;
+    if (!sb.map) { destroy_image(img.get()); return; }
+    std::memcpy(sb.map, scratch.data(), total);
+    std::vector<VkBufferImageCopy> regions;
+    for (uint32_t lv = 0; lv < sf.levels; ++lv) {
+        VkBufferImageCopy r{};
+        r.bufferOffset = base_off + level_off[lv];
+        r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, lv, 0, is3d ? 1u : sf.layers};
+        r.imageExtent = {std::max(1u, ts.width >> lv), std::max(1u, ts.height >> lv), is3d ? std::max(1u, sf.depth >> lv) : 1u};
+        regions.push_back(r);
+    }
+    vkCmdCopyBufferToImage(up_rec.cmd, sb.buf, img->image, VK_IMAGE_LAYOUT_GENERAL, uint32_t(regions.size()), regions.data());
+    barrier();
+    if (own) subs[up_rec.cur].staging.push_back(sb);
+    img->res_val = j.res, img->src_addr = ts.base, img->src_size = sf.total_size, img->content = content, img->version = ~0ull;
+    img->last_used = submit_seq.load();
+    if (it != textures.end()) bury(std::move(it->second));
+    textures[key] = std::move(img);
+    ++views_gen;
+    st.bytes_tex += total;
+    ++st.textures;
+    ++ld_tex;
+}
+
 // ---------------------------------------------------------------------------- lists on engine threads
 // A command list recorded on the thread that ended it, into a submission slot of its own. The
 // renderer's lock (m) is held for everything that changes shared state - texture uploads and
@@ -4377,6 +4527,16 @@ void fill_late(const LateCb& l, uint64_t src, uint32_t size) {
         while (cur < want && !h.compare_exchange_weak(cur, want)) {}
     }
 }
+void prefetch_texture(const uint32_t* tsharp, uint64_t res, uint64_t obj) {
+    if (!g || !res) return;
+    Renderer::LoadJob j{true, {}, 0, 0, res, obj};
+    std::memcpy(j.t, tsharp, 32);
+    g->prefetch(j);
+}
+void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj) {
+    if (!g || !res) return;
+    g->prefetch({false, {}, base, size, res, obj});
+}
 void submit_recorded(const std::vector<uint32_t>& handles) {
     if (!g) return;
     std::lock_guard lk(g->m);
@@ -4530,6 +4690,18 @@ void print_stats() {
             (unsigned long long)s.res_hits, (unsigned long long)s.res_moves, (unsigned long long)s.res_changed,
             (unsigned long long)s.geo_res_hits, (unsigned long long)s.geo_res_moves, (unsigned long long)s.geo_res_changed);
     s.res_hits = s.res_moves = s.res_changed = s.geo_res_hits = s.geo_res_moves = s.geo_res_changed = 0;
+    if (g->load_on) {
+        size_t q;
+        {
+            std::lock_guard lk(g->load_m);
+            q = g->load_q.size();
+        }
+        log("native renderer: loader: %llu textures and %llu buffers uploaded ahead of use, %llu moves kept, %llu already done, "
+            "%llu dropped as changed again, %llu over the queue limit | %.1f ms of loader time, %zu queued",
+            (unsigned long long)g->ld_tex.exchange(0), (unsigned long long)g->ld_buf.exchange(0), (unsigned long long)g->ld_moves.exchange(0),
+            (unsigned long long)g->ld_skipped.exchange(0), (unsigned long long)g->ld_stale.exchange(0), (unsigned long long)g->ld_dropped.exchange(0),
+            double(g->ld_ns.exchange(0)) / 1e6, q);
+    }
     if (s.zpass_dumps || s.predicated)
         log("native renderer: occlusion: %llu counter dumps, %llu predicated draws%s", (unsigned long long)s.zpass_dumps,
             (unsigned long long)s.predicated, g->ctx.conditional_rendering ? "" : " (no conditional rendering: drawn)");

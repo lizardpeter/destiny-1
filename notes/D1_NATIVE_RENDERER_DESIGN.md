@@ -199,9 +199,33 @@ submission order.
   that its list did not bind before it gets `addr = kLateCb | stage << 4 | slot`. The list
   reads one ring region per such slot, filled at submission from the bindings in effect
   when the list starts. An unbinding inside the list counts as a binding: the draw then
-  keeps the buffer it captured. Getting this wrong showed as a dark cloud over the aurora
-  in the patrol sky.
+  keeps the buffer it captured, exactly the rule of the replay at submission. (A dark cloud
+  over the aurora seen while fixing this turned out to be the sky's weather: it varies between
+  runs on every path.)
 - **CPU-visible events.** DMA is done at record time (in order with the list's draws) and
   again at submission. WRITE_DATA (labels) is done at submission only.
 - Checked against the old path on patrol and orbit (frame dumps): differences match the
   run-to-run noise (wind, flickering lamps, idle animation).
+
+## Status 2026-10-18 (later): GPU resources by the engine's own events (step 4 above)
+
+See `findings/gpu_resources.md`. The core resource manager's graphics callbacks are wrapped:
+bind, re-point, release, move and mip changes. Every texture, vertex buffer and index buffer
+object gets an id and an epoch.
+
+- **Draws** carry the identity per T# slot, vertex element and index buffer.
+- **Renderer keys:** textures by identity plus the T# without its base address; buffers as
+  whole-buffer copies by identity.
+- **No write tracking:** neither is write-protected nor version-checked. After an event, the
+  contents are compared once, so a move keeps the GPU copy.
+- **Loader thread:** uploads resources when the engine binds or moves them, as a PC engine
+  uploads at load.
+  - Textures are detiled without the renderer lock and committed into the shared upload slot.
+  - Work for a resource that changed again meanwhile is dropped.
+- **Dynamic memory** keeps write tracking: the engine's own CPU-written textures and inline
+  vertices.
+- **Measured** (patrol, lavapipe): per frame, write faults 50 -> 5, geometry uploads 8.4 -> 0.9
+  MiB, texture copies 11.3 -> 4.8 MiB; geometry memory 271 -> 48 MiB.
+- Orbit loading: 2,061 textures and 5,310 buffers were uploaded ahead of use and 10,380 moves
+  kept without a re-upload.
+- Frames match the old path within run-to-run noise.
