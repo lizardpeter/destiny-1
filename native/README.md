@@ -148,6 +148,8 @@ Native renderer (`native/gfx`, the default without shadPS4):
 | `D1_NG_PREFETCH=0` | engine resources are uploaded at their first draw instead of on the renderer's loader thread when the engine binds or moves them (default). The log's "loader" line counts uploads ahead of use, moves kept and work dropped because the resource changed again |
 | `D1_NG_DYNAMIC_COPY=0` | memory that is no engine resource (dynamic vertex / index buffers, dynamic textures, small render targets the CPU rewrites) is write-tracked again instead of following the engine's own write announcements (texture unlocks, copy-queue writes); default: nothing is write-protected, 0 write faults |
 | `D1_NG_VERIFY_DYN=1` / `D1_NG_LOG_FAULTS=1` / `D1_ND_LOG_UNLOCK=1` / `D1_ND_LOG_UNREG=1` | (testing) hash dynamic textures at every use and report changes without an event / write faults by writing code address / dynamic texture unlocks / vertex buffers that are no engine resource |
+| `D1_NG_FEEDBACK_COPY=0` | (testing) draws that sample a render target they also render into read it in place, as before test-29 (undefined in Vulkan: garbage on most real GPUs) |
+| `D1_NG_LOG_FEEDBACK=1` / `D1_NG_LOG_SNAPS=1` / `D1_NG_LOG_DMA_TEX=1` | (diagnostics) draws that sample their own render targets / the target copies made for them / copy-queue writes into texture memory |
 | `D1_ND_RES_EVENTS=1` / `D1_ND_RES_STATS=1` / `D1_ND_POOL_WATCH=1` | (research) resource event counts with content checks / which handle pools draws use / who writes the handle-pool table |
 | `D1_ND_LIST_STATS=1` | (diagnostics) draws and lists per device context per frame |
 | `D1_ND_CB_CHECK=1` | (diagnostics) how many draws take constant buffers from bindings made in earlier lists |

@@ -229,3 +229,32 @@ object gets an id and an epoch.
 - Orbit loading: 2,061 textures and 5,310 buffers were uploaded ahead of use and 10,380 moves
   kept without a re-upload.
 - Frames match the old path within run-to-run noise.
+
+## Status 2026-10-18: render-target feedback loops and copy-queue texture writes (test-29)
+
+Two causes of the Intel Arc glitches (flickering sky, lights and textures; corrupted HUD text)
+found in the code. Neither shows on lavapipe, which renders draws in order through memory.
+
+- **Feedback loops.** Lighting, decals and the sky sample the depth target and a 640x360
+  color target while those are bound for rendering. GCN reads them from memory (the DB / CB
+  caches are not coherent with texture reads). In Vulkan it is undefined, and real GPUs with
+  compressed depth and color (Intel's HiZ / CCS most of all) return garbage that changes every
+  frame.
+  - Each run of draws into the same targets is checked before it is recorded
+    (`feedback_snapshots`).
+  - A sampled attachment the run does not write is read in place: Vulkan allows it while no
+    command of the render pass instance writes it. The pass is split when a later run writes
+    it, or when an earlier run did.
+  - An attachment the run also writes is copied first, and the draws sample the copy (as GCN
+    reads the contents from before the pass). Copies stay valid within one command buffer
+    until something writes the attachment.
+  - Patrol: about 13 copies per frame, mostly tiny (1x1, 16x12, 32x32); one 640x360 color
+    target and a few depth copies. Orbit: one depth copy per frame.
+- **Copy-queue writes into textures.** The engine streams mips and glyphs with DMA_DATA
+  before the draws that use them. The renderer prepared a list's textures (`pre_pass`) before
+  executing its copies, so draws saw the old contents. On the engine-resource path a copy into
+  a resource texture triggered no reload at all (contents only change with resource events,
+  except for these copies).
+  - Now the copies run first (`run_copies`, both for recorded lists and at submission), and
+    every texture whose memory they write is marked stale and copied again at its next use:
+    about 3 per second in patrol.

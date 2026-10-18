@@ -25,6 +25,7 @@
 #include <deque>
 #include <atomic>
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -324,6 +325,7 @@ struct Image {
     // textures of engine resources: the resource's id << 32 | epoch when copied, and a hash of
     // the guest memory then (a new epoch with the same contents - a move - keeps the image)
     uint64_t res_val = 0, content = 0;
+    bool stale = false;  // its memory was written by a copy command: reload at the next use
     uint64_t bound_serial = 0;  // render targets: when last bound for drawing
 };
 
@@ -618,7 +620,38 @@ struct Renderer {
         // D1_NG_VERIFY_LATE: what was copied while recording, compared again at submission
         struct Copy { uint8_t kind; uint64_t addr, size, hash; };
         std::vector<Copy> copies;
+        // attachments the current pass's draws sample: read from a copy made before the pass
+        std::vector<std::pair<Image*, Image*>> snaps;  // (attachment, snapshot)
+        // snapshots that still equal their attachment at this point of this command buffer (no
+        // command recorded here since the copy writes it): a later pass samples them uncopied.
+        // Per command buffer: lists are recorded in any order but run in submission order.
+        struct Fresh { Image* img; Image* sn; uint8_t valid; };  // valid: 1 color / depth, 2 stencil
+        std::vector<Fresh> fresh;
+        // this render pass instance: attachments sampled in place (read-only so far: valid in
+        // Vulkan as long as no command of the instance writes them) and what it has written
+        std::vector<std::pair<Image*, uint8_t>> pass_live, pass_written;
+        uint64_t snap_key = 0;                          // the attachments they were made for
     };
+    // per attachment image, its snapshot image (feedback: a draw sampling what it renders into)
+    std::unordered_map<Image*, std::unique_ptr<Image>> snap_img;
+    uint64_t snap_copies = 0;
+    static uint64_t pass_key_of(Image* const* colors, Image* depth) {
+        uint64_t key = uint64_t(depth);
+        for (int i = 0; i < 8; ++i) key = mix(mix(key, uint64_t(colors[i])), colors[i] ? colors[i]->bind_slice : 0);
+        return key;
+    }
+    // (new_pass: the run gets a render pass instance of its own)
+    void feedback_snapshots(const Draw* const* run, size_t n, Image* const* colors, Image* depth, bool new_pass = false);
+    // what these draws may write: bit i color target i, bit 8 depth, bit 9 stencil
+    static uint32_t run_writes(const Draw* const* run, size_t n);
+    void wrote_target(Image* img, uint8_t aspects = 3) {
+        auto& f = rc().fresh;
+        for (size_t i = 0; i < f.size();)
+            if (f[i].img == img && !(f[i].valid &= uint8_t(~aspects))) f[i] = f.back(), f.pop_back();
+            else ++i;
+    }
+    uint64_t snap_reused = 0;
+    VkImageView target_view(Image* img, const Image* like, const uint32_t* t);
     static bool verify_late() { static const bool v = std::getenv("D1_NG_VERIFY_LATE") != nullptr; return v; }
     void note_copy(uint8_t kind, uint64_t addr, uint64_t size) {
         if (verify_late() && rc().lr && size && size <= (1u << 20)) rc().copies.push_back({kind, addr, size, hash_bytes(reinterpret_cast<const void*>(addr), size)});
@@ -657,6 +690,44 @@ struct Renderer {
     std::unordered_set<uint64_t> dyn_targets;                       // (bases of render targets among them)
     uint64_t dyn_target_bumps = 0;
     uint64_t dyn_events = 0, dyn_bumps = 0, dyn_verify_hits = 0, dyn_verify_missed = 0;
+    // The list's copy commands (DMA_DATA), done before its textures are prepared (the engine
+    // copies first, e.g. streamed mips or new glyphs, then draws with the result); the textures
+    // whose memory they write are marked stale.
+    uint64_t dma_stale = 0;
+    void run_copies(const std::vector<Draw*>& items) {
+        for (Draw* d : items) {
+            if (d->kind != Draw::Dma || d->caller < 0x10000 || guest_region_extent(d->caller) < d->count) continue;
+            if (d->prim == 2) {
+                auto* w = reinterpret_cast<uint32_t*>(d->caller);
+                for (uint32_t k = 0; k < d->count / 4; ++k) w[k] = d->instances;
+            } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
+                std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
+            } else continue;
+            if (dynamic_copy) {
+                std::lock_guard dl(dyn_m);
+                dyn_q.push_back({d->caller, d->count});
+            }
+            const uint64_t a = d->caller, e = d->caller + d->count;
+            for (auto& [k, img] : textures)
+                if (img && img->src_size && a < img->src_addr + img->src_size && e > img->src_addr && !img->stale) img->stale = true, ++dma_stale;
+            dma_texture_check(d->caller, d->count);
+        }
+    }
+    // D1_NG_LOG_DMA_TEX: (diagnostics) copy-queue writes into memory a texture copy was made from
+    void dma_texture_check(uint64_t dst, uint64_t n) {
+        static const bool on = std::getenv("D1_NG_LOG_DMA_TEX") != nullptr;
+        if (!on) return;
+        static int told = 0;
+        for (auto& [k, img] : textures)
+            if (img && img->src_size && dst < img->src_addr + img->src_size && dst + n > img->src_addr) {
+                ++dma_tex_hits;
+                if (told++ < 40)
+                    log("native renderer: copy-queue write %#llx +%llu into texture %#llx %ux%u fmt %d (%s)", (unsigned long long)dst,
+                        (unsigned long long)n, (unsigned long long)img->src_addr, img->w, img->h, int(img->format),
+                        img->res_val ? "engine resource" : "dynamic");
+            }
+    }
+    uint64_t dma_tex_hits = 0, feedback_draws = 0;
     void apply_cpu_writes() {
         std::vector<std::pair<uint64_t, uint64_t>> q;
         {
@@ -1074,6 +1145,7 @@ void Renderer::begin_record() {
     vkBeginCommandBuffer(sb.cmd, &bi);
     rc().dstate.valid = false;
     rc().cmd = sb.cmd;
+    rc().snaps.clear(), rc().snap_key = 0, rc().fresh.clear(), rc().pass_live.clear(), rc().pass_written.clear();
     barrier();  // earlier submissions' writes before anything here
 }
 
@@ -1720,6 +1792,12 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
     std::unique_ptr<Image> prev;
     auto it = textures.find(key);
     bool found = it != textures.end();
+    if (found && it->second && it->second->stale) {  // written by a copy command: copied again
+        prev = std::move(it->second);
+        prev->stale = false;
+        textures.erase(it), found = false; ++views_gen;
+        ++st.tex_reloads;
+    }
     if (found) {
         Image* img = it->second.get();
         if (!img) return nullptr;
@@ -2858,6 +2936,7 @@ void Renderer::run_parallel(Draw* const* run, size_t n) {
             for (size_t i = 0; i < n; ++i) draw(*run[i]);
             return;
         }
+    feedback_snapshots(run, n, colors, depth, true);
     begin_pass(colors, depth, true);
     rc().pass_secondary = true;
     VkFormat cfmt[8]{};
@@ -2904,10 +2983,190 @@ void Renderer::run_parallel(Draw* const* run, size_t n) {
     ++par_runs, par_draws += n;
 }
 
+// GCN reads a render target that the same pass renders into from memory, as it was before the
+// pass (the color / depth caches are not coherent with texture reads; the engine relies on
+// it: decals and lighting sample the G-buffer and depth they draw into). In Vulkan that is a
+// feedback loop with undefined results - garbage that changes every frame on real GPUs
+// (Intel's compressed depth and color most of all). Such attachments are copied before the
+// pass and the draws sample the copy.
+// Each run of draws into the same targets passes here before it is recorded. A sampled
+// attachment the run does not write is read in place (Vulkan allows reading an attachment
+// that no command of the render pass instance writes; the pass is split when a later run
+// writes it, or when an earlier one did). One the run writes too is copied first, and the
+// draws read the copy.
+void Renderer::feedback_snapshots(const Draw* const* run, size_t n, Image* const* colors, Image* depth, bool new_pass) {
+    static const bool off = [] { const char* v = std::getenv("D1_NG_FEEDBACK_COPY"); return v && std::atoi(v) == 0; }();
+    if (off) return;
+    const uint32_t w = run_writes(run, n);
+    auto writes = [&](Image* img) -> uint8_t {  // aspects (1 color / depth, 2 stencil) the run writes
+        if (img && img == depth) return uint8_t((w >> 8 & 1) | (w >> 9 & 1) << 1);
+        uint8_t r = 0;
+        for (int i = 0; i < 8; ++i)
+            if (img && colors[i] == img && (w >> i & 1)) r = 3;
+        return r;
+    };
+    auto find = [](std::vector<std::pair<Image*, uint8_t>>& v, Image* img) -> uint8_t {
+        for (auto& x : v)
+            if (x.first == img) return x.second;
+        return 0;
+    };
+    auto put = [](std::vector<std::pair<Image*, uint8_t>>& v, Image* img, uint8_t a) {
+        if (!a) return;
+        for (auto& x : v)
+            if (x.first == img) { x.second |= a; return; }
+        v.push_back({img, a});
+    };
+    struct Need { Image* img; uint8_t asp; };  // asp: 1 color / depth, 2 stencil
+    std::vector<Need> need;
+    auto add = [&](Image* img, uint8_t asp) {
+        for (auto& x : need)
+            if (x.img == img) { x.asp |= asp; return; }
+        need.push_back({img, asp});
+    };
+    for (size_t k = 0; k < n; ++k) {
+        const Draw& dr = *run[k];
+        for (int st2 = 0; st2 < 2; ++st2)
+            for (uint32_t msk = dr.tex_mask[st2]; msk; msk &= msk - 1) {
+                const uint32_t* t = dr.tex[st2][__builtin_ctz(msk)];
+                const auto ts = fmt::decode_tsharp(t);
+                if (depth && depth->stencil)
+                    if (auto sit = stencil_by_base.find(ts.base); sit != stencil_by_base.end() && sit->second == depth) {
+                        add(depth, 2);
+                        continue;
+                    }
+                Image* ri = target_for(ts);
+                if (!ri || ri->is3d || ri->layers > 1) continue;
+                bool attached = ri == depth;
+                for (int i = 0; i < 8; ++i) attached |= ri == colors[i];
+                if (attached) add(ri, 1);
+            }
+    }
+    const uint64_t key = pass_key_of(colors, depth);
+    if (rc().in_pass && (new_pass || rc().pass_key != key)) end_pass();  // (begin_pass would; the new instance's tracking starts here)
+    const bool same_pass = rc().in_pass;
+    // (cleared only here: an instance begun elsewhere - e.g. after an upload ended the pass -
+    // keeps what the last one tracked, which can only split more often)
+    if (!same_pass) rc().pass_live.clear(), rc().pass_written.clear();
+    // the open instance continues with this run: it must not write what was read in place, nor
+    // read in place what it wrote
+    if (same_pass) {
+        bool split = false;
+        for (auto& [img, a] : rc().pass_live) split |= (writes(img) & a) != 0;
+        for (const Need& x : need)
+            if (!(writes(x.img) & x.asp) && (find(rc().pass_written, x.img) & x.asp)) {
+                const bool snapped = rc().snap_key == key &&
+                                     std::any_of(rc().snaps.begin(), rc().snaps.end(), [&](auto& p) { return p.first == x.img; });
+                if (!snapped) split = true;
+            }
+        if (split) end_pass();
+    }
+    // what is copied: what the run reads and writes, and what the pass already reads from a copy
+    std::vector<Need> snap_need;
+    const bool keep = rc().snap_key == key;
+    for (const Need& x : need) {
+        const bool copied = keep && std::any_of(rc().snaps.begin(), rc().snaps.end(), [&](auto& p) { return p.first == x.img; });
+        if (copied || (writes(x.img) & x.asp)) snap_need.push_back(x);
+        else put(rc().pass_live, x.img, x.asp);
+    }
+    auto done = [&] {
+        for (Image* img : {colors[0], colors[1], colors[2], colors[3], colors[4], colors[5], colors[6], colors[7], depth})
+            if (img) {
+                const uint8_t a = writes(img);
+                put(rc().pass_written, img, a);
+                if (a) wrote_target(img, a);
+            }
+    };
+    if (snap_need.empty()) {
+        if (!keep) rc().snaps.clear(), rc().snap_key = 0;
+        return done();
+    }
+    if (keep && std::all_of(snap_need.begin(), snap_need.end(), [&](const Need& x) {
+            return std::any_of(rc().snaps.begin(), rc().snaps.end(), [&](auto& p) { return p.first == x.img; });
+        }))
+        return done();  // (copied for this pass already: the draws read the pass's starting contents)
+    if (keep)
+        for (auto& p : rc().snaps)
+            if (std::none_of(snap_need.begin(), snap_need.end(), [&](const Need& x) { return x.img == p.first; }))
+                snap_need.push_back({p.first, 0});  // (earlier draws of the pass sample these too)
+    // snapshots still current in this command buffer need no copy (and no break in the pass)
+    std::vector<Image*> copy;
+    std::vector<std::pair<Image*, Image*>> snaps;
+    for (const Need& x : snap_need) {
+        auto f = std::find_if(rc().fresh.begin(), rc().fresh.end(), [&](auto& p) { return p.img == x.img; });
+        auto si = snap_img.find(x.img);
+        const uint8_t want = x.asp ? x.asp : 3;
+        if (f != rc().fresh.end() && si != snap_img.end() && si->second.get() == f->sn && (f->valid & want) == want)
+            snaps.push_back({x.img, f->sn}), ++snap_reused;
+        else copy.push_back(x.img);
+    }
+    if (!copy.empty()) {
+        end_pass();  // (copies run outside render passes; the next draw begins the pass again)
+        for (Image* img : copy) {
+            auto& sn = snap_img[img];
+            if (!sn || sn->w != img->w || sn->h != img->h || sn->format != img->format) {
+                if (sn) bury(std::move(sn));
+                sn = make_image(img->format, img->w, img->h, 1, 1, 1, false, false, img->depth, img->stencil);
+                if (!sn) continue;
+                sn->base = img->base, sn->swap = img->swap;
+            }
+            VkImageCopy c{};
+            const VkImageAspectFlags asp = img->depth ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT | (img->stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0))
+                                                      : VK_IMAGE_ASPECT_COLOR_BIT;
+            c.srcSubresource = c.dstSubresource = {asp, 0, 0, 1};
+            c.extent = {img->w, img->h, 1};
+            vkCmdCopyImage(rc().cmd, img->image, VK_IMAGE_LAYOUT_GENERAL, sn->image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+            snaps.push_back({img, sn.get()});
+            wrote_target(img);
+            rc().fresh.push_back({img, sn.get(), 3});
+            ++snap_copies;
+            if (static const bool lg = std::getenv("D1_NG_LOG_SNAPS"); lg)
+                if (static uint64_t tot = 0; ++tot >= 1000 && tot < 1080)
+                    log("native renderer: snapshot %ux%u fmt %d of %s, run of %zu from ps %#llx, writes %#x", img->w, img->h, int(img->format),
+                        img == depth ? "the depth target" : "a color target", n, (unsigned long long)run[0]->ps, w);
+        }
+        barrier();
+    }
+    rc().snaps = std::move(snaps);
+    rc().snap_key = key;
+    done();
+}
+
+uint32_t Renderer::run_writes(const Draw* const* run, size_t n) {
+    uint32_t w = 0;
+    for (size_t k = 0; k < n; ++k) {
+        const Draw& dr = *run[k];
+        for (int i = 0; i < 8; ++i)
+            if (dr.target_mask >> (4 * i) & 0xF) w |= 1u << i;
+        if (dr.depth_ctl & 4) w |= 1u << 8;  // (z write; conservatively even without the z test)
+        if (dr.depth_ctl & 1) {              // stencil test: written unless every op keeps or nothing is writable
+            uint32_t ref, wm;
+            stencil_dynamic(dr.stencil_ctl, dr.depth_ctl, dr.stencil_ref, ref, wm);
+            if (wm && (dr.stencil_ctl & 0xFFFFFF)) w |= 1u << 9;
+        }
+        if (dr.kind == Draw::Clear || dr.clear_flags) w = 0x3FF;
+    }
+    return w;
+}
+
+// A render target sampled as a texture (as texture_view does it), from `img` - the target
+// itself or its snapshot - with the channel order of `like`.
+VkImageView Renderer::target_view(Image* img, const Image* like, const uint32_t* t) {
+    if (img->depth) return view(img, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true);
+    const auto ts = fmt::decode_tsharp(t);
+    VkComponentMapping comp{swz(ts.dst_sel & 7), swz(ts.dst_sel >> 3 & 7), swz(ts.dst_sel >> 6 & 7), swz(ts.dst_sel >> 9 & 7)};
+    if (like->swap == 1) {
+        auto back = [](VkComponentSwizzle s) {
+            return s == VK_COMPONENT_SWIZZLE_R ? VK_COMPONENT_SWIZZLE_B : s == VK_COMPONENT_SWIZZLE_B ? VK_COMPONENT_SWIZZLE_R : s;
+        };
+        comp = {back(comp.r), back(comp.g), back(comp.b), back(comp.a)};
+    }
+    return view(img, VK_IMAGE_VIEW_TYPE_2D, comp, 0, false);
+}
+
 void Renderer::begin_pass(Image* const* colors, Image* depth, bool secondaries) {
-    uint64_t key = uint64_t(depth);
-    for (int i = 0; i < 8; ++i) key = mix(mix(key, uint64_t(colors[i])), colors[i] ? colors[i]->bind_slice : 0);
+    const uint64_t key = pass_key_of(colors, depth);
     if (!secondaries && rc().in_pass && key == rc().pass_key) return;
+    if (key != rc().snap_key) rc().snaps.clear(), rc().snap_key = 0;
     end_pass();
     VkRenderingAttachmentInfo ca[8]{};
     uint32_t n = 0, w = UINT32_MAX, h = UINT32_MAX;
@@ -2982,7 +3241,11 @@ void Renderer::clear(const Draw& dr) {
     Image* colors[8] = {};
     for (int i = 0; i < 5; ++i) colors[i] = color_target(dr.color[i]);
     Image* depth = depth_target(dr.depth);
+    if (rc().in_pass && rc().pass_key == pass_key_of(colors, depth) && !rc().pass_live.empty()) end_pass();  // (it writes what the pass reads in place)
     begin_pass(colors, depth);
+    for (Image* x : colors)
+        if (x) wrote_target(x), rc().pass_written.push_back({x, 3});
+    if (depth) wrote_target(depth), rc().pass_written.push_back({depth, 3});
     VkClearAttachment att[6];
     uint32_t n = 0;
     for (uint32_t i = 0; i < 4; ++i)
@@ -3263,6 +3526,10 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         vmask |= 1u << slot;
     }
     lap(r.t_geo);
+    if (!r.parallel) {
+        const Draw* one = &dr;
+        feedback_snapshots(&one, 1, colors, depth);
+    }
     // descriptors (copied constants, image views, samplers)
     VkWriteDescriptorSet writes[2][48];
     VkDescriptorImageInfo images[2][48];
@@ -3290,8 +3557,20 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                 const uint64_t key = (T ? hash_bytes(T, 32) ^ tres * 0xC2B2AE3D27D4EB4Full : 0x5A5A) ^ (uint64_t(dim) + 1) * 0x9E3779B97F4A7C15ull;
                 const uint64_t gen = views_gen.load(std::memory_order_acquire);
                 TvEntry& e = tvc[key & 2047];
-                VkImageView v;
-                if (e.key == key && e.gen == gen && e.view) {
+                VkImageView v = VK_NULL_HANDLE;
+                if (!rc().snaps.empty() && T) {  // an attachment of this pass: its snapshot
+                    auto lk = guard(tex_m);
+                    const auto ts = fmt::decode_tsharp(T);
+                    auto sit = stencil_by_base.find(ts.base);
+                    if (sit != stencil_by_base.end() && sit->second->stencil) {  // (as texture_view: the stencil of a depth target)
+                        for (auto& [att, sn] : rc().snaps)
+                            if (att == sit->second) { v = view(sn, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true, true); break; }
+                    } else if (Image* ri = target_for(ts))
+                        for (auto& [att, sn] : rc().snaps)
+                            if (att == ri) { v = target_view(sn, ri, T); break; }
+                }
+                if (v) {
+                } else if (e.key == key && e.gen == gen && e.view) {
                     v = e.view;
                     if (e.tex) e.tex->last_used = rc().submit_no;  // (keeps it from being dropped as unused)
                 } else {
@@ -3304,6 +3583,25 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                     e = {key, gen, v, tex};
                 }
                 images[s][nw[s]] = {VK_NULL_HANDLE, v, VK_IMAGE_LAYOUT_GENERAL};
+                // D1_NG_LOG_FEEDBACK: (diagnostics) a draw sampling an image it renders into
+                static const bool log_fb = std::getenv("D1_NG_LOG_FEEDBACK") != nullptr;
+                if (log_fb && T) {
+                    auto lk = guard(tex_m);
+                    if (Image* ri = target_for(fmt::decode_tsharp(T))) {
+                        bool hit = ri == depth;
+                        for (int k = 0; k < 8; ++k) hit |= ri == colors[k];
+                        if (hit) {
+                            ++feedback_draws;
+                            static std::mutex fm;
+                            static std::set<std::pair<uint64_t, uint64_t>> seen;
+                            std::lock_guard fl(fm);
+                            if (seen.insert({uint64_t(dr.ps), uint64_t(ri)}).second && seen.size() < 60)
+                                log("native renderer: feedback: ps %#llx samples %s %ux%u fmt %d it renders into (t%u) | depth ctl %#x (z write %u), target mask %#x, blend %#x, from %#llx",
+                                    (unsigned long long)dr.ps, ri->depth ? "depth target" : "color target", ri->w, ri->h, int(ri->format), slot,
+                                    dr.depth_ctl, dr.depth_ctl >> 2 & 1, dr.target_mask, dr.blend, (unsigned long long)dr.caller);
+                        }
+                    }
+                }
                 w.pImageInfo = &images[s][nw[s]];
             } else if (b.kind == gcn::Binding::Sampler) {
                 w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
@@ -3701,6 +3999,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     ++st.submits;
     retire_completed();
     begin_record();
+    run_copies(draws);
     pre_pass(draws);
     rc().q_on = false;
     for (Draw* d : draws) rc().q_on |= d->kind == Draw::ZPass;
@@ -3724,16 +4023,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
         case Draw::ZPass: zpass(d->index_addr); break;
         case Draw::PredOn: predicate(d->index_addr, d->count & 1); break;
         case Draw::PredOff: rc().pred_cur = -1; break;
-        case Draw::Dma:  // (the null GPU repeats it after the submission; the same bytes)
-            if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->count) {
-                if (d->prim == 2) {
-                    auto* w = reinterpret_cast<uint32_t*>(d->caller);
-                    for (uint32_t k = 0; k < d->count / 4; ++k) w[k] = d->instances;
-                } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
-                    std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
-                }
-            }
-            break;
+        case Draw::Dma: break;  // (done before the textures: run_copies)
         case Draw::Eop: break;  // (the device layer raises the event after the submission)
         case Draw::WriteData:
             if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->inline_vertices.size())
@@ -3956,6 +4246,7 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     up_rec.lr = true;
     up_rec.submit_no = R.submit_no;
     begin_record();
+    run_copies(items);
     if (up_rec.cur != UINT32_MAX) pre_pass(items);
     tr = &R;
     for (const Draw* d : items) R.q_on |= d->kind == Draw::ZPass;
@@ -3979,20 +4270,7 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
         case Draw::ZPass: zpass(d->index_addr); break;
         case Draw::PredOn: predicate(d->index_addr, d->count & 1); break;
         case Draw::PredOff: R.pred_cur = -1; break;
-        case Draw::Dma:  // (in order with the draws that read it; repeated at submission)
-            if (d->caller >= 0x10000 && guest_region_extent(d->caller) >= d->count) {
-                if (d->prim == 2) {
-                    auto* w = reinterpret_cast<uint32_t*>(d->caller);
-                    for (uint32_t k = 0; k < d->count / 4; ++k) w[k] = d->instances;
-                } else if (d->index_addr >= 0x10000 && guest_region_extent(d->index_addr) >= d->count) {
-                    std::memmove(reinterpret_cast<void*>(d->caller), reinterpret_cast<const void*>(d->index_addr), d->count);
-                }
-                if (dynamic_copy) {
-                    std::lock_guard dl(dyn_m);
-                    dyn_q.push_back({d->caller, d->count});
-                }
-            }
-            break;
+        case Draw::Dma: break;  // (done before the list's textures: run_copies; repeated at submission)
         case Draw::Eop:
         case Draw::WriteData: break;  // (CPU-visible: done at submission)
         default: {
@@ -4011,6 +4289,7 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
                 i = j - 1;
                 break;
             }
+            feedback_snapshots(items.data() + i, j - i, colors, depth);
             begin_pass(colors, depth);
             lk.unlock();
             for (size_t k = i; k < j; ++k) draw(*items[k], run_rec, colors, depth);
@@ -4969,6 +5248,9 @@ void print_stats() {
                 std::getenv("D1_NG_VERIFY_DYN") ? (" | verify: " + std::to_string(g->dyn_verify_hits) + " unchanged, " +
                                                    std::to_string(g->dyn_verify_missed) + " CHANGED WITHOUT AN EVENT").c_str() : "");
         g->dyn_events = g->dyn_bumps = g->dyn_verify_hits = g->dyn_verify_missed = g->dyn_target_bumps = 0;
+        log("native renderer: feedback loops: %llu target snapshots copied, %llu reused | copy commands: %llu texture copies made stale",
+            (unsigned long long)g->snap_copies, (unsigned long long)g->snap_reused, (unsigned long long)g->dma_stale);
+        g->snap_copies = g->snap_reused = g->dma_stale = 0;
         s.unreg_tex.clear(), s.unreg_geo = s.unreg_geo_bytes = 0;
     }
     if (g->load_on) {
