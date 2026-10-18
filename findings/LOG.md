@@ -1854,3 +1854,38 @@ Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 
 - New research switches: D1_TRACE_LEVEL (level progression steps, talent grid probes),
   D1_DUMP_MEM (write memory at a global pointer chain to a file at a time in a state),
   D1_FIND_MEM (find a byte pattern in guest memory).
+
+## 2026-10-17 (late): game time internals, renderer costs on a real GPU, the native device layer
+
+Game time (0x591D40 -> 0x591710, per frame):
+- Frame timestamps come from the TSC (sceKernelReadTsc / sceKernelGetTscFrequency, scale
+  stored by time_control init 0x593F00 at time_control_globals (0x26BCD18) +0x28 as
+  ticks per microsecond); 0x594460 (frame begin / limiter) waits until the last frame + the
+  period (time_control_config 0x26BCD08 +8, us) and passes the frame's microseconds on.
+- 0x591710(elapsed, &dt, &ticks, &dt2, &ticks2): in the fixed-tick mode (0x18DCAA4 set and
+  game speed 1) every frame is one tick of the nominal length (game time globals 0x26BC880
+  +8, seconds; +4 integer ticks per second; 0x591B80 / 0x591BF0 return them). The tick's dt
+  is that nominal, not the elapsed time - the whole simulation steps by it.
+- 0x591C80 (230 callers) converts seconds to ticks with the current integer rate; 0x591BA0
+  advances the tick counter (game time globals 2 +0xC).
+- The orbit character screen lost its character whenever the nominal was not exactly
+  1 / integer rate (29 ticks a second at 33.366 ms): the hook now sets both as a consistent
+  pair before the call. Scoping the real tick to the player update alone does not work:
+  the kick curves (0x8FFD80, from the frame driver 0x74D110) and everything else step by the
+  nominal too, so it has to follow the frame globally.
+- Here (Linux) game time = real time at 30 and 144 fps and walking 3 s covers the same
+  distance at both (player position: player globals 0x273EB28 +0x90). The user still sees a
+  sped-up game on Windows; a 10 s "timing:" summary (real / measured / game seconds) was
+  added to find out where.
+
+Renderer cost on the user's RTX 5090 (test-19, Earth patrol, ~3,900 draws a frame): the
+converting renderer's thread spends ~10.4 ms a frame (commands 3.6, pipeline lookup 2.5,
+descriptors 1.25, geometry 1-3, pre-pass 1.3); the game's frame is 13-19 ms. Stutter came
+from a texture mip check that read the staging copy back from write-combined video memory
+(5-9 ms) - fixed - and from first-time pipeline creation. The null GPU still parses ~68k
+PM4 packets per flip next to the native renderer. Job threads (4 + 4) poll lock-free
+queues (0xFA750, mfence loop) and wait on semaphores: most of the CPU use.
+
+Decision: replace the conversion of PM4 command buffers with a native Vulkan implementation
+of Bungie's GPU device layer (0x7DB000-0x7E6000, calling Gnmx at 0xF88000-0xF90000 and the
+Gnm builders at 0xF7C000-0xF88000). Mapping in progress.
