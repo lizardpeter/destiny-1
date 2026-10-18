@@ -462,13 +462,27 @@ struct Renderer {
     Heap heap;
     Swapchain sc;
     VkPipelineCache pcache = VK_NULL_HANDLE;
-    std::vector<GeoBlock> geo_blocks;
-    std::unordered_map<uint64_t, GeoEntry> geo;
+    std::vector<GeoBlock> geo_blocks;  // (reserved up front: never reallocated, read without a lock)
+    // the entries in 64 shards by address, each with its own lock (the recording threads look
+    // up every draw's buffers); blocks, their free lists and geo_bytes under geo_block_m
+    struct GeoShard {
+        std::mutex m;
+        std::unordered_map<uint64_t, GeoEntry> map;
+    };
+    GeoShard geo_shards[64];
+    std::mutex geo_block_m;
     uint64_t geo_bytes = 0;
+    struct GeoHit {
+        VkBuffer buf = VK_NULL_HANDLE;
+        uint64_t off = 0, size = 0;
+        uint32_t vfirst = 0, vlast = 0;
+    };
     bool geo_alloc(uint64_t size, int& block, uint64_t& off);
     void geo_free_now(int block, uint64_t off, uint64_t size);
     void geo_free_later(int block, uint64_t off, uint64_t size);
-    GeoEntry* geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count);
+    bool geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, GeoHit& hit);
+    GeoEntry* geo_lookup(uint64_t addr, uint64_t size, int index_size, uint32_t index_count);
+    static thread_local GeoHit geo_hit_out;  // (geo_lookup's result, copied while its shard is locked)
     void evict_geo();
     uint64_t pcache_saved_pipelines = 0;
     void save_pipeline_cache();
@@ -509,7 +523,12 @@ struct Renderer {
     template <class M> void set_base(M& m, uint64_t base, Image* img) {
         auto [it, added] = m.try_emplace(base, img);
         if (added || it->second != img) it->second = img, ++targets_gen;
-        else if (auto ib = images_by_base.find(base); ib != images_by_base.end() && ib->second.size() > 1) ++targets_gen;
+        else if (auto ib = images_by_base.find(base); ib != images_by_base.end() && ib->second.size() > 1) {
+            // (target_for picks the most recently bound of same-size images at one address)
+            int same = 0;
+            for (Image* c : ib->second) same += c->w == img->w && c->h == img->h;
+            if (same > 1) ++targets_gen;
+        }
     }
     // what draw() last set in the current command buffer (invalid: set everything)
     struct DrawState {
@@ -1618,6 +1637,7 @@ void Renderer::fill_missing_mips(uint32_t first, uint8_t* staging, const std::ve
 
 // ---------------------------------------------------------------------------- geometry cache
 bool Renderer::geo_alloc(uint64_t size, int& block, uint64_t& off) {
+    std::lock_guard lk(geo_block_m);
     size = (size + 255) & ~255ull;
     for (int pass = 0; pass < 2; ++pass) {
         for (size_t b = 0; b < geo_blocks.size(); ++b)
@@ -1634,6 +1654,7 @@ bool Renderer::geo_alloc(uint64_t size, int& block, uint64_t& off) {
             const char* v = std::getenv("D1_NG_GEO_MB");  // geometry cache budget (default 1 GiB)
             return size_t(std::max<long long>(1, (v ? std::atoll(v) : 1024) / 64));
         }();
+        if (geo_blocks.capacity() < max_blocks) geo_blocks.reserve(max_blocks);  // (first call, before any reader)
         if (pass || geo_blocks.size() >= max_blocks) return false;
         // a new 64 MiB block: host-visible (device-local too where the GPU offers it)
         GeoBlock nb;
@@ -1668,6 +1689,7 @@ bool Renderer::geo_alloc(uint64_t size, int& block, uint64_t& off) {
 }
 
 void Renderer::geo_free_now(int block, uint64_t off, uint64_t size) {
+    std::lock_guard lk(geo_block_m);
     size = (size + 255) & ~255ull;
     geo_bytes -= size;
     auto& fr = geo_blocks[size_t(block)].free;
@@ -1688,23 +1710,34 @@ void Renderer::geo_free_now(int block, uint64_t off, uint64_t size) {
 
 // After the submissions that may read the region have completed.
 void Renderer::geo_free_later(int block, uint64_t off, uint64_t size) {
-    if (cur != UINT32_MAX) subs[cur].dead_geo.push_back({uint64_t(block), off, size});
-    else if (!inflight.empty()) subs[inflight.back()].dead_geo.push_back({uint64_t(block), off, size});
-    else geo_free_now(block, off, size);
+    {
+        std::lock_guard lk(geo_block_m);
+        if (cur != UINT32_MAX) return subs[cur].dead_geo.push_back({uint64_t(block), off, size});
+        if (!inflight.empty()) return subs[inflight.back()].dead_geo.push_back({uint64_t(block), off, size});
+    }
+    geo_free_now(block, off, size);
 }
 
 // A GPU copy of guest memory [addr, addr+size), valid for this submission, or null (then the
 // caller copies into the ring). Buffers the game keeps rewriting are not cached for a while.
-GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count) {
+bool Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32_t index_count, GeoHit& hit) {
+    GeoEntry* ep = geo_lookup(addr, size, index_size, index_count);
+    return ep != nullptr && (hit = geo_hit_out, true);
+}
+
+GeoEntry* Renderer::geo_lookup(uint64_t addr, uint64_t size, int index_size, uint32_t index_count) {
     if (!opt.watch || !opt.version || addr < 0x10000 || !size || size >= (16ull << 20) || (debug_toggles() & 8)) return nullptr;
-    GeoEntry& e = geo[addr | size << 40];  // exact: addr < 2^40, size <= 16 MiB
+    const uint64_t key = addr | size << 40;  // exact: addr < 2^40, size <= 16 MiB
+    GeoShard& sh = geo_shards[(key * 0x9E3779B97F4A7C15ull) >> 58];
+    std::unique_lock shard_lock(sh.m);
+    GeoEntry& e = sh.map[key];
     e.last_used = submit_no;
     if (e.volatile_until > submit_no) return nullptr;
     // D1_NG_GEO_VERIFY: (diagnostics) compare every cache hit with guest memory, log differences
     static const bool verify = std::getenv("D1_NG_GEO_VERIFY") != nullptr;
     auto verified = [&](const char* how) {
         if (verify && std::memcmp(geo_blocks[size_t(e.block)].buf.map + e.off, reinterpret_cast<const void*>(addr), size) != 0) {
-            ++st.geo_stale;
+            __atomic_fetch_add(&st.geo_stale, 1, __ATOMIC_RELAXED);
             static int n = 0;
             if (n++ < 200) {
                 const uint8_t* a = geo_blocks[size_t(e.block)].buf.map + e.off;
@@ -1734,7 +1767,9 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
                     (unsigned long long)submit_no);
             }
         }
-        return ++st.geo_hits, &e;
+        __atomic_fetch_add(&st.geo_hits, 1, __ATOMIC_RELAXED);
+        geo_hit_out = {geo_blocks[size_t(e.block)].buf.buf, e.off, e.size, e.vfirst, e.vlast};
+        return &e;
     };
     if (e.valid) {
         // buffers that never changed are checked once per frame, the others every submission
@@ -1761,9 +1796,9 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
     e.size = size;
     uint8_t* dst = geo_blocks[size_t(e.block)].buf.map + e.off;
     std::memcpy(dst, reinterpret_cast<const void*>(addr), size);
-    st.bytes_geo += size;
+    __atomic_fetch_add(&st.bytes_geo, size, __ATOMIC_RELAXED);
     if (opt.version(addr, size) != ver) {  // written while copying: use the ring this time
-        ++st.geo_torn;
+        __atomic_fetch_add(&st.geo_torn, 1, __ATOMIC_RELAXED);
         geo_free_later(e.block, e.off, size);
         e.valid = false, ++e.misses, e.uploaded = submit_no;
         return nullptr;
@@ -1784,18 +1819,24 @@ GeoEntry* Renderer::geo_get(uint64_t addr, uint64_t size, int index_size, uint32
     }
     if (verify) e.hash = hash_bytes(dst, size);
     e.version = ver, e.checked = submit_no, e.checked_frame = st.frames + 1, e.uploaded = submit_no, e.valid = true;
+    geo_hit_out = {geo_blocks[size_t(e.block)].buf.buf, e.off, e.size, e.vfirst, e.vlast};
     return &e;
 }
+
+thread_local Renderer::GeoHit Renderer::geo_hit_out;
 
 void Renderer::evict_geo() {
     const uint64_t horizon = 3000;
     if (submit_no < horizon) return;
-    for (auto it = geo.begin(); it != geo.end();) {
-        if (it->second.last_used + horizon < submit_no) {
-            if (it->second.valid) geo_free_later(it->second.block, it->second.off, it->second.size);
-            it = geo.erase(it);
-        } else {
-            ++it;
+    for (GeoShard& sh : geo_shards) {
+        std::lock_guard lk(sh.m);
+        for (auto it = sh.map.begin(); it != sh.map.end();) {
+            if (it->second.last_used + horizon < submit_no) {
+                if (it->second.valid) geo_free_later(it->second.block, it->second.off, it->second.size);
+                it = sh.map.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 }
@@ -2632,9 +2673,9 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
     VkBuffer ige_buf = VK_NULL_HANDLE;
     uint64_t ige_off = 0;
     if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count && dr.prim != 0x13) {
-        auto lk = guard(geo_m);
-        if (GeoEntry* e = geo_get(dr.index_addr, uint64_t(dr.count) * (dr.index32 ? 4 : 2), dr.index32 ? 4 : 2, dr.count))
-            ige = true, ige_buf = geo_blocks[size_t(e->block)].buf.buf, ige_off = e->off, vfirst = e->vfirst, vlast = e->vlast;
+        GeoHit h;
+        if (geo_get(dr.index_addr, uint64_t(dr.count) * (dr.index32 ? 4 : 2), dr.index32 ? 4 : 2, dr.count, h))
+            ige = true, ige_buf = h.buf, ige_off = h.off, vfirst = h.vfirst, vlast = h.vlast;
     }
     else if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
         vfirst = UINT32_MAX, vlast = 0;
@@ -2674,11 +2715,10 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         uint64_t src = base + uint64_t(first) * stride;
         // the whole buffer from the geometry cache
         if (dr.inline_vertices.empty() && stride && base >= 0x10000) {
-            auto lk = guard(geo_m);
-            if (GeoEntry* ge = geo_get(base, uint64_t(records) * stride, 0, 0)) {
-                const GeoBlock& gb = geo_blocks[size_t(ge->block)];
-                vbufs[slot] = gb.buf.buf, voffs[slot] = ge->off + uint64_t(first) * stride;
-                vsizes[slot] = std::min<uint64_t>(size, ge->size - uint64_t(first) * stride);
+            GeoHit h;
+            if (geo_get(base, uint64_t(records) * stride, 0, 0, h)) {
+                vbufs[slot] = h.buf, voffs[slot] = h.off + uint64_t(first) * stride;
+                vsizes[slot] = std::min<uint64_t>(size, h.size - uint64_t(first) * stride);
                 vmask |= 1u << slot;
                 continue;
             }

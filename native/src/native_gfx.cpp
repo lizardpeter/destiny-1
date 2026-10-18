@@ -987,7 +987,7 @@ uint64_t coarse_sum(uint64_t addr, uint64_t size) {
 // none of those changed, no page in the range was written or unprotected, so a big buffer is
 // checked with a few loads instead of one per page. Only the renderer thread calls this.
 struct VCached { uint64_t addr, size, coarse, version; };
-std::unordered_map<uint64_t, VCached> g_vcache;
+thread_local std::unordered_map<uint64_t, VCached> g_vcache;  // (per thread: the renderer's recording threads ask concurrently)
 uint64_t version(uint64_t addr, uint64_t size) {
     const uint64_t c = coarse_sum(addr, size);  // before the pages: see on_fault
     if (c == ~0ull) return ~0ull;
