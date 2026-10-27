@@ -33,7 +33,7 @@ jobs:
             python tools/oodle3_two_level_huffman_variant.py --original out/twolevel_original_source.rs --output rust/d1_oodle3/src/lzh.rs --mode "$mode"
             cargo test --release --manifest-path rust/d1_oodle3/Cargo.toml --lib
             (cd rust/d1_oodle3 && CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR="target-twolevel-$mode" cargo build --release)
-            cp "rust/d1_oodle3/target-twolevel-$mode/release/d1_oodle3.dll" "out/short_$mode.dll"
+            cp "rust/d1_oodle3/target-twolevel-$mode/release/d1_oodle3.dll" "out/twolevel_$mode.dll"
           done
           cp out/twolevel_original_source.rs rust/d1_oodle3/src/lzh.rs
       - name: Recover source-verified Destiny package and reference Oodle DLL
