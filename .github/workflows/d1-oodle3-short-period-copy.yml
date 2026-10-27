@@ -5,7 +5,7 @@ on:
     paths:
       - 'rust/d1_oodle3/**'
 
-      - '.github/workflows/d1-oodle3-predecoded-literal-pairs.yml'
+      - '.github/workflows/d1-oodle3-short-period-copy.yml'
       - 'tools/oodle3_short_period_copy_variant.py'
   workflow_dispatch:
 permissions:
