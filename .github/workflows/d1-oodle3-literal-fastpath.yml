@@ -158,3 +158,5 @@ jobs:
           if-no-files-found: ignore
 
 # Replication: unchanged source and paired timing rotation, separate hosted Windows runner.
+
+# Independent replication: same source, timing rotation, data, and build flags.
