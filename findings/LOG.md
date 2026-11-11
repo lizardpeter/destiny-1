@@ -259,3 +259,163 @@ No retail executable bytes are committed. The immediate next evidence target is
 any already-decrypted D1 PS4 executable from a known build; 01.29 is sufficient
 to begin code-side function recovery while 01.33 remains the canonical final
 target.
+
+
+## 2026-10-12 — Global channel source of TFX opcode 0x4B closed; channel names recovered
+
+Executable side (CUSA00219 01.33, angr decompiles under
+`reconstruction/.../engine/graphics/decompiled/`):
+
+- `frame_setup` 0x80AA80 points render-context `ctx+0x13F0` (the table RoI TFX
+  opcode 0x4B indexes) at `renderer+0x18958`.
+- `global_channels_copy_to_renderer` 0x8162D0, called each frame from
+  `renderer_frame_prepare` 0x7ECBC0, fills that array from the global channel
+  store `g_26f1fc0` (vec4 x count `g_26f1fc8`, 0x1000-byte heap
+  "Extracted global channel data", allocated by 0x815420).
+- Defaults come from the GlobalChannelDefaults tag (`g_26f1ff0`, loaded by
+  0x8154E0): +0x08 hash array, +0x18 vec4 defaults — the same layout already
+  closed by `tools/d1_global_channel_defaults_decode.py` for tag `80AE4005`.
+- Accessors: `global_channel_get` 0x816100, `global_channel_set` 0x816170
+  (honours override bits `g_26f1fcc`), `global_channel_find` 0x816240 (hash ->
+  index, linear search of the tag's hash array).
+- Runtime writers found so far: `c_sun_manager` (RTTI typeinfo 0x1949590,
+  vtable 0x1949560, base `c_game_system_interface`). Slot 2 (0x8B1F10) resolves
+  eight channel indices by hash; non-virtual updates 0x8B2020 (directions),
+  0x8B23F0 (intensity fade by kind-2 volumes) and 0x8B2850 (shadow mode) run
+  every frame from `lighting_frame_update` 0x7EBFC0.
+
+Hash function: `0x5C579DFA` (a c_sun_manager key) is FNV-1 32 of
+`sun_light_direction`, a string present verbatim in the binary. Dictionary
+preimages then name 52 of the 100 channels in tag `80AE4005`
+(`evidence/generated/d1_global_channel_names.json`,
+`tools/d1_global_channel_names.py`). For the 0x4B frontier:
+
+| index | hash | name | status |
+|---|---|---|---|
+| 0x11 | 90745795 | sun_color | STRONGLY_SUPPORTED |
+| 0x28 | 1191B30B | — | UNKNOWN |
+| 0x30 | E9EE5E9C | sun_transmission_color | STRONGLY_SUPPORTED |
+| 0x60 | 0AD675E2 | lighting_cinematic_override | STRONGLY_SUPPORTED |
+
+Not yet closed: who writes `sun_color`, `sun_transmission_color` and
+`lighting_cinematic_override` at runtime (candidates: the per-frame passes
+0x815600 / 0x815790, which blend from tag/volume data). Index 0x28 stays
+unnamed.
+
+
+## 2026-10-12 — Recompilation boundary: firmware import surface vs. shadPS4
+
+`tools/eboot/d1_import_surface.py` -> `evidence/generated/d1_import_surface.json`
+(shadPS4 checkout `e0a46675`, 2026-10-11).
+
+Game-shipped code to recompile: `eboot.bin` plus two decrypted modules from
+`sce_module/` — `libc.prx` (exports `libc`) and `libSceFios2.prx` (exports
+`libSceFios2`). 165 eboot imports and 8 libc imports resolve to these and need
+no reimplementation.
+
+Firmware surface (unique library+NID across all three): **557 imports, 19,710
+direct call sites**.
+
+| status vs shadPS4 | imports | call sites |
+|---|---|---|
+| implemented | 444 | 19,376 |
+| trivial body (stub or one-line accessor; heuristic) | 72 | 196 |
+| not registered | 41 | 138 |
+
+- libkernel dominates: 221 imports, ~18,500 call sites (mostly pthread mutex /
+  cond). All but 7 are registered in shadPS4.
+- Not registered: PSN social extras (Facebook SNS + dialog, in-game messaging,
+  GameCustomDataDialog, coredump) and 13 `libSceLibcInternal` C functions used
+  by `libSceFios2.prx` (printf, vsnprintf, time functions) — the latter map
+  directly onto host libc.
+- Graphics: only 15 `libSceGnmDriver` imports (shader-stage setters,
+  default-state init, submit/flip). Command buffers are built by Gnm code
+  statically linked into the eboot, so a recompilation needs a PM4 + GCN
+  shader translator (shadPS4's `video_core` is the reference), not more HLE.
+- `call_sites` counts direct calls into PLT stubs only; submit/flip are called
+  through pointers and show 0. The eboot total (31,219) matches the
+  independent capstone call index exactly.
+
+
+## 2026-10-12 — GPU side of a recompilation: PM4 packets and GCN shaders vs. shadPS4
+
+shadPS4 checkout `e0a46675` (2026-10-11).
+
+### PM4 command packets (`tools/eboot/d1_pm4_emitters.py` -> `evidence/generated/d1_pm4_emitters.json`)
+
+The statically linked Gnm builders sit in `0xF7C000–0xF88000` (draw/dispatch
+command buffer) and `0x1005800–0x1005B00` (constant-engine buffer), and are
+called from Bungie's renderer around `0x7DF000–0x7E3000`. They write
+**25 distinct type-3 opcodes**; every one has a handler in shadPS4's Liverpool
+command processor.
+
+- `SET_PREDICATION` is only logged as unimplemented by shadPS4, but its two
+  builders (`0xF809F0`, `0xF80A80`) have no direct callers.
+- No indirect draws/dispatches, no `INDIRECT_BUFFER` (submission goes through
+  `sceGnmSubmitCommandBuffers`), no async compute queue: dispatches go on the
+  graphics ring (`DISPATCH_DIRECT` with the compute shader-type bit).
+- Sub-modes checked by hand: `WRITE_DATA` always uses dst_sel 2 (memory) with
+  `wr_one_addr = 0`, both supported. `DMA_DATA` uses caller-chosen src_sel with
+  dst_sel memory or GDS; shadPS4 handles every pair except GDS→GDS. The
+  fence helper at `0xF80AE0` fills memory from immediate data (src_sel DATA).
+- Explicit `EVENT_WRITE` types seen at call sites: 0x2C, 0x2E, 0x31 (cache
+  flush/partial-flush events; logged and ignored by shadPS4). Draw builders
+  append EVENT_WRITE 0x35.
+
+### GCN shaders (`tools/eboot/d1_gcn_isa_census.py` -> `evidence/generated/d1_gcn_isa_census.json`)
+
+Corpus: every native shader payload (FileEntry type 1, subtypes 8, 9, 11, 12,
+all ending in an `OrbShdr` footer) in the 49 package families the repository
+already references — 14,849 entries, **13,692 unique shaders**, 2,525,868
+instructions. Stages: 9,046 pixel, 4,545 vertex, 49 hull, 34 local, 18 domain.
+Blocks were decoded with the project's Oodle 3 pipeline (exact raw-length rule)
+using a scratch-only DLL; no DLL or shader bytes were committed.
+
+- Decoding is exact for all 13,692 shaders: each consumes its OrbShdr code
+  length and ends in `S_ENDPGM`. The decoder agrees instruction-for-instruction
+  (170/170) with the two independent gfx700 disassemblies already in
+  `evidence/generated/`.
+- **129 distinct opcodes; all 129 are translated by shadPS4** (names and
+  aliases taken from its own opcode tables, e.g. `V_CMP_LG_I32` = `V_CMP_NE_I32`).
+- Heaviest use: V_MUL_F32, V_MAC_F32, V_MOV_B32, S_WAITCNT, V_INTERP_P1/P2,
+  IMAGE_SAMPLE. Less common but present: DS_SWIZZLE_B32 (453 shaders),
+  V_READLANE/V_WRITELANE (241), cube-map ops (1,260), tessellation stages.
+- Not covered by this census: operand-level limits (export/render-target
+  formats, image formats, MIMG modifiers) and the fetch shaders Gnm generates at
+  run time; the 49 families are a sample of the game, not every package.
+
+
+## 2026-10-12 — CPU side of a recompilation: x86-64 portability census
+
+`tools/eboot/d1_x86_portability_census.py` -> `evidence/generated/d1_x86_portability.json`.
+
+The PS4 CPU (AMD Jaguar) is x86-64, so the game's machine code can run
+natively on a PC; a recompilation is relinking plus patching the places where
+console and host differ. Function ranges come from each module's
+`.eh_frame_hdr` FDE table (exact starts and lengths), minus the clang jump
+tables that the PS4 toolchain places inside `.text`.
+
+- **Functions:** eboot 54,533 (18.4 MB of code), libc.prx 1,999,
+  libSceFios2.prx 649 — 57,181 in total. (The earlier prologue-scan estimate
+  of ~38k missed frame-pointer-less leaf functions.)
+- **AMD-only instructions:** no SSE4a (EXTRQ / INSERTQ / MOVNTSS / MOVNTSD)
+  anywhere, so nothing faults on Intel hosts.
+- **Precision differences:** 1,789 VRSQRTPS and 315 VRCPPS (all eboot). They run
+  everywhere but give different low bits on Intel than on the PS4; shadPS4
+  rewrites exactly these two to AMD-accurate sequences on Intel hosts.
+- **TLS:** 2,542 `mov r64, fs:[0]` thread-control-block loads in the eboot; no
+  other FS-relative operands. A recompile must redirect these (shadPS4 patches
+  the same idiom).
+- **No direct system calls** in game code (the earlier linear-sweep hits were in
+  `.rodata`): every OS interaction goes through the imported firmware functions.
+- **Timing / CPU identification:** 1,199 RDTSC + 1 RDTSCP (must agree with
+  whatever `sceKernelGetTscFrequency` reports), 4 CPUID in one detection routine
+  at `0xF12082`. 169 `int 0x41` and 180 `int3` sit on assert/debug-break paths.
+- **Host CPU baseline:** ~565k VEX-encoded (AVX-128) instructions, BMI1
+  (BEXTR register form ×2,492, ANDN, BLSI, BLSR, TZCNT), MOVBE ×255, LZCNT, POPCNT.
+  No F16C, AES, CLMUL, and none of the instructions Jaguar lacks (AVX2, FMA3,
+  FMA4, XOP, TBM) — that zero also shows the sweep stayed in real code. In host
+  terms the code needs an Intel Haswell / AMD Zen class CPU or newer.
+- **Indirect control flow:** 16,625 indirect calls and 2,677 indirect jumps.
+  Irrelevant for an x86-64→x86-64 relink; they are the hard part only if the
+  code were lifted to C or another architecture.
