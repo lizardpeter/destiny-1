@@ -1,0 +1,39 @@
+# Census of CPU writes into GPU-read memory (eboot 01.33)
+
+Started 2026-11-22. Goal: a complete list of the code that writes memory the GPU reads without
+going through a resource event, so each can be handled at its source.
+
+## Method
+
+- Run with every GPU-read range write-protected: `D1_ND_RES=0 D1_NG_DYNAMIC_COPY=0`.
+- `D1_NG_CENSUS=<file>` (new) keeps every writer for the whole run: the writing code address,
+  the two guest callers above it (frame pointers), the address range written and what the
+  renderer kept there. `D1_NG_LOG_FAULTS` alone still prints the top 24 per interval.
+- Each writer is then identified in Ghidra.
+
+## How the engine gets its memory
+
+- The eboot maps memory at three call sites only: `0x2487` (start-up), `0xB46C4` (the engine's
+  memory system) and `0x1279240`.
+- `0xB4630(region, size, from_top)` commits memory for a region: `sceKernelAllocateDirectMemory`
+  + `sceKernelMapDirectMemory` with protection 0x33 (CPU and GPU read / write). Memory type 3
+  (write-combined, GPU) when the region's type field (`+0x6C`) is 1, else type 0.
+- `0xB4780(type, size, name, region)` reserves a region's address range
+  (`sceKernelReserveVirtualRange`) and names it (`sceKernelSetVirtualRangeName`).
+- The regions are a table of 0x70-byte entries at `0x1AF9D68`; `0xB3080` maps the ten
+  allocation classes onto them. "Tag Memory" is created through `0xB21C0`.
+
+## Writers found so far (prologue mission, about 5 minutes in the world)
+
+| Writer | Callers | Memory | What it is |
+|---|---|---|---|
+| `libc.prx` memcpy | `0x8BE0D3`, `0x8BE12F` in `0x8BE050` <- `0x8BE560` | `0x562A60000` 512x512 R8, `0x562A5F000` 512x1 | UI glyph cache upload: copies the CPU-side glyph bitmap row by row into the texture, then the 512x1 table. Runs when the cache's dirty field (`+0x48`) is set; callers `0x8D8176`, `0x8D8203`. No lock / unlock. |
+| `0x88FFAA` | `0x7EAE80` <- `0x23C9DA` | `0x578B08000` 32x32 tables | per-frame table refresh (`0x88FE50`, lock / unlock path, already announced) |
+| `libc.prx` memcpy | `0x80D77` (`0x80D00`) <- `0x6C1D9`, `0x6C37D` (`0x6C050`) | `0x4CA5BB000..0x4FC580000` (resource memory) | generic copy into resource memory; to identify (move / load) |
+| `0xF882D2`, `0xF882FA` | (`0xF88060`, caller `0xF8A2C2`) | resource textures up to 1820x1024 | GpuAddress tiling of a CPU surface into texture memory |
+| `libc.prx` memcpy | `0x833A03` <- `0x7ED63B`; `0x8A96F3` <- `0x7F9FF5`; `0x85B86E` <- `0x80529F` | `0x5626xxxxx`, `0x5629xxxxx` (dynamic pool) | dynamic buffer fills; to identify |
+| `0x8CB315` | `0x7F9E06` <- `0x80529F` | `0x5626A5A00..` | dynamic buffer fill; to identify |
+| `0xD4B4DC` | `0xD5ECF7` <- `0x84D8B8` | `0x5629EE950..` | dynamic buffer fill; to identify |
+| host libc memcpy | (our own threads) | resource memory, small render targets | file reads into resource memory and the renderer's own readbacks |
+
+Still to run: orbit, Earth patrol, the Tower, menus (character, inventory, director).

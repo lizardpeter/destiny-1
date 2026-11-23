@@ -19,6 +19,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <tuple>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -1881,7 +1882,7 @@ struct Chunk {
 std::atomic<Chunk*> g_chunks[kChunks];
 std::mutex g_alloc_m;
 std::atomic<uint64_t> g_faults{0};
-const bool g_log_faults = getenv("D1_NG_LOG_FAULTS") != nullptr;
+const bool g_log_faults = getenv("D1_NG_LOG_FAULTS") != nullptr || getenv("D1_NG_CENSUS") != nullptr;
 std::mutex g_census_m;
 std::unordered_map<uint64_t, uint64_t> g_census;
 void print_census() {
@@ -2085,43 +2086,76 @@ bool on_fault(uint64_t addr) {
 // renderer keeps there is named in the periodic census)
 namespace faultlog {
 std::mutex m;
-struct Site { uint64_t n = 0, sample = 0; };
-std::unordered_map<uint64_t, Site> sites;
+struct Site { uint64_t n = 0, sample = 0, lo = ~0ull, hi = 0; };
+struct Key {
+    uint64_t rip, c1, c2;
+    bool operator<(const Key& o) const { return std::tie(rip, c1, c2) < std::tie(o.rip, o.c1, o.c2); }
+};
+std::map<Key, Site> sites;
+// D1_NG_CENSUS=<file>: every writer since the start (not only the last interval's top 24), with
+// the two guest callers above it (frame pointers) and the range of addresses it wrote
+const char* const g_census = getenv("D1_NG_CENSUS");
+static uint64_t rel(uint64_t a) { return a >= nr::g_base && a < nr::g_base + 0x4000000 ? a - nr::g_base : a | 1ull << 63; }
 void note(void* uc, uint64_t addr) {
-    uint64_t rip = 0;
+    uint64_t rip = 0, c1 = 0, c2 = 0;
 #if defined(__linux__)
-    rip = uint64_t(static_cast<ucontext_t*>(uc)->uc_mcontext.gregs[REG_RIP]);
+    const auto& gr = static_cast<ucontext_t*>(uc)->uc_mcontext.gregs;
+    rip = uint64_t(gr[REG_RIP]);
+    if (g_census) {  // the guest's frame chain (the engine keeps frame pointers)
+        uint64_t bp = uint64_t(gr[REG_RBP]);
+        const uint64_t sp = uint64_t(gr[REG_RSP]);
+        uint64_t* out[2] = {&c1, &c2};
+        // (a frame pointer is trusted while it stays on this thread's stack, above the stack
+        // pointer; memcpy keeps none, so the first frame is its caller's)
+        for (int k = 0, got = 0; k < 24 && got < 2 && !(bp & 7) && bp >= sp && bp < sp + (4u << 20); ++k) {
+            const uint64_t ret = reinterpret_cast<const uint64_t*>(bp)[1];
+            const uint64_t next = reinterpret_cast<const uint64_t*>(bp)[0];
+            if (ret >= nr::g_base && ret < nr::g_base + 0x4000000) *out[got++] = ret - nr::g_base;
+            if (next <= bp) break;
+            bp = next;
+        }
+    }
 #else
     (void)uc;
 #endif
     std::lock_guard lk(m);
-    Site& s = sites[rip >= nr::g_base && rip < nr::g_base + 0x4000000 ? rip - nr::g_base : rip | 1ull << 63];
+    Site& s = sites[{rel(rip), c1, c2}];
     if (!s.n++) s.sample = addr;
+    s.lo = std::min(s.lo, addr), s.hi = std::max(s.hi, addr);
 }
 void print() {
-    std::vector<std::pair<uint64_t, Site>> v;
+    std::vector<std::pair<Key, Site>> v;
     {
         std::lock_guard lk(m);
         v.assign(sites.begin(), sites.end());
-        sites.clear();
+        if (!g_census) sites.clear();
     }
     std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.second.n > b.second.n; });
-    for (size_t i = 0; i < v.size() && i < 24; ++i) {
+    FILE* f = g_census ? std::fopen(g_census, "w") : nullptr;
+    for (size_t i = 0; i < v.size() && (f || i < 24); ++i) {
         char owner[160] = "";
         ng::describe_owner(v[i].second.sample, owner, sizeof owner);
         char where[200] = "";
+        const uint64_t rip = v[i].first.rip;
 #if defined(__linux__)
-        if (v[i].first >> 63) {
+        if (rip >> 63) {
             Dl_info di{};
-            const uint64_t a = v[i].first & ~(1ull << 63);
+            const uint64_t a = rip & ~(1ull << 63);
             if (dladdr(reinterpret_cast<void*>(a), &di) && di.dli_fname)
                 std::snprintf(where, sizeof where, " [%s+%#llx %s]", di.dli_fname, (unsigned long long)(a - uint64_t(di.dli_fbase)),
                               di.dli_sname ? di.dli_sname : "");
         }
 #endif
-        log("native gfx: write faults from %s%#llx%s: %llu (e.g. %#llx: %s)", v[i].first >> 63 ? "host " : "eboot+",
-            (unsigned long long)(v[i].first & ~(1ull << 63)), where, (unsigned long long)v[i].second.n, (unsigned long long)v[i].second.sample, owner);
+        if (f)
+            std::fprintf(f, "%s%#llx%s <- %#llx <- %#llx | %llu faults | %#llx..%#llx | e.g. %#llx: %s\n", rip >> 63 ? "host " : "eboot+",
+                         (unsigned long long)(rip & ~(1ull << 63)), where, (unsigned long long)v[i].first.c1, (unsigned long long)v[i].first.c2,
+                         (unsigned long long)v[i].second.n, (unsigned long long)v[i].second.lo, (unsigned long long)v[i].second.hi,
+                         (unsigned long long)v[i].second.sample, owner);
+        else
+            log("native gfx: write faults from %s%#llx%s: %llu (e.g. %#llx: %s)", rip >> 63 ? "host " : "eboot+",
+                (unsigned long long)(rip & ~(1ull << 63)), where, (unsigned long long)v[i].second.n, (unsigned long long)v[i].second.sample, owner);
     }
+    if (f) std::fclose(f);
 }
 }  // namespace faultlog
 bool native_gfx_on_fault(void* uc, void* addr) {
