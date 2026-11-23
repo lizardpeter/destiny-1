@@ -36,3 +36,4 @@ exports/textures/all_ps4/
 Thumbs.db
 .vscode/
 .idea/
+backend/target/

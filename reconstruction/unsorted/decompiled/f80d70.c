@@ -1,0 +1,25 @@
+
+void FUN_00f80d70(long param_1,uint param_2,uint param_3)
+
+{
+  char cVar1;
+  undefined4 *puVar2;
+  
+  puVar2 = *(undefined4 **)(param_1 + 0x10);
+  if ((uint)((ulong)(*(long *)(param_1 + 8) - (long)puVar2) >> 2) < 6) {
+    cVar1 = (**(code **)(param_1 + 0x18))(param_1,6,*(undefined8 *)(param_1 + 0x20));
+    if (cVar1 == '\0') {
+      return;
+    }
+    puVar2 = *(undefined4 **)(param_1 + 0x10);
+  }
+  *puVar2 = 0xc0044700;
+  puVar2[1] = (param_3 & 0x3f) << 0xc | param_2 & 0x3f | 0x500;
+  puVar2[2] = 0;
+  puVar2[3] = 0x1000000;
+  puVar2[4] = 0;
+  puVar2[5] = 0;
+  *(long *)(param_1 + 0x10) = *(long *)(param_1 + 0x10) + 0x18;
+  return;
+}
+

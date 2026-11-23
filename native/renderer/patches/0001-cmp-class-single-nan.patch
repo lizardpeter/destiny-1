@@ -1,0 +1,15 @@
+--- a/src/shader_recompiler/frontend/translate/vector_alu.cpp
++++ b/src/shader_recompiler/frontend/translate/vector_alu.cpp
+@@ -1369,7 +1369,11 @@
+     IR::U1 value;
+     if (src1.IsImmediate()) {
+         const auto class_mask = static_cast<IR::FloatClassFunc>(src1.U32());
+-        if ((class_mask & IR::FloatClassFunc::NaN) == IR::FloatClassFunc::NaN) {
++        // d1-native: a mask of only signaling or only quiet NaN (0x1 / 0x2) is a NaN test too.
++        const u32 raw_mask = src1.U32();
++        if ((raw_mask & 3u) != 0 && (raw_mask & ~3u) == 0) {
++            value = ir.FPIsNan(src0);
++        } else if ((class_mask & IR::FloatClassFunc::NaN) == IR::FloatClassFunc::NaN) {
+             value = ir.FPIsNan(src0);
+         } else if ((class_mask & IR::FloatClassFunc::Infinity) == IR::FloatClassFunc::Infinity) {
+             value = ir.FPIsInf(src0);

@@ -1,0 +1,93 @@
+{
+  "schema": "d1_knowledge_record/v1",
+  "record_id": "d1_native_renderer_draw_path_and_fov_2026_11_23",
+  "title": "Destiny 1 PS4 01.33 resource bind dispatch, TFX state application, bindless Vulkan draw path, and camera FOV hook",
+  "updated_utc": "2026-11-23T18:45:00Z",
+  "scope": {
+    "game": "Destiny 1",
+    "platform": "PS4",
+    "title_id": "CUSA00219",
+    "canonical_target_version": "01.33"
+  },
+  "nodes": [
+    {
+      "id": "code_anchor:CUSA00219:resource_bind_dispatch:7D2E80",
+      "kind": "runtime_code_anchor",
+      "status": "PROVEN",
+      "label": "Engine resource bind (0x7D2E80) and repoint (0x7D3160) 18-type dispatch table",
+      "attrs": {
+        "bind_offset": "0x7D2E80",
+        "repoint_offset": "0x7D3160",
+        "callback_table_va": "0x254EE38",
+        "ps_bind_handler": "0x7D4B90",
+        "vs_bind_handler": "0x7D48C0"
+      }
+    },
+    {
+      "id": "code_anchor:CUSA00219:tfx_technique_state:82B3F0",
+      "kind": "runtime_code_anchor",
+      "status": "PROVEN",
+      "label": "TFX technique render-state and shader application (0x82B3F0..0x82B830)",
+      "attrs": {
+        "apply_offset": "0x82B3F0",
+        "vs_getter_offset": "0x82D070",
+        "ps_getter_offset": "0x82D020",
+        "preset_field_offset": "0x20"
+      }
+    },
+    {
+      "id": "code_anchor:CUSA00219:camera_set_fov:8E8240",
+      "kind": "runtime_code_anchor",
+      "status": "PROVEN",
+      "label": "Camera frustum and projection half-angle tangent calculation (0x8E8240)",
+      "attrs": {
+        "offset": "0x8E8240",
+        "ads_zoom_update_offset": "0x8E4090",
+        "deg_to_half_rad_const_offset": "0x166A2E8",
+        "default_fov_deg": 72.0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "code_anchor:CUSA00219:tfx_technique_state:82B3F0",
+      "to": "code_anchor:CUSA00219:resource_bind_dispatch:7D2E80",
+      "kind": "consumes_bound_resources",
+      "status": "PROVEN"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "assert_resource_bind_types_8_9",
+      "status": "PROVEN",
+      "claim": "Resource manager bind (0x7D2E80) dispatches type 8 to 0x7D4B90 (Gnm::PsShader at tag address) and type 9 to 0x7D48C0 (VsWrapper with Gnm::VsShader at +0x14 and fetch shader address at +0x8).",
+      "source_ids": [
+        "src_gpu_resources_findings"
+      ]
+    },
+    {
+      "id": "assert_camera_fov_8e8240",
+      "status": "PROVEN",
+      "claim": "eboot+0x8E8240 multiplies the camera FOV angle in degrees by 0.5*pi/180 (0x166A2E8) and calls tanf (0x12AB9A0) at 0x8E825E and 0x8E8299 before frustum culling and projection matrix construction.",
+      "source_ids": [
+        "src_native_renderer_notes"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "src_gpu_resources_findings",
+      "kind": "repository_doc",
+      "locator": "findings/gpu_resources.md",
+      "sha256": null
+    },
+    {
+      "id": "src_native_renderer_notes",
+      "kind": "repository_doc",
+      "locator": "notes/D1_NATIVE_RENDERER_DESIGN.md",
+      "sha256": null
+    }
+  ],
+  "rejections": [],
+  "frontiers": []
+}

@@ -91,27 +91,24 @@ def class_meta(c,h,expected=None):
 
 
 def decode_part_bytes(raw: bytes, cipher_shift: int) -> str:
-    # Reproduce the D1-era Charm decode behavior. The common case is shift 0.
-    if cipher_shift == 0:
-        return raw.decode('utf-8','replace')
-    out=[];i=0
-    while i<len(raw):
-        v=raw[i]
-        if 0xC0<=v<=0xDF and i+2<=len(raw):
-            chunk=raw[i:i+2]
-            out.append(chunk.decode('utf-8','replace'))
-            i+=2
-        elif 0xE0<=v<=0xEF and i+3<=len(raw):
-            chunk=raw[i:i+3]
-            s=chunk.decode('utf-8','replace')
-            if len(s)==1 and s!='\ufffd':
-                out.append(chr((ord(s)+cipher_shift)&0x10FFFF))
-            else:
-                out.append(s)
-            i+=3
-        else:
-            out.append(bytes([((v+cipher_shift)&0xFF)]).decode('utf-8','replace'))
-            i+=1
+    """Decode a UTF-8 string part the way the game does (0x8D5530): each UTF-8 sequence
+    becomes one 16-bit code unit, plus the part's cipher shift (mod 0x10000). Button glyphs
+    are parts with shifts near 0xE000 (U+E000..U+E021, private-use characters the UI font
+    draws as controller buttons); Charm's decoder kept only the low byte for those."""
+    out = []
+    i, n = 0, len(raw)
+    while i < n:
+        b = raw[i]
+        c, k = b, 1
+        if b & 0x80:
+            if (b & 0xE0) == 0xC0: c, k = b & 0x1F, 2
+            elif (b & 0xF0) == 0xE0: c, k = b & 0x0F, 3
+            elif (b & 0xF8) == 0xF0: c, k = b & 0x07, 4
+            else: c, k = 0, 1  # stray continuation byte (the game writes 0 here)
+            for j in range(1, k):
+                c = ((c << 6) | (raw[i + j] & 0x3F) if i + j < n else c) & 0xFFFF
+        out.append(chr((c + cipher_shift) & 0xFFFF))
+        i += k
     return ''.join(out)
 
 

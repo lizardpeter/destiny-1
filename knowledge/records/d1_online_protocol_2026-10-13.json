@@ -1,0 +1,2433 @@
+{
+ "schema": "d1_knowledge_record/v1",
+ "record_id": "d1_online_protocol_2026-10-13",
+ "title": "Destiny 1 online protocol: BAP messages, investment replication, activity host (as emulated by d1-backend)",
+ "updated_utc": "2026-10-13T23:30:00Z",
+ "scope": {
+  "build": "CUSA00219 01.33",
+  "commit": "7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766"
+ },
+ "nodes": [
+  {
+   "id": "bap:push_policy_bap_to_client_challenge_request",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_client_challenge_request",
+   "attrs": {
+    "message_id": 28,
+    "header_class": null,
+    "vtable": "0x1937e60"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_account_id_translation_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_account_id_translation_request",
+   "attrs": {
+    "message_id": 23,
+    "header_class": 1,
+    "vtable": "0x193a5c0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_account_id_translation_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_account_id_translation_response",
+   "attrs": {
+    "message_id": 24,
+    "header_class": 2,
+    "vtable": "0x193a630"
+   }
+  },
+  {
+   "id": "bap:bap_to_activity_host_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_activity_host_request",
+   "attrs": {
+    "message_id": 161,
+    "header_class": 6,
+    "vtable": "0x193a6a0"
+   }
+  },
+  {
+   "id": "bap:bap_to_activity_host_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_activity_host_response",
+   "attrs": {
+    "message_id": 162,
+    "header_class": 7,
+    "vtable": "0x193a710"
+   }
+  },
+  {
+   "id": "bap:client_to_activity_host_manager_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_activity_host_manager_request",
+   "attrs": {
+    "message_id": 6,
+    "header_class": 1,
+    "vtable": "0x193a780"
+   }
+  },
+  {
+   "id": "bap:client_to_activity_host_manager_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_activity_host_manager_response",
+   "attrs": {
+    "message_id": 7,
+    "header_class": 2,
+    "vtable": "0x193a7f0"
+   }
+  },
+  {
+   "id": "bap:bap_to_activity_host_manager_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_activity_host_manager_request",
+   "attrs": {
+    "message_id": 150,
+    "header_class": 5,
+    "vtable": "0x193a860"
+   }
+  },
+  {
+   "id": "bap:bap_to_activity_host_manager_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_activity_host_manager_response",
+   "attrs": {
+    "message_id": 151,
+    "header_class": 7,
+    "vtable": "0x193a8d0"
+   }
+  },
+  {
+   "id": "bap:bap_to_activity_host_socket_handoff_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_activity_host_socket_handoff_request",
+   "attrs": {
+    "message_id": 153,
+    "header_class": 6,
+    "vtable": "0x193a940"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_clan_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_clan_request",
+   "attrs": {
+    "message_id": 44,
+    "header_class": 1,
+    "vtable": "0x193a9b0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_clan_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_clan_response",
+   "attrs": {
+    "message_id": 45,
+    "header_class": 2,
+    "vtable": "0x193aa20"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_client_config_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_client_config_request",
+   "attrs": {
+    "message_id": 18,
+    "header_class": 1,
+    "vtable": "0x193aa90"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_client_config_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_client_config_response",
+   "attrs": {
+    "message_id": 19,
+    "header_class": 2,
+    "vtable": "0x193ab00"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_update_purchased_offers_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_update_purchased_offers_request",
+   "attrs": {
+    "message_id": 21,
+    "header_class": 1,
+    "vtable": "0x193ab70"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_update_purchased_offers_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_update_purchased_offers_response",
+   "attrs": {
+    "message_id": 22,
+    "header_class": 2,
+    "vtable": "0x193abe0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_friends_update_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_friends_update_request",
+   "attrs": {
+    "message_id": 36,
+    "header_class": 1,
+    "vtable": "0x193ac50"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_friends_generic_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_friends_generic_response",
+   "attrs": {
+    "message_id": 37,
+    "header_class": 2,
+    "vtable": "0x193acc0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_party_invite_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_party_invite_request",
+   "attrs": {
+    "message_id": 38,
+    "header_class": 1,
+    "vtable": "0x193ad30"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_party_invite_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_party_invite_response",
+   "attrs": {
+    "message_id": 39,
+    "header_class": 2,
+    "vtable": "0x193ada0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_check_party_invite_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_check_party_invite_request",
+   "attrs": {
+    "message_id": 40,
+    "header_class": 1,
+    "vtable": "0x193ae10"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_check_party_invite_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_check_party_invite_response",
+   "attrs": {
+    "message_id": 41,
+    "header_class": 2,
+    "vtable": "0x193ae80"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_update_matchmaking_core_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_update_matchmaking_core_request",
+   "attrs": {
+    "message_id": 42,
+    "header_class": 1,
+    "vtable": "0x193b5a0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_update_matchmaking_core_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_update_matchmaking_core_response",
+   "attrs": {
+    "message_id": 43,
+    "header_class": 2,
+    "vtable": "0x193b610"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_update_matchmaking_skill_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_update_matchmaking_skill_request",
+   "attrs": {
+    "message_id": 34,
+    "header_class": 1,
+    "vtable": "0x193b680"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_update_matchmaking_skill_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_update_matchmaking_skill_response",
+   "attrs": {
+    "message_id": 35,
+    "header_class": 2,
+    "vtable": "0x193b6f0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_nat_punch_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_nat_punch_request",
+   "attrs": {
+    "message_id": 46,
+    "header_class": 1,
+    "vtable": "0x193b760"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_nat_punch_relay_intro_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_nat_punch_relay_intro_notification",
+   "attrs": {
+    "message_id": 47,
+    "header_class": 4,
+    "vtable": "0x193b7d0"
+   }
+  },
+  {
+   "id": "bap:activity_host_to_client_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "activity_host_to_client_notification",
+   "attrs": {
+    "message_id": 100,
+    "header_class": 6,
+    "vtable": "0x193b840"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_notification",
+   "attrs": {
+    "message_id": 9,
+    "header_class": 0,
+    "vtable": "0x193b8b0"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_log_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_log_notification",
+   "attrs": {
+    "message_id": 27,
+    "header_class": 0,
+    "vtable": "0x193b920"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_server_shutdown_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_server_shutdown_notification",
+   "attrs": {
+    "message_id": 20,
+    "header_class": 0,
+    "vtable": "0x193b990"
+   }
+  },
+  {
+   "id": "bap:bap_to_activity_host_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_activity_host_notification",
+   "attrs": {
+    "message_id": 160,
+    "header_class": 6,
+    "vtable": "0x193ba00"
+   }
+  },
+  {
+   "id": "bap:client_to_activity_host_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_activity_host_notification",
+   "attrs": {
+    "message_id": 8,
+    "header_class": 3,
+    "vtable": "0x193ba70"
+   }
+  },
+  {
+   "id": "bap:activity_host_to_client_log_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "activity_host_to_client_log_notification",
+   "attrs": {
+    "message_id": 102,
+    "header_class": 5,
+    "vtable": "0x193bae0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_activity_host_manager_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_activity_host_manager_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193bea0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_activity_host_manager_response",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_activity_host_manager_response",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193bf30"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_activity_host_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_activity_host_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193bfc0"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_activity_host_response",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_activity_host_response",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c050"
+   }
+  },
+  {
+   "id": "bap:policy_activity_host_to_client_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_activity_host_to_client_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c0e0"
+   }
+  },
+  {
+   "id": "bap:policy_activity_host_to_client_log_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_activity_host_to_client_log_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c170"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_client_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_client_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c200"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_activity_host_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_activity_host_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c290"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_activity_host_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_activity_host_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c320"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_activity_host_manager_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_activity_host_manager_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c3b0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_get_activity_host_proxy_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_get_activity_host_proxy_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c440"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_challenge_response",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_challenge_response",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c4d0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_account_id_translation_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_account_id_translation_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c560"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_subscription_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_subscription_request",
+   "attrs": {
+    "message_id": 9,
+    "header_class": null,
+    "vtable": "0x193c5f0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_unsubscribe_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_unsubscribe_request",
+   "attrs": {
+    "message_id": 9,
+    "header_class": null,
+    "vtable": "0x193c680"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_initiate_relay_connection_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_initiate_relay_connection_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c710"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_register_relay_client_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_register_relay_client_request",
+   "attrs": {
+    "message_id": 40,
+    "header_class": null,
+    "vtable": "0x193c7a0"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_client_server_shutdown_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_client_server_shutdown_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c830"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_nat_punch_intro_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_nat_punch_intro_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c8c0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_clan_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_clan_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c950"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_client_config_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_client_config_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193c9e0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_update_purchased_offers_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_update_purchased_offers_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193ca70"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_friends_update_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_friends_update_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193cb00"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_friends_party_invite_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_friends_party_invite_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193cb90"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_friends_check_party_invite_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_friends_check_party_invite_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193cc20"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_client_log_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_client_log_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193ccb0"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_matchmaking_core_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_matchmaking_core_request",
+   "attrs": {
+    "message_id": 24,
+    "header_class": null,
+    "vtable": "0x193cd40"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_bap_matchmaking_skill_request",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_bap_matchmaking_skill_request",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193cdd0"
+   }
+  },
+  {
+   "id": "bap:policy_bap_to_client_user_message",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_bap_to_client_user_message",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193ce60"
+   }
+  },
+  {
+   "id": "bap:policy_client_to_xetrov_notification",
+   "kind": "bap_send_policy",
+   "status": "PROVEN",
+   "label": "policy_client_to_xetrov_notification",
+   "attrs": {
+    "message_id": 0,
+    "header_class": null,
+    "vtable": "0x193d0c0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_secure_hello_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_secure_hello_request",
+   "attrs": {
+    "message_id": 25,
+    "header_class": 1,
+    "vtable": "0x193d170"
+   }
+  },
+  {
+   "id": "bap:server_challenge_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "server_challenge_request",
+   "attrs": {
+    "message_id": 28,
+    "header_class": 4,
+    "vtable": "0x193d200"
+   }
+  },
+  {
+   "id": "bap:server_challenge_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "server_challenge_response",
+   "attrs": {
+    "message_id": 29,
+    "header_class": 4,
+    "vtable": "0x193d270"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_echo_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_echo_request",
+   "attrs": {
+    "message_id": 250,
+    "header_class": 1,
+    "vtable": "0x193d2e0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_echo_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_echo_response",
+   "attrs": {
+    "message_id": 251,
+    "header_class": 2,
+    "vtable": "0x193d350"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_channel_startup_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_channel_startup_request",
+   "attrs": {
+    "message_id": 30,
+    "header_class": 1,
+    "vtable": "0x193d3c0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_channel_startup_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_channel_startup_response",
+   "attrs": {
+    "message_id": 31,
+    "header_class": 2,
+    "vtable": "0x193d430"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_secure_hello_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_secure_hello_response",
+   "attrs": {
+    "message_id": 26,
+    "header_class": 2,
+    "vtable": "0x193d4a0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_queuez_register_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_queuez_register_request",
+   "attrs": {
+    "message_id": 121,
+    "header_class": 1,
+    "vtable": "0x193d510"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_queuez_register_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_queuez_register_response",
+   "attrs": {
+    "message_id": 122,
+    "header_class": 2,
+    "vtable": "0x193d580"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_subscription_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_subscription_request",
+   "attrs": {
+    "message_id": 12,
+    "header_class": 1,
+    "vtable": "0x193d5f0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_subscription_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_subscription_response",
+   "attrs": {
+    "message_id": 13,
+    "header_class": 2,
+    "vtable": "0x193d660"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_unsubscribe_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_unsubscribe_request",
+   "attrs": {
+    "message_id": 14,
+    "header_class": 1,
+    "vtable": "0x193d6d0"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_unsubscribe_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_unsubscribe_response",
+   "attrs": {
+    "message_id": 15,
+    "header_class": 2,
+    "vtable": "0x193d740"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_initiate_relay_connection_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_initiate_relay_connection_notification",
+   "attrs": {
+    "message_id": 300,
+    "header_class": 1,
+    "vtable": "0x193d7b0"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_request_relay_connection_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_request_relay_connection_notification",
+   "attrs": {
+    "message_id": 301,
+    "header_class": 4,
+    "vtable": "0x193d820"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_register_relay_client_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_register_relay_client_request",
+   "attrs": {
+    "message_id": 302,
+    "header_class": 1,
+    "vtable": "0x193d890"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_register_relay_client_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_register_relay_client_response",
+   "attrs": {
+    "message_id": 303,
+    "header_class": 2,
+    "vtable": "0x193d900"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_get_activity_host_proxy_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_get_activity_host_proxy_request",
+   "attrs": {
+    "message_id": 16,
+    "header_class": 1,
+    "vtable": "0x193d970"
+   }
+  },
+  {
+   "id": "bap:client_to_bap_get_activity_host_proxy_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_bap_get_activity_host_proxy_response",
+   "attrs": {
+    "message_id": 17,
+    "header_class": 2,
+    "vtable": "0x193d9e0"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_client_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_client_notification",
+   "attrs": {
+    "message_id": 9,
+    "header_class": null,
+    "vtable": "0x193dbb0"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_client_to_activity_host_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_client_to_activity_host_notification",
+   "attrs": {
+    "message_id": 8,
+    "header_class": null,
+    "vtable": "0x193dc10"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_activity_host_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_activity_host_notification",
+   "attrs": {
+    "message_id": 160,
+    "header_class": null,
+    "vtable": "0x193dc70"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_activity_host_request",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_activity_host_request",
+   "attrs": {
+    "message_id": 161,
+    "header_class": null,
+    "vtable": "0x193dcd0"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_client_to_activity_host_manager_request",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_client_to_activity_host_manager_request",
+   "attrs": {
+    "message_id": 6,
+    "header_class": null,
+    "vtable": "0x193dd30"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_client_log_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_client_log_notification",
+   "attrs": {
+    "message_id": 27,
+    "header_class": null,
+    "vtable": "0x193dd90"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_client_nat_punch_relay_intro_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_client_nat_punch_relay_intro_notification",
+   "attrs": {
+    "message_id": 47,
+    "header_class": null,
+    "vtable": "0x193ddf0"
+   }
+  },
+  {
+   "id": "bap:push_policy_activity_host_to_client_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_activity_host_to_client_notification",
+   "attrs": {
+    "message_id": 100,
+    "header_class": null,
+    "vtable": "0x193de50"
+   }
+  },
+  {
+   "id": "bap:push_policy_queuez_to_client_update_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_queuez_to_client_update_notification",
+   "attrs": {
+    "message_id": 123,
+    "header_class": null,
+    "vtable": "0x193deb0"
+   }
+  },
+  {
+   "id": "bap:push_policy_queuez_to_client_subscription_lost_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_queuez_to_client_subscription_lost_notification",
+   "attrs": {
+    "message_id": 124,
+    "header_class": null,
+    "vtable": "0x193df10"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_client_request_relay_connection_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_client_request_relay_connection_notification",
+   "attrs": {
+    "message_id": 301,
+    "header_class": null,
+    "vtable": "0x193df70"
+   }
+  },
+  {
+   "id": "bap:push_policy_bap_to_client_server_shutdown_notification",
+   "kind": "bap_push_policy",
+   "status": "PROVEN",
+   "label": "push_policy_bap_to_client_server_shutdown_notification",
+   "attrs": {
+    "message_id": 20,
+    "header_class": null,
+    "vtable": "0x193dfd0"
+   }
+  },
+  {
+   "id": "bap:queuez_to_client_update_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "queuez_to_client_update_notification",
+   "attrs": {
+    "message_id": 123,
+    "header_class": 4,
+    "vtable": "0x193e0c0"
+   }
+  },
+  {
+   "id": "bap:queuez_to_client_subscription_lost_notification",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "queuez_to_client_subscription_lost_notification",
+   "attrs": {
+    "message_id": 124,
+    "header_class": 4,
+    "vtable": "0x193e130"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_user_message_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_user_message_request",
+   "attrs": {
+    "message_id": 32,
+    "header_class": 1,
+    "vtable": "0x193e1b0"
+   }
+  },
+  {
+   "id": "bap:bap_to_client_user_message_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "bap_to_client_user_message_response",
+   "attrs": {
+    "message_id": 33,
+    "header_class": 2,
+    "vtable": "0x193e220"
+   }
+  },
+  {
+   "id": "bap:client_to_world_server_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_world_server_request",
+   "attrs": {
+    "message_id": 10,
+    "header_class": 1,
+    "vtable": "0x193e290"
+   }
+  },
+  {
+   "id": "bap:client_to_world_server_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_world_server_response",
+   "attrs": {
+    "message_id": 11,
+    "header_class": 2,
+    "vtable": "0x193e300"
+   }
+  },
+  {
+   "id": "bap:service_to_world_server_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "service_to_world_server_request",
+   "attrs": {
+    "message_id": 110,
+    "header_class": 5,
+    "vtable": "0x193e370"
+   }
+  },
+  {
+   "id": "bap:activity_host_to_world_server_response",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "activity_host_to_world_server_response",
+   "attrs": {
+    "message_id": 112,
+    "header_class": 7,
+    "vtable": "0x193e3e0"
+   }
+  },
+  {
+   "id": "bap:client_to_xetrov_request",
+   "kind": "bap_message",
+   "status": "PROVEN",
+   "label": "client_to_xetrov_request",
+   "attrs": {
+    "message_id": 171,
+    "header_class": 1,
+    "vtable": "0x193e450"
+   }
+  },
+  {
+   "id": "ah_host_msg:0",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 0",
+   "attrs": {
+    "meaning": "entity indices: 384-word bitmask granted to the client",
+    "payload_type": "0x80800d64"
+   }
+  },
+  {
+   "id": "ah_host_msg:1",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 1",
+   "attrs": {
+    "meaning": "instance state (0x6B0 bytes): valid flag, bubble count, bubble states, checksum, details with activity index / insertion point / scenario name",
+    "payload_type": "0x80800e76"
+   }
+  },
+  {
+   "id": "ah_host_msg:2",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 2",
+   "attrs": {
+    "meaning": "{bool, float}",
+    "payload_type": "0x80800dc1"
+   }
+  },
+  {
+   "id": "ah_host_msg:4",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 4",
+   "attrs": {
+    "meaning": "join result: identity echo (nonce must match), result 0",
+    "payload_type": "0x80800a58"
+   }
+  },
+  {
+   "id": "ah_host_msg:5",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 5",
+   "attrs": {
+    "meaning": "raw host event -> simulation event 0x13 (authority only)",
+    "payload_type": null
+   }
+  },
+  {
+   "id": "ah_host_msg:7",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 7",
+   "attrs": {
+    "meaning": "tag-hash keyed update (not yet used)",
+    "payload_type": null
+   }
+  },
+  {
+   "id": "ah_host_msg:10",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 10",
+   "attrs": {
+    "meaning": "host-startup response (internal: from BAP response 7)",
+    "payload_type": null
+   }
+  },
+  {
+   "id": "ah_host_msg:11",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 11",
+   "attrs": {
+    "meaning": "membership update (present bit + struct): players, valid masks, host-tabulated region table",
+    "payload_type": "0x808009ed"
+   }
+  },
+  {
+   "id": "ah_host_msg:18",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 18",
+   "attrs": {
+    "meaning": "simulation event 0x19 (script/global state arrays)",
+    "payload_type": "0x8080097d"
+   }
+  },
+  {
+   "id": "ah_host_msg:23",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 23",
+   "attrs": {
+    "meaning": "entity mask update",
+    "payload_type": "0x80800d58"
+   }
+  },
+  {
+   "id": "ah_host_msg:24",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 24",
+   "attrs": {
+    "meaning": "entity mask update",
+    "payload_type": "0x80800d10"
+   }
+  },
+  {
+   "id": "ah_host_msg:27",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 27",
+   "attrs": {
+    "meaning": "sync token (echoed in client 28); used as keep-alive",
+    "payload_type": "0x80800d31"
+   }
+  },
+  {
+   "id": "ah_host_msg:29",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 29",
+   "attrs": {
+    "meaning": "token echoed in client 30",
+    "payload_type": "0x80800b09"
+   }
+  },
+  {
+   "id": "ah_host_msg:38",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 38",
+   "attrs": {
+    "meaning": "debug/verification update, not applied",
+    "payload_type": "0x808052e5"
+   }
+  },
+  {
+   "id": "ah_host_msg:39",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 39",
+   "attrs": {
+    "meaning": "unknown",
+    "payload_type": "0x80800c0a"
+   }
+  },
+  {
+   "id": "ah_host_msg:42",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 42",
+   "attrs": {
+    "meaning": "{i8, bool}",
+    "payload_type": "0x80800adc"
+   }
+  },
+  {
+   "id": "ah_host_msg:43",
+   "kind": "activity_host_message",
+   "status": "PROVEN",
+   "label": "host->client type 43",
+   "attrs": {
+    "meaning": "unknown",
+    "payload_type": "0x80800f1a"
+   }
+  },
+  {
+   "id": "ah_client_msg:3",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 3",
+   "attrs": {
+    "meaning": "join request (identity 0x80800E98 + properties 0x80800B1F + ...)"
+   }
+  },
+  {
+   "id": "ah_client_msg:15",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 15",
+   "attrs": {
+    "meaning": "periodic 1-byte heartbeat"
+   }
+  },
+  {
+   "id": "ah_client_msg:17",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 17",
+   "attrs": {
+    "meaning": "8 bytes"
+   }
+  },
+  {
+   "id": "ah_client_msg:20",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 20",
+   "attrs": {
+    "meaning": "1536-byte entity mask"
+   }
+  },
+  {
+   "id": "ah_client_msg:21",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 21",
+   "attrs": {
+    "meaning": "simulation/telemetry bitstreams"
+   }
+  },
+  {
+   "id": "ah_client_msg:28",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 28",
+   "attrs": {
+    "meaning": "sync token echo"
+   }
+  },
+  {
+   "id": "ah_client_msg:30",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 30",
+   "attrs": {
+    "meaning": "token echo + 0x600-byte mask"
+   }
+  },
+  {
+   "id": "ah_client_msg:36",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 36",
+   "attrs": {
+    "meaning": "4 bytes"
+   }
+  },
+  {
+   "id": "ah_client_msg:37",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 37",
+   "attrs": {
+    "meaning": "0xB750-byte state"
+   }
+  },
+  {
+   "id": "ah_client_msg:47",
+   "kind": "activity_client_message",
+   "status": "STRONGLY_SUPPORTED",
+   "label": "client->host type 47",
+   "attrs": {
+    "meaning": "36 bytes, once a minute"
+   }
+  },
+  {
+   "id": "type:0x80800e98",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "identity block {i32 nonce, u64 host id, {machine[8], player[8], account, character, fireteam}, properties 0x80800B1F, ...}"
+  },
+  {
+   "id": "type:0x80800b1f",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "player properties {i8, session id string, i64 x4 (fireteam id @0xA0 in the slot), i32 x2, machine[8]}"
+  },
+  {
+   "id": "type:0x80800a58",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "join result (0x1A8 bytes)"
+  },
+  {
+   "id": "type:0x80800d64",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "entity index grant (384 x u32)"
+  },
+  {
+   "id": "type:0x80800e76",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "instance state wrapper (0x80800B8F, 0x6B0 bytes)"
+  },
+  {
+   "id": "type:0x80800cc5",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "instance details (0x650, at instance +0x60): activity index @+0x5C0, insertion point @+0x5C2, scenario name char[40] @+0x5C8 (instance +0x620/+0x622/+0x628)"
+  },
+  {
+   "id": "type:0x808009ed",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "activity membership (0x5038): u32 x2, players[20] x 0x250, region table @0x2E48, masks @0x5028/0x502C/0x5030"
+  },
+  {
+   "id": "type:0x80800bd7",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "host-tabulated region table: 40 x 0xD8, -1 terminated"
+  },
+  {
+   "id": "type:0x808052e5",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "debug update {count, 512 x 16 bytes} + raw bytes"
+  },
+  {
+   "id": "family:0",
+   "kind": "replication_family",
+   "status": "PROVEN",
+   "label": "0x80801921 x20, 0x808017FD x20"
+  },
+  {
+   "id": "family:1",
+   "kind": "replication_family",
+   "status": "PROVEN",
+   "label": "character: 0x8080191C, 0x808017A5, items 0x80801732 x20"
+  },
+  {
+   "id": "family:2",
+   "kind": "replication_family",
+   "status": "PROVEN",
+   "label": "0x808018B7 x231, 0x80801810 x231"
+  },
+  {
+   "id": "family:3",
+   "kind": "replication_family",
+   "status": "PROVEN",
+   "label": "account summary 0x80801951 + character summaries 0x80801954"
+  },
+  {
+   "id": "family:4",
+   "kind": "replication_family",
+   "status": "PROVEN",
+   "label": "profile 0x80801803, active character 0x80801743, 0x80800FB2, items 0x80801732 x666, 0x8080102E"
+  },
+  {
+   "id": "family:5",
+   "kind": "replication_family",
+   "status": "PROVEN",
+   "label": "0x80801941, root soid 0x7FFFFFFFFFFFFFFF"
+  },
+  {
+   "id": "flag:836",
+   "kind": "unlock_flag",
+   "status": "PROVEN",
+   "label": "prologue gate (must be false)"
+  },
+  {
+   "id": "flag:2838",
+   "kind": "unlock_flag",
+   "status": "PROVEN",
+   "label": "character flag slot 673 (must be true for the prologue)"
+  },
+  {
+   "id": "flag:419",
+   "kind": "unlock_flag",
+   "status": "PROVEN",
+   "label": "purchase prerequisite alternative"
+  },
+  {
+   "id": "flag:440",
+   "kind": "unlock_flag",
+   "status": "PROVEN",
+   "label": "purchase prerequisite alternative"
+  },
+  {
+   "id": "activity:6E0DAE89",
+   "kind": "activity",
+   "status": "PROVEN",
+   "label": "new-character prologue, index 164"
+  },
+  {
+   "id": "scenario:act_cosmo_m0_highway",
+   "kind": "scenario",
+   "status": "PROVEN",
+   "label": "act_cosmo_m0_highway",
+   "attrs": {
+    "checksum": "0x8FE07299",
+    "bubbles": 22,
+    "package": "ps4_cosmo_activities_activity_025c"
+   }
+  },
+  {
+   "id": "tag:80CD0C34",
+   "kind": "tag",
+   "status": "PROVEN",
+   "label": "Cosmodrome ambient activity tag (class 0x80800861) registered as client reference type 0x10 during the prologue; byte +0x1AC = -1"
+  },
+  {
+   "id": "semantic:ah_host_to_client_channel",
+   "kind": "semantic",
+   "status": "PROVEN",
+   "label": "BAP message that delivers activity-host messages to the client (answer: bap_to_client_notification 9)"
+  },
+  {
+   "id": "semantic:ah_simulation_update_channel",
+   "kind": "semantic",
+   "status": "UNRESOLVED",
+   "label": "host message that feeds the client's simulation queue"
+  },
+  {
+   "id": "semantic:host_startup_blob2_format",
+   "kind": "semantic",
+   "status": "UNRESOLVED",
+   "label": "type of the 1608-byte second blob of the host-startup request"
+  },
+  {
+   "id": "type:0x8080097d",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 716 bytes",
+   "attrs": {
+    "members": 3
+   }
+  },
+  {
+   "id": "type:0x80800adc",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 2 bytes",
+   "attrs": {
+    "members": 2
+   }
+  },
+  {
+   "id": "type:0x80800b09",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 4 bytes",
+   "attrs": {
+    "members": 1
+   }
+  },
+  {
+   "id": "type:0x80800c0a",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 272 bytes",
+   "attrs": {
+    "members": 1
+   }
+  },
+  {
+   "id": "type:0x80800d10",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 1540 bytes",
+   "attrs": {
+    "members": 3
+   }
+  },
+  {
+   "id": "type:0x80800d31",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 4 bytes",
+   "attrs": {
+    "members": 1
+   }
+  },
+  {
+   "id": "type:0x80800d58",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 1544 bytes",
+   "attrs": {
+    "members": 3
+   }
+  },
+  {
+   "id": "type:0x80800dc1",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 8 bytes",
+   "attrs": {
+    "members": 1
+   }
+  },
+  {
+   "id": "type:0x80800f1a",
+   "kind": "engine_type",
+   "status": "PROVEN",
+   "label": "engine type, 164 bytes",
+   "attrs": {
+    "members": 1
+   }
+  },
+  {
+   "id": "fn:01.33:0x1018800",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_entity_indices",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_entity_indices:1018800"
+   }
+  },
+  {
+   "id": "fn:01.33:0x1018990",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_instance_state",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_instance_state:1018990"
+   }
+  },
+  {
+   "id": "fn:01.33:0x1018D00",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x1018E30",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_join_result",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_join_result:1018e30"
+   }
+  },
+  {
+   "id": "fn:01.33:0x1018F60",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x1018F90",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x10190F0",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x1019270",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x10193E0",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_sync_token",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_sync_token:10193e0"
+   }
+  },
+  {
+   "id": "fn:01.33:0x10194F0",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x1019600",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x1019740",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x1019890",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x10C500",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_mode_value",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_mode_value:10c500"
+   }
+  },
+  {
+   "id": "fn:01.33:0x29D7E0",
+   "kind": "function",
+   "status": "CANDIDATE",
+   "label": null
+  },
+  {
+   "id": "fn:01.33:0x29D950",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_membership",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_membership:29d950"
+   }
+  },
+  {
+   "id": "fn:01.33:0x29DDF0",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_host_event",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_host_event:29ddf0"
+   }
+  },
+  {
+   "id": "fn:01.33:0x29DE50",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "activity_client_on_debug_update",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:activity_client_on_debug_update:29de50"
+   }
+  },
+  {
+   "id": "fn:01.33:0x55BD10",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "bap_activity_host_manager_request_encode",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:bap_activity_host_manager_request_encode:55bd10"
+   }
+  },
+  {
+   "id": "fn:01.33:0x7965A0",
+   "kind": "function",
+   "status": "PROVEN",
+   "label": "initial_slice_set_loading_task_player_ready",
+   "attrs": {
+    "graph_id": "urn:ure:d1:occ:function:cusa00219-01.33:initial_slice_set_loading_task_player_ready:7965a0"
+   }
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "subject": "ah_host_msg:0",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1018800",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e2",
+   "subject": "ah_host_msg:0",
+   "predicate": "payload_type",
+   "object": "type:0x80800d64",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e3",
+   "subject": "ah_host_msg:1",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1018990",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e4",
+   "subject": "ah_host_msg:1",
+   "predicate": "payload_type",
+   "object": "type:0x80800e76",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e5",
+   "subject": "ah_host_msg:2",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1018D00",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e6",
+   "subject": "ah_host_msg:2",
+   "predicate": "payload_type",
+   "object": "type:0x80800dc1",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e7",
+   "subject": "ah_host_msg:4",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1018E30",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e8",
+   "subject": "ah_host_msg:4",
+   "predicate": "payload_type",
+   "object": "type:0x80800a58",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e9",
+   "subject": "ah_host_msg:5",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x29DDF0",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e10",
+   "subject": "ah_host_msg:7",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x29D7E0",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e11",
+   "subject": "ah_host_msg:10",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1018F60",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e12",
+   "subject": "ah_host_msg:11",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x29D950",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e13",
+   "subject": "ah_host_msg:11",
+   "predicate": "payload_type",
+   "object": "type:0x808009ed",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e14",
+   "subject": "ah_host_msg:18",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1018F90",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e15",
+   "subject": "ah_host_msg:18",
+   "predicate": "payload_type",
+   "object": "type:0x8080097d",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e16",
+   "subject": "ah_host_msg:23",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x10190F0",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e17",
+   "subject": "ah_host_msg:23",
+   "predicate": "payload_type",
+   "object": "type:0x80800d58",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e18",
+   "subject": "ah_host_msg:24",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1019270",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e19",
+   "subject": "ah_host_msg:24",
+   "predicate": "payload_type",
+   "object": "type:0x80800d10",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e20",
+   "subject": "ah_host_msg:27",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x10193E0",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e21",
+   "subject": "ah_host_msg:27",
+   "predicate": "payload_type",
+   "object": "type:0x80800d31",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e22",
+   "subject": "ah_host_msg:29",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x10194F0",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e23",
+   "subject": "ah_host_msg:29",
+   "predicate": "payload_type",
+   "object": "type:0x80800b09",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e24",
+   "subject": "ah_host_msg:38",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x29DE50",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e25",
+   "subject": "ah_host_msg:38",
+   "predicate": "payload_type",
+   "object": "type:0x808052e5",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e26",
+   "subject": "ah_host_msg:39",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1019600",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e27",
+   "subject": "ah_host_msg:39",
+   "predicate": "payload_type",
+   "object": "type:0x80800c0a",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e28",
+   "subject": "ah_host_msg:42",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1019740",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e29",
+   "subject": "ah_host_msg:42",
+   "predicate": "payload_type",
+   "object": "type:0x80800adc",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e30",
+   "subject": "ah_host_msg:43",
+   "predicate": "handled_by",
+   "object": "fn:01.33:0x1019890",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e31",
+   "subject": "ah_host_msg:43",
+   "predicate": "payload_type",
+   "object": "type:0x80800f1a",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "e32",
+   "subject": "ah_client_msg:3",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e33",
+   "subject": "ah_client_msg:15",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e34",
+   "subject": "ah_client_msg:17",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e35",
+   "subject": "ah_client_msg:20",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e36",
+   "subject": "ah_client_msg:21",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e37",
+   "subject": "ah_client_msg:28",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e38",
+   "subject": "ah_client_msg:30",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e39",
+   "subject": "ah_client_msg:36",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e40",
+   "subject": "ah_client_msg:37",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e41",
+   "subject": "ah_client_msg:47",
+   "predicate": "carried_by",
+   "object": "bap:client_to_activity_host_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a3"
+   ]
+  },
+  {
+   "id": "e42",
+   "subject": "activity:6E0DAE89",
+   "predicate": "loads_scenario",
+   "object": "scenario:act_cosmo_m0_highway",
+   "status": "STRONGLY_SUPPORTED",
+   "assertion_ids": [
+    "a7"
+   ]
+  },
+  {
+   "id": "e43",
+   "subject": "semantic:ah_host_to_client_channel",
+   "predicate": "realized_by",
+   "object": "bap:bap_to_client_notification",
+   "status": "PROVEN",
+   "assertion_ids": [
+    "a2"
+   ]
+  }
+ ],
+ "assertions": [
+  {
+   "id": "a1",
+   "status": "PROVEN",
+   "claim": "BAP message ids and header classes come from vtable slots 0 and 1 of each c_investment_bap_message_* class; push_policy_* objects pick the handler for received messages, policy_* objects map send kinds to message types.",
+   "source_ids": [
+    "s7"
+   ]
+  },
+  {
+   "id": "a2",
+   "status": "PROVEN",
+   "claim": "Host -> client activity messages arrive as bap_to_client_notification (9) with payload [1][u64 BE host id][u32 BE type][u32 BE len][data]; activity_host_to_client_notification (100) is only relayed by the client to the BAP service named in its header (push policy 0x565DB0).",
+   "source_ids": [
+    "s1",
+    "s3",
+    "s6",
+    "s8"
+   ]
+  },
+  {
+   "id": "a3",
+   "status": "PROVEN",
+   "claim": "Client -> host activity messages are client_to_activity_host_notification (8): header class 3 (base + u64 BE target host id), payload [1][u32 BE type][u32 BE len][u32 0][data] (0x55FD50).",
+   "source_ids": [
+    "s1",
+    "s3",
+    "s8"
+   ]
+  },
+  {
+   "id": "a4",
+   "status": "PROVEN",
+   "claim": "Activity-host payloads are engine-type bitstreams (MSB first, value + bias in n bits, presence bits for optional members); type descriptors were dumped from the running client (backend/data/investment_schema.json).",
+   "source_ids": [
+    "s5",
+    "s8"
+   ]
+  },
+  {
+   "id": "a5",
+   "status": "PROVEN",
+   "claim": "Investment objects replicate in families (object manager slots); updates use the queuez format (u32 BE count, per family {type, root, version, flags, n, objects}).",
+   "source_ids": [
+    "s1",
+    "s4",
+    "s5"
+   ]
+  },
+  {
+   "id": "a6",
+   "status": "PROVEN",
+   "claim": "Flag 836 must be false and 2838 true for the new-character prologue; the prologue's purchase prerequisite is f[0x1A3] || f[0x1B8] (scope-0 flags, set through the profile override list).",
+   "source_ids": [
+    "s1",
+    "s4",
+    "s8"
+   ]
+  },
+  {
+   "id": "a7",
+   "status": "PROVEN",
+   "claim": "Activity index 164 (hash 0x6E0DAE89, the new-character prologue) loads scenario act_cosmo_m0_highway: checksum 0x8FE07299 (tag data +0xC), 22 bubbles (tag data +0x48); initial region PRV00.00 (hash 0x555CCDF4) is slot 0.",
+   "source_ids": [
+    "s3",
+    "s8"
+   ]
+  }
+ ],
+ "sources": [
+  {
+   "id": "s1",
+   "kind": "repository_file",
+   "locator": "lizardpeter/destiny-1@7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766:findings/LOG.md"
+  },
+  {
+   "id": "s2",
+   "kind": "repository_file",
+   "locator": "lizardpeter/destiny-1@7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766:backend/src/bap.rs"
+  },
+  {
+   "id": "s3",
+   "kind": "repository_file",
+   "locator": "lizardpeter/destiny-1@7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766:backend/src/ah.rs"
+  },
+  {
+   "id": "s4",
+   "kind": "repository_file",
+   "locator": "lizardpeter/destiny-1@7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766:backend/src/invest.rs"
+  },
+  {
+   "id": "s5",
+   "kind": "repository_file",
+   "locator": "lizardpeter/destiny-1@7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766:backend/data/investment_schema.json"
+  },
+  {
+   "id": "s6",
+   "kind": "repository_file",
+   "locator": "lizardpeter/destiny-1@7b2f1d35613ef5d7fc51f0676fbffd1e0fa8b766:reconstruction/functions.json"
+  },
+  {
+   "id": "s7",
+   "kind": "retail_binary_scan",
+   "locator": "eboot.bin 01.33 (sha256 672f0341...0833): c_investment_bap_message_* vtables, slot 0 = message id, slot 1 = header class",
+   "sha256": "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833"
+  },
+  {
+   "id": "s8",
+   "kind": "runtime_trace",
+   "locator": "d1-native + d1-backend headless runs n30-n55 and gdb probes, 2026-10-13 (logs not committed)"
+  }
+ ],
+ "rejections": [
+  {
+   "id": "r1",
+   "candidate_node": "bap:activity_host_to_client_notification",
+   "rejected_as": "semantic:ah_host_to_client_channel",
+   "reason": "The client's push policy for 100 relays it back out to the service named in its header; nothing reaches the activity client.",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "r2",
+   "candidate_node": "ah_host_msg:38",
+   "rejected_as": "semantic:ah_simulation_update_channel",
+   "reason": "0x29DE50 decodes the update and discards it.",
+   "assertion_ids": [
+    "a2"
+   ]
+  },
+  {
+   "id": "r3",
+   "candidate_node": "type:0x80800cc5",
+   "rejected_as": "semantic:host_startup_blob2_format",
+   "reason": "Decoding it as the instance details consumes only ~540 of 12864 bits at any alignment.",
+   "assertion_ids": [
+    "a4"
+   ]
+  }
+ ],
+ "frontiers": [
+  {
+   "id": "f1",
+   "question": "What registers the current activity's mode reference (client reference type 0x10) so that its +0x1AC byte is positive for the prologue? Loading task 9 (0x7965A0) waits for it; D1_BYPASS=spawn skips it.",
+   "next_proof": "Find the writer of the client reference table (types +0x2BD1C) for type 0x10 and which activity/instance data selects the tag.",
+   "related_nodes": [
+    "tag:80CD0C34",
+    "fn:01.33:0x7965A0",
+    "fn:01.33:0x10C500"
+   ]
+  },
+  {
+   "id": "f2",
+   "question": "Format of the host-startup request blobs (8 bytes at +0, 1608 bytes at +0x202).",
+   "next_proof": "Find the struct the client fills before 0x55BD10 and its type descriptor.",
+   "related_nodes": [
+    "fn:01.33:0x55BD10"
+   ]
+  },
+  {
+   "id": "f3",
+   "question": "Activity index -> scenario name / checksum / bubble count for activities other than the prologue.",
+   "next_proof": "Read the activity definitions (investment content) and scenario tag data instead of hardcoding.",
+   "related_nodes": [
+    "activity:6E0DAE89"
+   ]
+  },
+  {
+   "id": "f4",
+   "question": "Does the player unit need character gear from the investment profile to get its definition (unit object +0x50 -> +0x1F8)?",
+   "next_proof": "Compare the spawned unit's definition with a character that has equipped items.",
+   "related_nodes": [
+    "fn:01.33:0x7965A0"
+   ]
+  }
+ ]
+}

@@ -88,7 +88,11 @@
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0x2eb340` | demonware_transport_started |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`2eb340_demonware_transport_started.c`](decompiled/2eb340_demonware_transport_started.c) | DemonWare network start object (g_2F66F68) status == 2 (started). |
+| `0x2ebd40` | demonware_transport_failed |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`2ebd40_demonware_transport_failed.c`](decompiled/2ebd40_demonware_transport_failed.c) | DemonWare network start object reports failure. |
+| `0x122c070` | bdAuthPS4_handleGetAccessTokenReply |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`122c070_bdAuthPS4_handleGetAccessTokenReply.c`](decompiled/122c070_bdAuthPS4_handleGetAccessTokenReply.c) | DemonWare bdAuthPS4::handleGetAccessTokenReply. |
 
 ## Classes (75)
 

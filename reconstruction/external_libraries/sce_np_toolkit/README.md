@@ -11,7 +11,10 @@ _None recovered (retail build stripped most asserts)._
 
 ## Decompiled functions
 
-_None yet._
+| VA | name | class | evidence | pseudo-C | role |
+|---|---|---|---|---|---|
+| `0xf90b30` | np_toolkit_thread |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`f90b30_np_toolkit_thread.c`](decompiled/f90b30_np_toolkit_thread.c) | NP toolkit worker thread. |
+| `0xfa7e10` | np_toolkit_init |  | CONFIRMED_BINARY (decompiled data flow, runtime traces 2026-10-12/13, backfill); names are HYPOTHESIS | [`fa7e10_np_toolkit_init.c`](decompiled/fa7e10_np_toolkit_init.c) | NP toolkit start-up: sceNpRegisterStateCallback non-zero is failure; its thread (0xF90B30) then tears down and signals the main thread. |
 
 ## Classes (94)
 

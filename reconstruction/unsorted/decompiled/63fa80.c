@@ -1,0 +1,15 @@
+
+void FUN_0063fa80(void)
+
+{
+  FUN_0006e0d0(&DAT_026beab0);
+  FUN_0006e360(&DAT_026beab0);
+  FUN_0063b6f0(DAT_026bea78);
+  FUN_0063b6f0(DAT_026bea80);
+  FUN_0063b6f0(DAT_026bea88);
+  FUN_0063b6f0(DAT_026bea90);
+  FUN_0063b6f0(DAT_026bea98);
+  FUN_0058bf90(DAT_026beaa0);
+  return;
+}
+

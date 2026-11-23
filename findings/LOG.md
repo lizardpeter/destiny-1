@@ -419,3 +419,1473 @@ tables that the PS4 toolchain places inside `.text`.
 - **Indirect control flow:** 16,625 indirect calls and 2,677 indirect jumps.
   Irrelevant for an x86-64→x86-64 relink; they are the hard part only if the
   code were lifted to C or another architecture.
+
+
+## 2026-10-12 — Native prototype boots Destiny 1 to the title screen (`native/`)
+
+`native/` is a new Linux x86-64 program (`d1-native`) that runs the original
+01.33 eboot and the two game-shipped modules as native code: an ELF-SCE loader
+and linker, host implementations of the firmware functions it needs, and a null
+GPU. Details in `native/README.md`.
+
+What happens on a run (60–90 s, headless, no network):
+
+1. Linking: 3,292 imports resolve to the game modules, 262+ to host code, the rest
+   to logging stubs that return 0. 2,542 `fs:[0]` TCB loads are retargeted to GS.
+2. `libSceFios2.prx` and `libc.prx` module_start succeed; the eboot entry runs.
+3. Start-up creates the engine's threads (job ×4, async_job ×4, Graphics
+   Heartbeat, Wwise `AK::EventManager`/`AK::IOThread`, voice, file I/O, NP),
+   initialises audio, video out and Gnm, reads `sku_config.txt`, opens
+   `ps4_client_bootstrap_unp4_0`, `ps4_ui_startup_unp4_0` and
+   `ps4_ui_bootflow_unp4_0`, and hides the boot splash.
+4. The frame loop runs at ~31 flips/s; each frame submits ~54 auto-index draws
+   (≈1.4 k PM4 packets) — the title screen.
+5. With Cross pressed the bootflow advances and stops at the online gate.
+
+Two crashes were fixed on the way:
+
+- `eboot+0x5D479`: an allocation-tracking call-stack capture walks eight saved-rbp
+  frames; guest calls now start from a self-referencing terminal frame.
+- `eboot+0xFAAF4` in **Graphics Heartbeat** — the same offset reported by shadPS4
+  users (2026-09-26 entry). The heartbeat waits for a GPU frame counter; while
+  waiting it tries to steal a job (`0xFB860` → `0xFAAC0`), which dereferences a
+  per-thread job-system context (TLS offset −0x1068 + 0x58, set only on job
+  threads by `0xFAD30`). It is only reached when GPU end-of-pipe interrupts never
+  arrive; with EOP fences and interrupts delivered the wait completes and the
+  path is not taken.
+
+### Engine logging recovered
+
+Release builds keep every log call but have no threshold table, so all messages
+are dropped. `0xE4D70(channel, level)` is the gate (threshold defaults to 5) and
+`0xE4AA0(message_id, text)` the emitter; hooking both (`D1_GAME_LOG=1`) prints
+the engine's own log. The `world_controller:state_manager` states are named by
+the table at `0x1945340` (bootflow:media_check … bootflow:prepare_for_orbit,
+character:signin, character:prologue, …).
+
+Observed bootflow with no network:
+
+```
+bootflow:media_check -> bootload -> intro_screen_display -> start   (title, waits for Cross)
+start -> platform_signin
+  demonware: sceNetCtlGetInfo failed (80412104); create socket failed
+  Prerequisite ENUM(6) failed for reason 'error.no_ethernet_link'
+platform_signin -> cleanup (kick_to_bootflow_start) -> start          (loop)
+```
+
+DemonWare 48 (`D:\bungie\external_libraries\DemonWare\48\...`) is the transport
+library; `sku_manager` reports sku_type 2 `north_america_digital`, base content
+version `56578-1-3407992`.
+
+### Second gate: Bungie STUN during platform_signin
+
+With `D1_NET=link` (interface up, real host UDP sockets, local PSN user
+reported signed in, DNS refused) the ethernet prerequisite passes and
+`bootflow:platform_signin` instead runs DemonWare's NAT discovery. It resolves
+`stun1`–`stun8` under `signon.deadorbit.net` and `signon.gravityshavings.net`
+(Bungie domains), cannot, logs `External STUN client failed`, and leaves with
+`error.transport_method_invalid` → cleanup → `bootflow:start`. Every later
+bootflow state (account_signin, bap_signin, investment_signin, profile_setup,
+prepare_for_orbit) is reached only after this one, so reaching orbit needs
+either a local stand-in for Bungie's sign-on / DemonWare / BAP services or a
+client-side bypass of those states.
+
+### Bypass investigation: world_controller state machine and the first three gates
+
+`world_controller:state_manager` states (name table `0x1945340`, 37 entries):
+bootflow:media_check, bootload, intro_screen_display, start, platform_signin,
+platform_account_warnings, enumerate_content_rights, account_signin, eula, upsell,
+email, confirm_account_transfer, content_check, content_install,
+insufficient_content_space, illegal_dlc_media, queuing, package_registration,
+bap_signin, investment_signin, profile_setup, prepare_for_orbit;
+character:signin, character:prologue; cleanup; setup:orbit_loading, orbit,
+activity_session_creation, matchmaking, activity_host_setup,
+prologue_intro_loading, orbit_outro, activity_world_transition;
+activity:initial_slice_set_loading, physics_join, in_world, watch_video.
+
+- State-change reasons: 284-entry table built at start-up (`0x785650`), base
+  `0x26CAF40`, stride 16 (`0x783960` maps index → name). `error.no_ethernet_link`
+  = 143, `error.transport_method_invalid` = 144.
+- Prerequisites: each state has a 38-bit prerequisite mask (`state+8`);
+  `0x792CD0` walks it and calls `0x792ED0(state, n, ctx, &reason)` → 0 satisfied,
+  1 pending, 2 failed (failure → `0x783EE0(cleanup, reason)`). ENUM(6) is the
+  ethernet-link prerequisite (`0x7927B0`).
+- platform_signin's own update (`0x79F310`) requires the DemonWare network start
+  object (`g_2F66F68`, status 2 = started; `0x2EB340` / `0x2EBD40`) and the
+  platform user's online flags; otherwise it requests cleanup with
+  `transport_method_invalid` via `0x784E50`.
+
+With `D1_BYPASS=prereq,transport` and `D1_NET=link`:
+
+```
+platform_signin -> platform_account_warnings -> enumerate_content_rights -> account_signin
+  networking:signon: _retrieving_platform_token
+  POST https://auth.api.sp-int.ac.playstation.net:443/2.0/oauth/token   (not sent)
+  retrieveSCEAccessToken returned result code 715 -> signon _error
+account_signin -> cleanup (error.bungie_server_connection) -> start
+```
+
+account_signin is the Bungie sign-on service (`c_signon_service_client`): it needs a
+PSN OAuth token, then a sign-on request to Bungie. The states after it
+(bap_signin, investment_signin, profile_setup) load the account, characters and
+inventory from Bungie's BAP / investment services, and activities run against a
+remote activity host (`c_investment_bap_message_client_to_bap_get_activity_host_proxy_request`,
+`..._activity_host_to_world_server_response`). The client does contain offline /
+host-migration session code (`Creating offline host migration session`), so
+whether it can host a world locally is the next question to answer.
+
+## 2026-10-12 — First rendered frames: temporary renderer in d1-native
+
+`native/renderer/` builds shadPS4's `video_core` and `shader_recompiler` (from an
+external checkout, tested at `e0a46675`) into d1-native with
+`-DD1_RENDERER_SHADPS4=ON -DSHADPS4_DIR=...`. It is a stop-gap until the planned
+Rust/Vulkan renderer; it makes the combined binary GPL-2.0-or-later, and none of
+shadPS4's source is copied into this repository apart from the Gnm command
+builders and flip patching in `renderer/glue/d1_renderer.cpp`.
+
+What d1-native supplies in place of shadPS4's emulator core
+(`renderer/glue/core_glue.cpp`, `renderer/shim/`):
+
+- Guest memory: the guest runs natively, so guest addresses are host addresses.
+  Direct/flexible mappings are reported to the rasterizer (`MapMemory` +
+  `RegisterMemory`); GPU writes back to guest memory go through `/proc/self/mem`
+  so they do not trip write tracking.
+- CPU write tracking: the rasterizer write-protects pages it caches; d1-native's
+  SIGSEGV handler hands such faults to it first. Kernel reads into protected pages
+  would fail with EFAULT, so `sceKernelRead`/`Pread` touch the destination first.
+- Flips: the game's last DCB of a frame ends in a 64-dword `prepareFlip` NOP
+  (`0xC03E1000`), which is patched into a label write plus a flip marker; the
+  command processor raises GfxFlip in stream order, d1-native updates flip status
+  and events, and optionally saves the frame (`D1_FRAMES=<dir>`,
+  `D1_FRAME_EVERY=<n>`).
+- Headless Vulkan: a window-system-"Headless" instance, no swapchain. Tested on
+  lavapipe (llvmpipe, Vulkan 1.4) in the container.
+
+One game-side fix was needed: `eboot+0xFAAF4` again, now in the Graphics
+Heartbeat's wait for the GPU frame counter (`0x7DD1CA`). While waiting, the
+heartbeat calls `0xFB860` → `0xFAAC0` to run a pending job, which dereferences the
+thread's job context (TLS slot read by `0xFC520`, set only for job-system threads
+by `0xFAD30`, whose only writer is `0xFC540`). The heartbeat is not a job thread,
+so the path crashes whenever the GPU is behind. A guard hook on `0xFAAC0` returns
+"no job run" when the context is null; the caller then sleeps 300 µs and polls
+again. This is very likely the same crash shadPS4 users report for 01.29/01.33.
+
+Result on lavapipe (software rendering, ~13 frames/s): the Bungie logo, the
+animated DESTINY title, and — without network — the "ATTENTION / No internet
+connection detected … canary" dialog (`error.no_ethernet_link`), all rendered
+correctly at 1920×1080 by the game's own shaders.
+
+### Window and input
+
+The renderer build now opens an SDL2 window (X11/Wayland) and presents each
+flipped video-out buffer through a Vulkan swapchain, letterboxed. Keyboard and
+SDL game controllers feed `scePadRead`/`scePadReadState`. Checked under Xvfb with
+injected key presses: title screen ("PRESS ⊗ TO PLAY") → Enter → platform_signin →
+no-network dialog → Enter → back to the title.
+
+### Backend routing (`D1_BACKEND`)
+
+Decision: the online services are to be replaced by a backend server of our own,
+run on the same machine for testing and on another machine later, never the real
+services. d1-native now takes the server's address from `D1_BACKEND`:
+
+- DNS: names under `deadorbit.net`, `gravityshavings.net`, `bungie.net`,
+  `bungie.com`, `demonware.net`, `playstation.net` and
+  `sonyentertainmentnetwork.com` resolve to the backend; everything else is
+  refused. The eboot's own host list: `signon.{deadorbit,gravityshavings}.net`,
+  `stun1-8.signon.{deadorbit,gravityshavings}.net`, `stun.{us,eu,jp,au}.demonware.net`,
+  `dm-partnernet.upload.deadorbit.net`, `www.bungie.net`, `help.bungie.net`,
+  `auth.api.%s.ac.playstation.net/2.0/oauth/token`.
+- HTTP(S) through libSceHttp is sent as plain HTTP/1.1 to the backend
+  (`D1_BACKEND_HTTP_PORT`, default 8080) with the original `Host` header and an
+  `X-D1-Original-URL` header; the response is returned to the game as is.
+  Since libSceHttp is HLE, TLS never comes into it.
+
+First request received by a probe server (with `D1_BYPASS=prereq,transport`):
+`POST https://auth.api.sp-int.ac.playstation.net/2.0/oauth/token`, form-encoded
+`grant_type=authorization_code`, the game's PSN client id/secret, the
+authorization code from `sceNpAuthGetAuthorizationCode`, scope
+`openid,openid:duid,psn:s2s`. With an error answer the game retries every ~9 s.
+This is the first thing the backend must answer (an OAuth token response).
+
+### Activity host: what the client contains (first pass)
+
+- World-controller modes (`0x751EE0` → `0x78F660`, names at `0x19458E0`):
+  `SWC`, `DWC`, `EWC` (`c_editor_world_controller`), `OWC`
+  (`c_online_world_controller`), `AHWC` (activity host). The retail client builds
+  only the EWC and OWC objects (`0x78F570`: slots 2 and 3); AHWC has a name and a
+  slot but **no implementation in the client** — the activity host's own logic
+  ships only on Bungie's servers. The status line "ACTIVITY HOST RUNNING OUT OF
+  PROCESS (AHWC)" (`0xAE681D`) is debug text for that mode.
+- Mode choice at start-up (`0x52C020`): a stripped override (`0x1CF60` → −1), then
+  EWC if the start-up flag read by `0x239B70` is set, otherwise OWC. Forcing EWC
+  (`D1_WORLD_CONTROLLER=editor`) runs the main loop but never starts the bootflow
+  or video; the editor controller presumably waits for tool commands. Not a
+  shortcut to offline play.
+- The command line parser (`0x1730`) still accepts `/init:<file>.txt`, `/user:`
+  and `/machine_name:`, but `console_execute_commands_from_buffer not supported in
+  release` (`0x6E95F0`) — init files cannot run console commands in this build.
+- What the client simulates itself: AI actors, path finding, perception, the
+  AI spawn system, squads and encounters (`ai: actor executor update job`,
+  `c_ai_spawn_system`, `encounter manager`), player spawning, physics, entity
+  authority hand-off between peers (`simulation_queue_entity_claim_authority`,
+  `authority-over-domain`). It loads activities by name from registered maps
+  (`0x7A3B70`: "could not find a registered Orbit or bootstrap map").
+- What goes through the activity host: the 50+ `client_to_activity_host_*`,
+  `activity_host_to_client_*`, `bap_to_activity_host_*` and `*_world_server_*`
+  message types — session/reservation management, activity start-up
+  ("activity host startup request/response"), authoritative counts
+  ("critical squad … alive count client vs auth"), and the world server's item,
+  kill, progression and talent-grid records.
+
+Working conclusion: the combat simulation is client-side, so a local backend does
+not need to run the game world. It needs to (1) answer the services (sign-on, BAP,
+investment) and (2) implement the activity host's *protocol role* — session
+start-up, reservations, authoritative bookkeeping and rewards — which is message
+handling rather than world simulation. How much game logic hides inside (2)
+(mission progression, objective state) is the next thing to measure, by decoding
+the activity host message payloads.
+
+### Frame rate unlock
+
+The 30 fps cap is the game's own limiter, not the flip rate or vblank (raising the
+emulated vblank to 120 Hz changed nothing). `0x593F00` builds the "time control
+config globals" (pointer `0x26BCD08`, 0x48 bytes) from a config of float seconds:
+`+0x08` frame period µs (33366 = 29.97 fps), `+0x10` 15000, `+0x18`…`+0x30`
+vblank-derived periods (16683 µs = 59.94 Hz), `+0x38` integer target fps (30).
+The main loop (`0x594460`) waits for the next period; `0x593890` (frame time in
+seconds) and `0x5938B0` (fps) derive from `+0x08` and feed `0x591710`.
+
+`D1_FPS=<n>` (hook on `0x593F00`) rewrites `+0x08` and `+0x38`. Measured with the
+null GPU: 60 → 64 flips/s, 120 → 127, 240 → 251 (30 s runs including start-up).
+The intro screen lasts 6.9 s at both 30 and 60 fps, so UI timing is wall-clock
+based. Whether in-world simulation (movement, physics, animation) stays correct
+needs testing in a world.
+
+Low latency (renderer build): Mailbox presentation by default (`D1_PRESENT`), and
+input is sampled every 1 ms.
+
+Note: one of ~10 runs with stdout piped through a timestamper never started the
+bootflow (main loop ran, no state changes). Not reproduced since; watch for a
+start-up race.
+
+## 2026-10-12 — Replacement backend: sign-on, content manifest, package registration
+
+`backend/` (Rust, `d1-backend`) answers the online services; d1-native routes them
+to it (`D1_BACKEND`). The bootflow now runs, with our own server only, through
+`account_signin`, `content_check` and `package_registration` to `bap_signin`.
+
+- **PSN token**: JSON with `scope` and an `id_token` (JWT-shaped, unchecked); used by
+  DemonWare's `bdAuthPS4::handleGetAccessTokenReply` (`0x122C070`).
+- **Sign-on** (`POST /SignOn?platform=orbis&build=56578.17.04.12.1251.evil`):
+  protobuf both ways. Bungie messages are "schematized": a generic decoder
+  (`0xA2020`/`0xA17D0`) driven by tables of 23-byte field records
+  `{u32 field, u8 kind|type, u8 pad, s8 flag offset, u32 size, u32 max count, u64
+  nested schema/default}` (kind: 0x00 required, 0x10 optional, 0x20 repeated, 0x30
+  custom callback; type 0 varint, 2 fixed32, 4 bytes, 5 string, 6 message). Schemas
+  can be dumped automatically. Response (`0x1910CC0`): field 1 type (0 success,
+  1 denied/offline, 2 queued, 3 offline), 2 success {session keys, security token,
+  expiry, next server IPv4/port}, 4 client_config {cookie, social id, engine config
+  stream}, 5 silo id, 6 content version, 12 server clock, 13 environment.
+- **Engine configuration** rides in client_config field 3: `u32 0x123456`, then
+  `{u32 id, value}` pairs ending with id 0, applied by a 40 KB switch (`0x1033F80`)
+  into the "Engine Configuration" global. Id 100 = content manifest URL, 101 =
+  expected manifest GUID, 102 = URL suffix.
+- **Content manifest** (`0x2B0980`, schema `0x1911470`): signature-checked only
+  when the byte at `0x18DC974` is set; d1-native clears it with `D1_BACKEND`.
+  Field 3 lists the patchable packages that `package_registration` (`0x79E740`)
+  registers; registration (`0xD6300`) verifies each package header's own RSA
+  signature and requires header u16 `0x04` == entry field 3 (package id) and header
+  u64 `0x08` == entry field 4, so the backend reads both from the package files.
+  With 405 packages (newest generation of each id, English) registration passes.
+- Packages are staged locally as sparse files holding only header and tables
+  (registration reads 0x140 bytes of each); full files are fetched as the game
+  reads them (`D1_FILE_LOG=2` logs the first read of every MiB).
+
+Next gate: `bootflow:bap_signin` — the BAP protocol (address from the sign-on
+response; nothing has connected to it yet).
+
+## 2026-10-12 — settings file, v-sync and Discord presence
+
+- `<data>/d1-native.cfg` (settings.cpp) holds window size, fullscreen, v-sync, fps and Discord
+  options; env vars override. V-sync maps to the swapchain present mode: on = Fifo,
+  off = Mailbox (default), off-tearing = Immediate. F11 / Alt+Enter toggle borderless
+  fullscreen. Verified under Xvfb: 1600x900 window, fullscreen start (1920x1080 drawable),
+  F11 back to windowed, present mode logged.
+- Render resolution: reporting 3840x2160 from `sceVideoOutGetResolutionStatus` still gets
+  1920x1080 video-out buffers and render targets, so the output scales to the window and the
+  internal resolution needs a patch in the engine's render-target setup (to find).
+- Discord Rich Presence speaks Discord's local IPC protocol directly (handshake op 0, then
+  SET_ACTIVITY op 1 frames on `discord-ipc-N`) from a worker thread; no SDK. Activity text
+  comes from the world-controller state machine (hook on the transition step 0x783AC0,
+  state at obj+0x1B0, names at 0x1945340). Verified against a fake IPC server: handshake,
+  then "At the title screen" → "Signing in" as the bootflow advanced. Needs an application id.
+
+## 2026-10-12 — Windows build
+
+- d1-native, the temporary renderer and d1-backend cross-compile for Windows (llvm-mingw;
+  Rust x86_64-pc-windows-gnullvm). Verified under Wine (+ lavapipe): boots to
+  `bootflow:bap_signin`, renders the Bungie logo and Signing In screen, starts its own
+  backend from its folder. Details in native/README.md.
+- Single-folder layout: d1-native.cfg / logs / data/ / game/ next to the executable.
+- Start-up hang root cause: `sceNpRegisterStateCallback` returned 1; the NP toolkit
+  (0xFA7E10) treats non-zero as failure, its thread (0xF90B30) tears down and signals the
+  main thread, which waits forever if it had not started waiting yet. Returns 0 now.
+- ENGINE OOM in content_check root cause: `sceAppContentGetAddcontInfoList` (called by
+  0xBBE60 as count-then-fill) was a logging stub that never wrote the count, so the add-on
+  count was stack garbage (once 862 million entries x 0x18 = 19 GB, heap id 45). Implemented
+  with the other AppContent / PlayGo / DiscMap calls that return results through pointers.
+- LLVM's `__builtin_setjmp` restores a wrong frame pointer with the Win64 frame layout;
+  thread exit uses a small assembly entry/exit pair instead (`d1_call_guest_exitable`).
+
+## 2026-10-12 — bap_signin: package generations, POSIX sockets, BAP transport
+
+- **bap_signin** (handler vtable 0x1945D90, update 0x799A70, sub-step at handler+0x30) runs
+  21 steps: unload bootstrap-unpatchable, load the package sets "client_bootstrap_patchable"
+  (3), "client_startup_globals", "investment_assets"/"investment_globals" (6, 7) through the
+  package manager at 0x26C93B4 (8 x {state, handle, tag}; 0x752F10 request, 0x7536F0 status),
+  then connects to BAP (0x799FA0). Sub-steps are logged ("bootflow: bap_signin step a -> b").
+- **Stuck at step 12** (loading set 3, tag 0x80AE4000): newer package generations keep
+  blocks in older generation files (block `patch_id`): ps4_client_bootstrap_patchabl_0172_5
+  has 150 blocks in _5 and 46 in _0/_1/_2/_4, its first entry in _0. The loader only opens
+  files the content manifest registered, and the backend listed only the newest generation.
+  Listing every generation (English + neutral: 1392 of the client's 1500 slots) fixes it;
+  steps 12-21 then complete. (Global resource loads go through the simulation queue as event
+  0x4E, applied by 0x34B920; D1_BYPASS=localres forces the local path at 0x34A278 but is not
+  needed.)
+- **BAP address**: sign-on field 2.6 is the IPv4 bytes as a little-endian u32 (127.0.0.1 =
+  0x0100007F); big-endian showed up as 1.0.0.127.
+- **POSIX sockets**: BAP (c_network_server_bap_connection, 0xB2Exxx-0xB33xxx) and DemonWare
+  use libkernel `socket/connect/select/recv/send/setsockopt/close`, which were logging stubs
+  returning 0. Implemented (FreeBSD constants, BSD sockaddr, fd_set of 64-bit words; `close`
+  routes sockets to the network layer).
+- **BAP transport** (states: _acquiring_server, _connecting, _listening, _channel_starting,
+  _authenticating, _setup_primary_register_subscriber, _setup_primary_register_relay_client,
+  _connected): TCP; every message is an envelope `u8 version (1), u8 kind (1 = plain,
+  0/2 = signed/encrypted), u32 big-endian size` (0xB2FA10), then a signature (0xB2FC70)
+  and payload. In _channel_starting the client queues a channel-startup request (0xB336F0:
+  type 5, message 0x1E, a key "DESTIN\x94\x15" + 120 random bytes) and polls recv(6) for
+  envelopes; nothing is sent yet (update_sending 0xB2F3D0). Next: the send path and the
+  server's first message.
+- Research tools: D1_COUNT=<offsets> counts calls to game functions; D1_FILE_LOG=3 logs
+  every read; d1-native waits for the backend's port before booting.
+
+## 2026-10-13: BAP authentication, investment sign-in, profile setup
+
+- **Secure hello (0x19 -> 0x1A)**: payload `u32 BE L | IV[16] | AES-128-CBC/PKCS#7 | HMAC-SHA256[32]`,
+  MAC over `[0, L-28)` (length prefix included). AES key = sign-on success field 2, HMAC key =
+  field 3 (0xB34F70). Plaintext = 12-byte nonce + 16-byte channel key (0x6CF80).
+- **Channel**: AES-128-GCM (libtomcrypt; 0x6CD20 encrypt, 0x6CE20 decrypt), no AAD, 16-byte tag,
+  nonce per direction incremented little-endian after each message. The client flips byte 11 of
+  its *send* nonce. Kind-1 envelope = tag + ciphertext.
+- **Message ids** come from vtable slot 0 of each `c_investment_bap_message_*` class (slot 1 =
+  header class). 121 queuez_register, 302 register_relay_client, 12/14 (un)subscribe and 250
+  echo all take empty responses (`id + 1`).
+- **Response matching (0xB30960)**: a response is matched only against the *oldest* outstanding
+  request in each send queue. One unanswered message (e.g. 32 user_message or 21
+  purchased_offers) blocks every later reply in that queue. Answer everything, in order.
+- **World server messages (10/11)**: MSB-first bitstream `u16 id | struct | has_extra (u16 len +
+  bytes)`. The structs are serialized from the engine's runtime type descriptors (reader
+  0x101EB30, kind handlers 0x19131B0). backend/data/investment_schema.json is a dump of the
+  message table, the family slot table and every reachable type, taken from the running
+  client with gdb.
+- **Sign-in**:
+  - 0x1F7 response: {status, account id (must be non-zero, kept in the account slot), i32,
+    i32, family-5 root object whose soid must be 0x7FFFFFFFFFFFFFFF}.
+  - 0xCE {family, root} subscribes; its response's extra blob is a queuez update (same format
+    as notification 123) carrying the family baseline. Family 3 = account summary
+    (0x80801951 + up to 10 character summaries 0x80801954).
+  - Family 4 (profile, 0x80801803) is pushed as notification 123 once the client has moved it
+    to replication state 2. investment_signin waits for it (account slot ready flag, 0x586970).
+- **Queuez update**: `u32 BE count | per family: u32 type, u64 root, i32 version, u8 flags
+  (bit 0 baseline), u32 n | per object: u32 type hash, u64 soid, u32 len, bitstream`. The first
+  member of each object must be its soid.
+- **profile_setup**: brightness / screen bounds / third screen. Each finishes with a
+  "completed" event (0x7A02E0). `D1_BYPASS=profile` completes them for headless tests.
+- **Renderer**: shadPS4 lacked V_CMP_CLASS with a quiet-NaN-only mask. Fixed by
+  native/renderer/patches, which are applied to copies in the build tree.
+- **Status**: reaches bootflow:prepare_for_orbit with a stable BAP connection.
+
+## 2026-10-13 (later): character select to orbit
+
+- **prepare_for_orbit** loads the orbit package sets, then enters character:signin.
+- **character:signin** (0x7A1AF0):
+  - With no characters it goes to step 6, the creation screens (UI 0x1D).
+  - Otherwise it goes to step 5, select (UI 0x1C).
+  - It finishes when the account slot has an active character. That is the profile's +0x68
+    id, backed by a family-4 slot-1 object 0x80801743 (0x586510 / 0x586970).
+- **Character creation**: 0x1F5 request 0x80801860 {race/gender/class (3 x i8), appearance
+  0x8080181A, 17-byte block}. Response {status, character id}.
+  - The backend stores the request (`<data>/backend/account.json`), answers with the new id
+    and pushes account + profile baselines.
+  - The summary (0x80801954) and the active character (0x80801714) both start {soid, rgc,
+    appearance}.
+- **Voice**: the game finds voice port records by the ids sceVoiceCreatePort returned and
+  dereferences the lookup unchecked (0xB49210). The ports need real ids.
+- **PSN web API**: d1-native forwards every libSceNpWebApi request to the backend as
+  `<METHOD> /npwebapi/<group><path>`.
+  - The fireteam session needs sessionInvitation `POST /v1/sessions` -> {"sessionId"}.
+  - Presence and friend-list calls get `{}`.
+- **More BAP**:
+  - 23 account id translation: bitstream, u16 count, from/to types (7 platform id, 0xFF
+    membership id). The reply repeats the request, then appends the to-list.
+  - 18 client config: protobuf 0x15B67E0, {1 cookie, 2 id}.
+  - 12 subscription {u8 family, u64 BE root}: acknowledge, then push that family's baseline.
+    Families 0 and 2 (rooted at the account) get empty baselines for now.
+  - 0xCD returns the family-5 root like 0x1F7.
+- **Status**: with a character on the account, the headless run reaches setup:orbit (the
+  Director).
+
+## 2026-10-13 (evening): activity host, into the prologue world
+
+- **AH discovery**: BAP 16 → 17 (16 bytes: echoed u64 id, IPv4 network order, u32 BE port).
+  The client opens a second BAP connection ("FAH") with the same handshake.
+- **Host startup**: request 6 kind 3 (0x55BD10: raw 0xE0C-byte struct, two length-prefixed
+  blobs at +0 and +0x202; the first holds the activity index and insertion point as i16
+  +0x8000). Response 7: kind 2, u64 BE AH id, 0x80 bytes.
+- **Messages**: client → host is notification 8 (header + u64 target id; payload
+  `[1][u32 type][u32 len][u32 0][data]`). Host → client is **bap_to_client 9** (base header,
+  payload `[1][u64 id][u32 type][u32 len][data]`, decoder 0x55F2C0). Notification 100 is
+  only relayed by the client to the service named in its header. Host types are dispatched
+  through 0x1910480; payloads are engine-type bitstreams (0x2A4AC0).
+- **Join sequence** the client accepts:
+  - 4 join result (echo identity, nonce must match, result 0)
+  - 0 entity indices (384-word bitmask)
+  - 11 membership. It is applied as an update (0x2C9AE0): a "present" bit, then 0x808009ED,
+    with players (identity + properties block from the join request), valid-slot masks, and
+    the host-tabulated region table (region 0 with the player's transition token 1)
+  - 1 instance state (0x80800E76). It carries:
+    - valid flag
+    - bubble count (+0x10, must equal the scenario tag's +0x48 count: 22 for the prologue)
+    - per-bubble slice-set index (+0x14, 0 = first)
+    - activity checksum (+0x5C = u32 at scenario tag data +0xC: 0x8FE07299)
+    - details +0x60, holding the activity index (+0x620), insertion point (+0x622) and
+      scenario name (+0x628, "act_cosmo_m0_highway")
+- **Keep-alive**: the client drops a host it hears nothing from for 20 s (connection +0x1EF8).
+  Host type 27 (sync token, echoed in client type 28) every 5 s.
+- **Purchase prerequisite**: the world transition evaluates `f[0x1A3] || f[0x1B8]` (scope-0
+  flags), now set true in the profile overrides.
+- **Result**: the world changes to act_cosmo_m0_highway, the initial slice set (PRV00.00)
+  precaches and switches, and the player spawns (simulation authority is local; a unit is
+  assigned).
+- **Remaining gap**: loading task 9 (0x7965A0) also needs the current activity-mode
+  reference (client reference type 0x10, byte +0x1AC). That reference still points at the
+  Cosmodrome ambient activity's tag 0x80CD0C34 (value -1), not the prologue's.
+  D1_BYPASS=spawn completes the task once the player has a unit. With it the client goes
+  through physics_join into **activity:in_world**.
+
+## 2026-10-13 (night): native keyboard and mouse
+
+The game has no keyboard or mouse code (imports are only scePad* and sceImeDialog*;
+"keyboard" in the binary is the on-screen keyboard and a crash-screen debug input). It
+does have a clean input layering, reversed statically from the scePadReadState call site:
+
+- **Pad**: `gamepad_poll_all` 0xAE1E0 -> `gamepad_poll` 0xAE0C0 (scePadReadState) ->
+  `gamepad_state_update` 0xADC00. Engine gamepad state is 0xC0 bytes per pad (pad 0 at
+  the global 0x1AD40F0): triggers +0/+1, per-button held counters, sticks as s16 at +0x44
+  lx, +0x46 ly (up positive), +0x48 rx, +0x4A ry, touch points, motion.
+- **Input abstraction** (`c_input_abstraction_game_system`, globals 0x273ED40, per player
+  0x300 at 0x273EFE0 via 0x928560): `input_abstraction_update` 0x926910 copies the sticks,
+  applies the per-player dead-zone mode and maps buttons to abstract actions. Default
+  turn speeds per player: 2.0944 rad/s yaw (120 deg/s), 1.0472 rad/s pitch (60 deg/s).
+- **Player control** (`c_player_control_game_system`, globals *0x273EB28, 0x1A0 per slot
+  at +0x20): `player_control_update` 0x91EE90 builds each local player's unit action.
+  `player_control_update_player` 0x91B500 does look and move: sticks -> floats (0x926320),
+  southpaw/legacy swaps, response curves, look rate (0x928670: yaw = state[+0x2CC] x
+  turn_speed[0], pitch = state[+0x2D4] x turn_speed[1]), aim assist, curve limits and
+  zoom scaling (0xBD3740 magnification, 0xBD3A50 per-weapon look scale), ending with
+  **action[5] = yaw_rate x dt, action[6] = pitch_rate x dt** (radians; +yaw turns left,
+  +pitch looks up). Look is locked while player_control_globals +0xC bit 0 is set or game
+  time is paused (0x591B30).
+- An externally driven mode exists: with input state +0x2A0 set, +0x2C8/+0x2D0 are
+  per-frame deltas (divided by dt in 0x928670) and the stick pipeline is skipped. It is
+  what simulated input uses.
+
+**d1-native mouse look** hooks 0x91B500 and, after the game's own math, adds raw mouse
+counts x `mouse_sensitivity` (Source scale, 0.022 deg/count) to action[5]/action[6], scaled
+by the same zoom slowdown the game applies to the stick (`mouse_zoom_scale`). The mouse
+therefore skips stick quantization, response curves, turn acceleration, dead zones and aim
+assist; a controller keeps working alongside. Counts come from SDL relative mode on raw
+input without OS acceleration, accumulated by the 1 ms window loop and drained by the hook,
+and counts older than 250 ms of not-running player control are dropped. Keyboard keys and
+mouse buttons map to the PS4 buttons (README). Headless check (`D1_MOUSE_TEST=40,-10
+D1_MOUSE_TRACE=1`, saved account, `D1_BYPASS=...,profile,spawn`): from activity:in_world
+on, every player update adds -0.0307 rad yaw / +0.0077 rad pitch (sensitivity 2) with look
+unlocked and no zoom.
+Runtime check of the effect: the slot's desired facing (player_control_globals +0x20 +
+slot x 0x1A0 + 0x18 yaw, +0x1C pitch) moves by exactly the injected delta every update
+(yaw 0 -> 6.2525 -> 6.2217 ..., i.e. -0.0307 rad per frame wrapping at 2pi; pitch +0.0077),
+so mouse counts reach the aim 1:1 with no smoothing or acceleration; mouse right turns
+right, mouse up looks up.
+
+## 2026-10-14: audio, unlimited frame rate, intro skip, and why the world is black
+
+- **Audio**: the game opens one sceAudioOut port (1024 frames, 48 kHz, format 7 = float
+  7.1 "std" order: L R C LFE side back) and Wwise mixes everything in software; no AJM
+  codec instance is created through the intro cinematic. d1-native now plays that port
+  through SDL (device downmix), paced by the device queue (~3 buffers).
+- **Frame rate**: pacing and tick length share time-control +0x08. The main loop waits
+  until last + period (`add rcx,[rsi+8]` at 0x594A3B); game_time (0x591710) runs
+  elapsed / period ticks. `fps = 0` (default) NOPs the wait and sets the period to each
+  frame's real duration (1-33.4 ms) just before 0x591710: one tick per rendered frame.
+- **Intro cinematic**: character:prologue (0x7A1470) step 2 plays it on the cinematic
+  player at 0x295C0A0; the game's own skip (Square/Triangle) is gated by world controller
+  +0x2E39. `skip_intro` calls the stop (0x33E110) instead.
+- **Loading cinematics** are suppressed by design for the prologue launch: the activity
+  selection (*0x26BC068) is {kind 1, activity 164, insertion -1} at load (0x766750), so
+  prologue intro playback / cinematic exchange / filler tasks are skipped.
+- **Black screen in activity:in_world**: the game director (c_game_director, update
+  0x8ED0F0) switches to camera type 5, c_dead_camera (vtable 0x1949ED0), every frame,
+  because the local player's unit (local player table 0x273EB80 +0xC4, read by 0x9236D0)
+  is -1. +0xC0 (player datum) is set; the player never gets a body. The null GPU still
+  counts ~440 draws per frame (UI / loading layers), and the software-rendered frames
+  are pure black (mean 0). Units are attached by 0x911C50 (player datum +0x644); the only
+  caller passing a real unit restores a previous one (0x90E840), so the spawn path itself
+  is next. Loading task 9 waits for exactly this unit; D1_BYPASS=spawn hides it.
+- shadPS4 texture cache: an equal-address overlap where only the image type differs
+  (a 32x32x32 RGBA8 volume where a smaller 2D image lived) hit UNREACHABLE; patched to
+  treat it like a tiling-mode reuse (renderer/patches/0002).
+- Test bench: lavapipe caps one allocation at 2 GiB and buffers at 4 GiB - 1, below
+  shadPS4's 4 GiB sparse arenas (test builds use 2 GiB arenas); the game's BLOCK_DETECT
+  thread (0x92A3D0) halts slow runs (D1_NO_BLOCK_DETECT).
+
+## 2026-10-14: internal render resolution
+
+The game never asks the system for a resolution (no Neo/Pro mode, sceVideoOutGetResolution
+Status ignored): the GPU device init (0x7E40A0) hardcodes the display size as two
+immediates, `mov [r13+0x28F8], 1920` (0x7E40D0) and `mov [r13+0x28FC], 1080` (0x7E40DA),
+and everything else sizes from those fields. `render_resolution` (D1_RENDER_RESOLUTION)
+patches both: at 2560x1440 video out registers 2560x1440 buffers and the title, UI and
+loading screens render at full 2560x1440 with correct layout (the UI keeps its 1920x1080
+reference canvas at 0x166EE18 and scales). 3D scenes at higher resolutions still need
+checking on real hardware (the software test bench is too slow to reach them quickly).
+
+## 2026-10-14: the player spawns (black screen fixed)
+
+The dead camera came from a chain of three missing pieces of server-side state. With all
+three supplied the local player gets a unit in activity:in_world and the director keeps
+camera type 4 instead of the dead camera (5).
+
+- **Player definition** (`can_spawn` 0x415700, first gate `0x1192B0(entity) == 0`): a
+  player simulation entity's definition (+0x50) is a client reference of type 0xC (16 per
+  world, content type 0x80802236, group key 0x4786C0E0 indices 5..20 in the prologue).
+  0x1195F0 binds the entity to the reference whose 8-byte id at object +0x258 equals the
+  id the entity was created with (+0x18 = membership properties @0xA0; with one player
+  that is the character id). The id arrives as data of type 0x808022A5 (0x78 bytes:
+  @0 0x80800540 {i32, u32, bool, bool, bool, i8, i8}, @0x10 0x80802619, @0x40 0x80800646
+  {u64 id, u8, i8, member list}, @0x70, @0x74) through a content-declared data binding:
+  the class's handler table (0x19A35C0: {event hash, handler}) maps 0x3088896A to
+  0x409710, which copies it to +0x218 and rebinds players. Nothing in the client
+  publishes it, and the activity host's client-reference message (7, 0x29D7E0) only reaches
+  objects with a message delegate at +0x108, which these do not have.
+- **Spawn-ready flag**: when the local machine is the reference's authority (0x108470 ==
+  0), 0x409430 points the active data (+0x1F8/+0x200) at the local copy +0x290, which
+  0x4098E0 builds. Its bool @+0x299 (what `can_spawn` reads as `info+9`) is set only while
+  the published i32 at +0x250 (0x80802619 @0x28) equals the player's byte at player data
+  +0x738 (players at *(0x273EA80)+8, 0x2AF0 each) and 0x77B920 (state 0x7680F0 == 4).
+- **Activity lifetime state** (0x10C500, client reference type 0x10, byte +0x1AC):
+  states 3 and 6 allow spawning. The object's class (0x4044B0 / 0x4044F0 receive /
+  0x404550 publish) copies a published byte into +0x1AC and publishes its own +0x1AD; no
+  client code writes +0x1AD, so the value belongs to the activity's script owner.
+- **Body** (spawn location found, then `*0x66AE60(player) == -1`, so no object is
+  created): the player configuration at player data +0x1660 (0x1098 bytes, body tag
+  first) is built by 0x912240 from the player's character data (+0x850: race, gender,
+  class, ...; flag +0x613 bit 1), which 0x911850 applies from the character data cache
+  (0x58D940 / 0x58DAE0, 20 entries of 0xE48 keyed by character id). The cache follows
+  the peer subscription manager (c_investment_peer_subscription_manager, 0x57D1D0),
+  whose roster the simulation host enqueues as simulation-queue element 0x2B
+  (s_investment_peer_subscription_state, producer 0x58B570 from the investment roster
+  0x26BC448, handler 0x104A290). The manager subscribes **investment family 0** for each
+  member account; the cache looks up slot 0 0x80801921 {soid = account id, @8 character
+  id} and then slot 1 0x808017FD {soid = character id, {race, gender, class},
+  appearance, loadout 0x80801855, ...}.
+
+What changed:
+- backend: family 0 baseline for the account (peer account + peer character objects).
+  With it the client builds the player configuration (body tag 0x80A6A06C for the test
+  character) on its own.
+- d1-native (`spawn` bypass): publishes the player's id (and the matching @0x250 value,
+  valid flag @9) to the first free type-0xC reference through the game's own handler
+  0x409710, and reports activity lifetime state 3 while the game has none
+  (D1_FORCE_LIFETIME overrides). Both stand in for activity-host state whose delivery path
+  is not found yet; D1_TRACE_SPAWN logs every gate.
+- backend: engine-type kinds 23 (type handle: presence bit + u32) and 35 (8-byte id) in the
+  bitstream codec; client-reference message types merged into the schema.
+
+## 2026-10-14: in-world rendering performance (first pass)
+
+First in-world frames on real hardware (Intel Arc iGPU, 1080p) ran at ~9.5 fps with a
+blotchy, posterised, blurred image. What the instrumented software-renderer runs show:
+
+- **Colour-grading LUT churn**: the game binds its 32x32x32 RGBA8 colour-grading volume
+  (tile 0x13) as a 32x32 2D array (2 layers at a time) as well as a volume. shadPS4 resolved
+  the overlap to the cached volume, found fewer "resources" (a volume has one array layer)
+  and freed and recreated it from guest memory on every bind: ~1000 times a second during
+  loading/in-world, and every recreation threw away what the GPU had rendered into it.
+  Fixed by treating 2D bindings over a volume's slices as a 2D-array view of it (the
+  volume is already created 2D-array compatible) and making barriers on volumes always cover
+  the whole image (renderer patches 0004, 0005).
+- **Write-tracking faults are not the cost**: 0-13 per game frame.
+- **Shader compilation**: ~250-460 pipelines on the way into the world; they were recompiled
+  every run (the pipeline cache was stubbed out). Now kept in `<data>/shader_cache`.
+- The renderer shim used shadPS4's inline fetch-shader path (a debugging path); now the
+  stock vertex-input path.
+- Open: software-rendered runs sometimes sit in world-controller `cleanup` with tasks
+  0x0000400040000000 active (15 s in one run, >25 min in others); not yet explained.
+- Open: the in-world image itself (blur/posterisation) is not reproduced locally (the
+  software runs reach in_world but present black); the stock-shadPS4 A/B and the prologue
+  wake-up effect are still to check.
+
+## 2026-10-15: prologue start point (first tests)
+
+- The client asks the activity host for insertion point -1 ("activity host startup ...
+  insertion_point_index=-1"); our host echoed -1 into the instance details (+0x682).
+- `D1B_INSERTION=0` (backend, research) answers 0 instead: the player never gets a unit
+  (spawn never completes; the camera stays on the pre-spawn transmat glare at the same
+  ambient Cosmodrome spot). So insertion 0 is not the car-graveyard start by itself, and
+  the start location is not chosen from the insertion point alone.
+- `D1_ALLOW_LOADING_CINE` (client, research): the loading cinematics play (cloud descent)
+  and the player still spawns at the ambient spot at night: the Ghost revive / dialogue is
+  the mission script (activity host), not a loading cinematic.
+- Next: log every client -> activity host message during the prologue, and trace the spawn
+  location choice in can_spawn (0x415700) to see what data picks the start point.
+
+## 2026-10-15: the prologue's mission structure is in the client packages
+
+Named-tag tables of all 1,395 packages: 748 unique named tags. Each activity has a plain
+tag (class 0x808008BA, e.g. `act_cosmo_m0_highway`, 72 bytes) whose two children are its
+`:scenario_client` (0x80800616: 22 bubbles, class 0x808008F0) and the loading-cinematic
+table (0x80800499: `spaceflight_filler`, `spaceflight_out`, `same_dest_filler`). No
+separate server tag hangs off the scenario.
+
+The activity package (`ps4_cosmo_activities_activity_025c`, patch 5, 8,192 entries, all
+decoded with Oodle 3) carries the mission graph by name:
+
+- **Class 0x8080076E** (55 tags, ~6.5 KB each): the mission's object table: phases
+  `cosmo_m0_phase00_highway_intro`, `phase00_highway`, `phase01_breach`, `phase01b_breach`,
+  `phase02_graveyard`, `phase03_hangar`, `phase04_outro`; per objective
+  `._player_objective`, `._incoming_sequence`, `._completion_sequence`, `._nav_point`,
+  `._trigger_volume`, `._player_trigger`; cinematics `pf_104_res._cinematic` /
+  `pf_104_res_fp` (phase00_highway_intro: the resurrection), `pf_104a_pwr`, `pf_105_cto`;
+  per-phase `globals`, gating `tg_m0_gating` / `sv_m0_gating`.
+- **Class 0x80800861** (entity resources): named trigger volumes and sequences,
+  e.g. `tv_player_rez`, `tv_ghost_scan`, `tv_first_obj`, `seq_d_o1_10` ... `seq_d_o5_30`
+  (dialogue per objective), `seq_fallen_*`, `seq_ambush_*`, `tv_music_*`.
+- The client binary has none of the objective suffix strings (`_player_objective`,
+  `_incoming_sequence`, ...).
+
+Open question: whether the logic that connects these (trigger -> sequence -> objective
+-> next phase) is also data here (some other class referencing these objects), or only
+existed in the activity host. Next: find what references the 0x8080076E objects and
+decode that class.
+
+## 2026-10-15: activity host message catalogue, script channel, object kinds
+
+**Message names.** The pointer table at 0x1910760 names every activity message type in
+order (0 `entity_slots_allocated`, 1 `global_activity_state`, 2 `world_globals_state`,
+3 `join_request`, 4 `join_result`, 5 `sensor_auth_update`, 6 `sensor_sense_update`,
+7 `sensor_message`, 8 `request_activity_host`, 9 `start_activity_host`,
+10 `start_activity_host_response`, 11 `replicate_membership`, 12/13 peer reservations,
+14 `peer_leave_request`, 15/16 keepalive, 17 `activity_client_request_state_refresh`,
+18 `incident`, 19/20 entity indices, 21 `client_authoritative_data_update`,
+22 `client_identity_update`, 23-32 entity-slot authority, 33 `process_debug_command`,
+34 `debug_request_migration`, 35 `connectivity_failure`, 36 `membership_acknowledgement`,
+37 `send_client_heartbeat`, **38 `script_state`, 39 `script_event`,
+40 `request_script_updates`**, 41 `bug_claw`, 42 `advance_replication_epoch`,
+43 `reservations_failed`, 44 `report_lag_switch`, 45 `connection_quality_report`,
+46 `speculative_migration`, 47 `high_water`, 48 `refresh_inspirations`). The numbering
+matches the types the backend already uses (4, 11, 1, 27/28). The client handles host
+types {0,1,2,4,5,7,10,11,18,23,24,27,29,38,39,42,43} (table 0x1910480: {type, handler}).
+
+**Script channel.** `script_state` (38, handler 0x29DE50) payload type 0x808052E5:
+u32 count (10 bits) + up to 512 entries 0x80800D22 {u32, u32, u32, i32 value}.
+`script_event` (39, handler 0x1019600) payload 0x80800C0A -> 0x808009A6 {u32, u32, u32,
+u8 (2 bits), u8[256]}. Payload type ids are registered at start-up (0x2697F80,
+0x269AD80; read with D1_PEEK). So the mission script runs on the host and only its
+variables and events reach the client.
+
+**Engine type layouts.** 4,088 compiled type layouts sit in eboot.bin (field block:
+u64 count, u32 type id, u32 size, ...; tools/d1_engine_type_layout_scan.py). Content tag
+classes (0x8080076E etc.) are not among them (the client parses those with fixed code).
+
+**Object kinds** (class 0x8080076E object table, tools/d1_activity_object_table.py):
+0x3c phase, 0x3b script object (objectives, `utils`, `nightfall_controller`), 0x3a trigger
+volume, 0x1d player trigger, 0x2c nav/attach point, 0x20 player objective, 0x05 sequence
+(incl. `_dialog_sequence`), 0x04 object/door, 0x3d object/squad, 0x37 array.
+
+**Incidents / Xetrov.** The client's incident system (74 classes: kill, player trigger,
+sequence, insertion point, resurrection, activity complete, ...) reports gameplay events;
+`client_to_xetrov` messages carry them to a service named Xetrov ("vortex" reversed).
+
+Status: no script code found in the activity package so far (name-hash search hits were
+Wwise audio; classes 0x80800734 / 0x80801AD7 / 0x80801A6A not decoded yet).
+
+## 2026-10-15 (evening): every engine type, every field kind, more host messages
+
+- **Schema**: the 4,088 layouts scanned from eboot.bin agree exactly with all 515 types the
+  backend schema already had (dumped from a running game); the other 3,573 are merged into
+  `backend/data/investment_schema.json` (4,137 types).
+- **Field kinds** (per-kind decoders, table 0x1913060): 0/17 nothing; 2 bit; 3-10 ints;
+  11 f32, or `p2` quantized bits when 0 < p2 < 32 (0x72C20); 12 64 raw bits; 13 point3d
+  (0x2CA900: 3 x 32 bits; a quantized form exists behind flag 0x267FB28, 0 at run time);
+  14 vector3d (bit zero, else 19-bit direction + 16-bit length); 18/20/21/22/23 bit +
+  u32; 19 bit + u32 + 6 bits; 24/25 variant (6-bit kind, then that kind); 26 128 raw bits;
+  27/28 bit, then bit ? (u32, u32, 12 bits) : 192 raw bits; 29 optional (u32, 6 bits) +
+  128 raw bits; 34/41 typed value (type handle 0x80800046, then that type); 35 8 bytes.
+  15 and 16 (rare) not done. Both decoders (backend Rust, tools/d1_engine_type_decode.py)
+  now handle these.
+- **Host message payloads** (type ids registered at start-up, read with D1_PEEK):
+  0 `entity_slots_allocated` 0x80800D64, 1 `global_activity_state` 0x80800E76,
+  2 `world_globals_state` 0x80800DC1 = {bool, f32} (handed to the world interface,
+  0x2409E0), 38 `script_state` 0x808052E5, 39 `script_event` 0x80800C0A.
+- `world_globals_state` {true, 0.35} (backend `D1B_WORLD_GLOBAL`) did not change the
+  prologue's lighting (still night).
+- Client -> host payload candidates by exact-fit decoding: 6 `sensor_sense_update`
+  0x808024D0 or 0x8080306A; 18 `incident` 0x80801802 / 0x8080181B / 0x8080184E (two u64
+  + 0x8080097D) or 0x8080198E; 47 `high_water` and 37 heartbeat 4-5 candidates each.
+- The "activity mode" client reference (type 0x10) the spawn waits on is
+  0x80CD0C34, an entity resource (class 0x80800861) in the Cosmodrome **ambient**
+  package (`ps4_cosmo_ambient_activityonl_0268`). The prologue's own script objects
+  (phases, objectives, ...) never get instantiated: they are host-side entities, and our
+  host creates none, so the client runs on the destination's ambient (patrol) content.
+
+## 2026-10-15 (night): mission objects in the client, and what is missing
+
+**Client references are the mission objects.** `D1_TRACE_REFS=<secs>` (native, research) logs
+the client-reference groups and every reference by type. In the prologue world the
+reference types are exactly the object kinds of the content units' object tables
+(0x3c phase, 0x3b script object, 0x3a trigger volume, 0x1d player trigger, 0x2c nav point,
+0x20 objective, 0x05 sequence, 0x06 cinematic, 0x37 array, 0x3d object, 0x04 object, plus
+0xc player definitions x16, 0xf, 0x10 activity lifetime, 0x11, 0x22, 0x27).
+
+Groups (manager ints from [5], 5 per group: key, flags, defining tag, count, start):
+0 `96e0a5e5` (93 refs, no tag; declared by content units 0x80CB905A and ambient
+0x80CD0252), 1 `992bb471` (95 refs, tag 0x80CC0500; the key is the scenario hash at
++0x08 of `act_cosmo_m0_highway`; the prologue's mission content units declare it at +0x0C),
+2 `3c2f5ed5` (21, 0x80A5EA2B), 3 `4786c0e0` (player definitions). Content units
+(0x8080076E): +0x08 destination hash (0xB22417AE = cosmo), +0x0C group key.
+
+A reference id is {u32 group key, i8, i16 index}; 0x1071D0 finds the group, adds the
+index to its start and returns the entry (manager +0x520 + e x 0x38: object handle,
+offset). Message 7 (0x29D7E0) then hands a typed value to the object's delegate at
++0x108 (0x353340) if the entry is bound.
+
+**Bound vs unbound.** Bound entries have handles 0xSSfa20NN: low 16 bits 0x2000+ = the
+client's entity index range (8192..). Objectives, sequences, trigger volumes and nav points
+are bound (the client spawned them). All 7 phases, all 16 script objects, 3 of 4
+cinematics (incl. `pf_104_res`), most player triggers, arrays and kind 0x04/0x1c/0x1e
+objects are unbound (0xFFFFFFFF): host-spawned entities that no one creates.
+
+**Ruled out** (no change to the unbound set, spawn or lighting):
+- granting the client every entity index (backend `D1B_GRANT_ALL_INDICES`);
+- message 23 `claim_authority_over_abandoned_entity_slots` (payload 0x80800D58 {u8,
+  u32[384] mask, i3}; backend `D1B_CLAIM=<u8>,<i3>`) over slots 0..8191 (nothing was
+  abandoned: the entities were never created);
+- `script_state` / `script_event`: the handlers decode into stack buffers and drop them
+  (payload entries are FNV-1 hashes, initialised to 0x811C9DC5 = ""); a debugging channel.
+
+Other payload types: 24 purge 0x80800D10 {i3, u8, mask}, 27 reset authority mask and
+29 query mask 0x80800D31 / 0x80800B09 {i32}. 23/24/2 go to the world interface object
+*0x264C798 (vtable +0x340 / +0x350 / +0x368).
+
+Next: how host-spawned entities reach a client (the replication path for the host's index
+range), starting from where an unbound phase entry gets bound.
+
+**Reference manager code** (manager = *(0x1AD5030 + ctx x stride + pool), ctx 0x25D6FF8):
+0x106BF0 creates it ("client_reference_manager", 0x2BE20 bytes), 0x106CE0 clears it,
+0x100D5E0 adds a group {key, defining tag: list of 0x10-byte entries with the kind byte at
++0}, entries start unbound (-1, two 0x18-byte slots each), 0x100D2E0 removes a group,
+0x100D0A0 / 0x100D210 / 0x1071D0 / 0x100CB80 / 0x100CCE0 look entries up (by
+id, by type+index, by handle). 0x1195F0 (player entity -> fireteam reference) is one
+binder; entries are bound when the owning entity spawns.
+
+**Sensors.** 0x29F720 sweeps the reference types in a bitmask (*0x2655630; trigger
+volumes 0x3a, nav points 0x2c, 0x29/0x2a/0x2d/0x39) and reports bound ones (0x352E30):
+these are the client's `sensor_sense_update` (6) messages. With incidents (18) they are the
+host's inputs: which triggers the player is in, what happened.
+
+Still open: the transport for host-spawned entities (phases, script objects, cinematics).
+The client sends no UDP to the host (only the BAP TCP connection), so either they arrive
+over BAP or the client spawns them itself on a signal not found yet.
+
+**Object table index = reference index.** Group 0's entries line up with the prologue
+content unit's object table (80CB8165) entry by entry: [0] static skeleton (kind 4),
+[1]/[2] `pf_104_res(_fp)._cinematic` (6), [3] first `_player_objective` (0x20), [4]/[5]
+its sequences (5), [6] `o_weapon` (4), ... So a mission object's reference id is
+{group key, -, index in the object table}.
+
+**No message delegates.** D1_TRACE_REFS now also dumps the delegate block (object +0x108)
+of the first bound reference of each type: in the prologue every one is unset
+(ffffffff ffffffff ffffffff 0 ...), objectives, sequences, the bound cinematic, nav
+points, trigger volumes, player definitions alike. Message 7 (0x29D7E0) skips objects
+whose +0x108 is 0 or -1, so in this state it reaches none of them.
+
+**Relay.** The client registers as a NAT relay client at sign-in (302); the relay
+(300 initiate / request_relay_connection / nat_punch_relay_intro) is the console-to-console
+channel fallback, not an activity host transport.
+
+## 2026-10-15 (late): simulation queue map, cinematics, host incidents
+
+- **Fast test runs**: `D1_WINDOW=0 D1_NATIVE_GFX=off` (no window, null GPU) reaches
+  activity:in_world in ~45 s on the 2-core test VM instead of 7-15 min; the software
+  Vulkan driver (llvmpipe) had been saturating both cores even with D1_RENDERER_LATE.
+- **Simulation queue element types** (definitions at *(0x2689508)[type], classes from the
+  RTTI tables; D1_TRACE_REFS logs them): 0x6 entity handoff, 0x7 claim authority, 0x8
+  authority change, 0xd machine update, 0x15 activity-client purge, 0x16 advance replication
+  epoch, 0x17 global state, 0x18 world globals, **0x19 activity-client incident**, 0x1a join
+  result, 0x1b membership, 0x1c entity slots, 0x1d-0x1f activity manager instance
+  start/create client/dispose, 0x20 investment activity proxy set activity state, 0x22-0x32
+  investment, 0x35 cinematic camera emote, **0x37 cinematic object, 0x38 cache gear, 0x39
+  cinematic start/stop, 0x3a cinematic batch request**, 0x40 ghost dialog transmat event,
+  0x45-0x4b UI, 0x4f slice-set transition, 0x51 global status, **0x52 player
+  resurrection**, 0x53 objective abandon, 0x55 skip cinematic, 0x5c video playback complete,
+  0x5d end game (vtables in the log).
+- Host messages land in the queue: incident (18) -> world interface +0x348 -> 0xBB2170 ->
+  element 0x19; sensor_auth_update (5) -> +0x338 -> 0xBB1C10 -> element 0x13 (world
+  interface *0x264C798 = 0x1943F08, vtable 0x19439A0).
+- **Incident payload** 0x8080097D (host and client): {u5 count, u12 kinds[25]},
+  {u1, {u5 count, u32[25]}}, {u9 length, u8 blob[500]}; kind-specific metadata is packed
+  in the blob.
+- **World cinematics** (0x7652E0 applies element 0x39: payload {u32 id, i8, u8 flags};
+  flags 0x21 start, 0x31 start first person, 0x2 stop, 0x51 play the prepared slot).
+  The registered list (*0x26AFEF0: count @+0x1350, entries @+0x1320 + 0x38 i) is empty in
+  the prologue world. These are the world controller's loading cinematics: with
+  D1_ALLOW_LOADING_CINE the prologue loads "the intro and filler cinematics" (log), plays the
+  spaceflight cloud descent, then "Timeout entering the prologue-filler (given 900 ticks)".
+  The client's own prologue step 4 (0x7A1470) writes the selection {kind 1, ...}, so the
+  suppression is retail behaviour; these travel cinematics are not the resurrection
+  (`pf_104_res` is a mission object, kind 6, group 0 index 1, unbound).
+
+Next lead: what the client does with a host incident (element 0x19 apply) - incidents have
+cinematic, sequence, resurrection and insertion-point metadata kinds.
+
+- Host incidents (element 0x19, apply 0xBB26A0 -> 0x2A20C0) go to the incident game system
+  (vtable +0x98): announcements / heat / rewards, not cinematics.
+- The client has no phase, script-object or encounter-script classes (RTTI): the mission
+  logic and the host-spawned objects' code existed only in the activity host.
+- Membership (0x808009ED) does not serialize the host id (+0x5020); "the AH has not
+  acknowledged this" is not fixable through membership.
+
+Where this leaves the activity host: its inputs are known (sensors, incidents); the client
+systems a mission drives are present and reachable through the simulation queue (cinematic
+object/start-stop 0x37/0x39, player resurrection 0x52, ghost dialog / transmat 0x40,
+objectives, slice-set transitions); the original transport for host-spawned entities is not
+found (no UDP to the host; possibly the NAT relay channel + replication protocol).
+
+## 2026-10-15 (night): probe - how a host machine's entities would reach a client
+
+- Simulation **views** are per remote machine: the domain membership watcher (0xBA3770)
+  creates a view for a machine id in the domain only if that machine is a peer of the
+  network session (session 0x75F130, state +0x8C48 in 4..9; machine records 0x168 bytes at
+  membership +0x30) with a connected channel (0xAF8D60 entry +0x1CA8 == 5). Views establish
+  with a signature check ("view ... signature didn't match our local, dying").
+- So a host that owns entities must be a **session peer with a channel**: the stack is
+  UDP -> Demonware secure transport (bdSocketRouter, bdSecurityID / bdSecurityKeyMap,
+  bdCrypto*) -> Bungie channel (connect request/response, channel ids, sequences; 149 log
+  strings; NAT relay fallback) -> network / managed session membership (~400 log strings,
+  44 classes) -> simulation view -> replication (entity database / event manager /
+  control / player views, 12 classes).
+- The client contains both ends of every layer (consoles replicate to each other), so it
+  is reversible from the binary; the security layer can be hooked in the runtime rather
+  than reimplemented. The same stack is what console-to-console co-op needs.
+
+## 2026-10-15 (night): co-op path, step 1 - the PSN session data
+
+The fireteam's PSN session (`POST sessionInvitation/v1/sessions`, multipart) has three
+parts; the backend now keeps them per session (and writes them to `<data>/sessions/<id>/`):
+- `session-request` JSON: `{"availablePlatforms":["PS4"],"sessionMaxUser":1,
+  "sessionName":"Destiny Fireteam","sessionPrivacy":"public","sessionStatus":"",
+  "sessionType":"owner-bind"}` (max 1 user in the prologue: the opening mission is solo);
+- `session-image` (42,882 bytes);
+- `session-data` (78 bytes), what a joining console reads:
+  ```
+  5d6dc3f3 3303e021            8-byte id
+  0a00020f 0c02                10.0.2.15:3074 (host address)
+  00ff 00ff 0000 00ff 00ff 0000
+  0a00020f 0c02 02d1           address again (+ 0x02d1)
+  00000001 0200 00000000
+  48401dff63af4ed14cc8a24e84035570   16 bytes: security key (DemonWare)?
+  ```
+Between two real clients the secure transport (layer 1) is DemonWare's own code once the
+joiner has this blob; what the services must provide is the session data, the invitation /
+join flow, and a network path between the consoles.
+
+## 2026-10-16: co-op path, step 2 - how a player joins a friend
+
+Two clients on one backend (A lizardpeter 10.0.2.15, B guardian2 10.0.2.16) now see each
+other as PSN friends, publish presence game data, and B can start a join to A. Findings:
+
+- **Session lookup** (join manager state 2, 0x57AA70) reads the target's family 7 (session):
+  slot 0 0x8080192C {account id, slot-1 soid}, slot 1 0x80801899 {soid, {78-byte session
+  data, net version 0x5001}}. The 78 bytes are the presence game data (base64; the PUT body
+  is NUL-padded JSON, which the backend first failed to parse).
+- **Joinability** (0x955EF0 -> bits, highest bit's message from table 0x193F4C0, reported by
+  0x57B160) reads the target's family 2 status object 0x80801810 {u64, i16 @8, i16 @10,
+  i8, 0x808016F8 @16, 0x808018DB @36}: +0x24 max fireteam size, +0x25 max in a limited
+  activity, +0x26 privacy (0 open, 1 friends: 0x1000, 2 invite: 0x2000, 3 closed: 0x10000),
+  +0x27 flags (0x8/0x10/0x20/0x40/0x4000). Max 0 gave 0x4 (full); the backend now publishes
+  {3, 3, 0, 0}. Joiner-side bits: 0x40000 net version mismatch, 0x20000 already in that
+  session, 0x80000 / 0x100000 joiner's activity state (*0x26CA078 +0x1B0) 0x1C..0x23 /
+  >= 0x24 unless (*0x281D300)[0] or [1], 0x8000 the joiner's "no joining" flag.
+- **Two join paths.** The in-game roster's join (0x579EA0, sim element 0x24) is refused
+  from inside an activity (0x100000). The PS4 system UI's "Join" is the other path: system
+  service event 0x10000002 (session invitation; param 0x8C bytes: session id char[45] @0,
+  invitation id @0x30, flags @0x70 bit 0 = from an invitation) -> 0x295460 copies it to
+  0x26535D4 -> internal event 0x24 -> 0x2B4270 -> 0x2B4600 reads the PSN session
+  (`GET sessionInvitation/v1/sessions/<id>?fields=@default,members` and `.../sessionData`)
+  -> 0x2B4AF0 checks it -> event 0x25 -> join store 0x266D5E8 (pending, session data
+  @0x266D5EA, identities) -> join manager 0x57A260. That path sets the "joined from the
+  system" flag ((*0x281D300)[1], 0x774F50 on entering the world) so the activity-state bit
+  does not apply. d1-native now queues system events (sceSystemServiceGetStatus /
+  ReceiveEvent) and D1_JOIN_TEST joins this way (D1_JOIN_VIA=roster for the roster path).
+- **PSN session ids** must look like `XXX-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX` (hex, parsed
+  by 0x2E9B10, formatted by 0x2E9A70); the backend's UUID-style ids parsed as zero. Now
+  `D1B-<n>-0000-0000-0000-<n>`. The session-info parser (0x2BCC70) requires sessionPrivacy,
+  sessionMaxUser, sessionName, sessionStatus, sessionCreateTimestamp, sessionCreator and
+  members[{onlineId, platform}].
+- **Why B still cannot join A: the prologue.** The activity-selection component (*0x26BC068,
+  0x574C00) sets +300 "no joining" from progression state 2838 (0x546F20 -> 0x28CFB0:
+  state == 2), and both the system path (message 0x26BC320 in 0x57A260) and the joinability
+  check (0x8000) refuse while it is set. Flag 2838 is the new-character flag the prologue
+  needs true (backend: character flag slot 673). So a character in the opening mission can
+  neither join nor be joined, as in the original game (the session also advertises
+  sessionMaxUser 1). Co-op needs characters past the prologue, in a joinable activity.
+
+## 2026-10-16: co-op path, step 3 - first fireteam between two clients
+
+With both characters past the prologue (backend `D1B_PROLOGUE_DONE=1`: character flag 2838
+false), sign-in leads to orbit (`setup:orbit_loading` -> `setup:orbit`, ~40 s headless; the
+orbit map loader notes "last-orbited-destination is invalid": a client-side cache,
+*0x26BC410 +0x40 +0x480, written when an activity is set up, 0x7A9B40 / 0x7AC910). In orbit
+B joined A through the system-UI path, and everything after the PSN part is the game's own
+networking, unchanged:
+
+1. B reads A's PSN session and data, leaves its own PSN session (`DELETE .../sessions/<own>`)
+   and joins A's (`POST .../sessions/<A>/members`);
+2. remote join to session id E8171EB4:44D49873, security key from the 78-byte session data,
+   host address 10.0.2.15:3074;
+3. **DemonWare** (layer 1): NAT traversal INTRO REQ / reply over our UDP routing
+   (10.0.2.n -> 127.0.0.n), then DTLS init / cookie echo / ack with the session key:
+   "DTLS established";
+4. **Bungie channel** (layer 2): connect request, first "temporarily refused
+   (unknown-stranger)" (A had not yet seen B), then A's own connect request crosses, both
+   establish: "established after 112 ms WITHOUT RELAY";
+5. **session membership** (layer 3): A's fireteam session accepts peer #1 (1 of 19 open
+   slots), B goes `_joined -> _waiting -> _ready -> _established`, join-complete both ways;
+   B disbands its old solo fireteam. Both sides then hold `peers valid: 0x3` until the end
+   of the run.
+
+So layers 1-3 need no reimplementation: given the session data, a session invitation event
+and a UDP path between the consoles, the clients connect themselves. Next: the fireteam
+leader launching an activity (the activity host and the replication layers 4-5).
+
+Test setup (scratchpad tooling, not in the repo): one backend, two headless instances
+(`D1_NET_ID` 15 / 16, separate data dirs), `D1_JOIN_TEST=<secs>` on B (now ticked from
+sceSystemServiceGetStatus, so it also runs in orbit; the timer starts when the friend appears
+in the roster).
+
+## 2026-10-16: launching activities, public regions, fireteams in the activity host
+
+**Launch from orbit.** World-controller states are indices into the name table at
+0x165AA27 (0x19 cleanup, 0x1B setup:orbit, 0x1C setup:activity_session_creation, 0x24
+activity:in_world; current state *(*0x26CA078 +0x1B0)). The prologue handler (0x7A1470 case
+4) launches by writing an activity selection {u8 1, i16 activity index @2, u8 tier @4, ...}
+into the activity-selection manager (0x574DC0(*0x26BC068, &sel)) and requesting state 0x19
+(0x783ED0); the same works from orbit (d1-native D1_LAUNCH_ACTIVITY=<index>[:secs]).
+
+**Activity table.** Definitions: content globals (*0x26527E8) vtable +0x38 -> block {count,
+relptr -> 16-byte entries, relptr @+8 -> 0x100-byte definition}; +0 activity hash, +0x58
+relative string = scenario name, +0x88 type tag, +0xA4 matchmaking content hash. 653
+definitions. The scenario name's named tag (class 0x808008BA) has its `:scenario_client`
+child at +0x40 (checksum +0xC, bubbles +0x48); the named entry `<name>:scenario_client` can
+name a reused entry in later generations, so the child link is used.
+tools/d1_activity_table.py -> backend/data/activities.json (533 with scenario data). Several
+gen-0 names were renamed later: Earth patrol `cosmo_patrols_1` (index 8, "does not exist" in
+the current packages) is `patrol_deltas_com01` (93); Moon `patrol_accel_com01`, Mars
+`patrol_plains_com01`, Venus `patrol_shat_com01`. Story missions also start in the public
+region (PUB00.00); only the prologue's insertion point starts private.
+
+**Public regions.** A public slice set needs a region session ("PUBLIC TARGET" activity
+client + group session). Pieces the services provide:
+- matchmaking configuration (BAP 42 response field 4, schema 0x1942110): {1 general {11
+  ints}, 2 public slice sets {1 default record, 2 up to 16 records keyed by (f1, f2)}};
+  record {f1, f2, f3 max players, f4 max parties, f5 max matchmade (<= f3), f6, f7}
+  (0x59B510 / 0x59A500 -> settings +0x9C/+0xA0/+0xA4). Empty = 0 slots ->
+  "too-many-parties". Settings names come from the dump 0xB0DD60.
+- region table entry (membership @0x2E48, 0x80800C6F): @8 {u8, i2 ambassador state, i5
+  ambassador slot, bool @0x19 "a player reached the matchmaking threshold"}; the slice-set
+  manager copies the entry to +0x490 (0x77C3D0 reads +0x499 / +0x4A9). With the bool set
+  the ambassador stops searching (searches return no results with nobody else around) and
+  spins up a new public activity session (0x769DA0 -> 0x772BD0), whose activity client asks
+  the host for a startup of its own.
+- every host startup needs its own instance id: the client routes host messages to its
+  activity clients by id (two clients on one id: the public one timed out waiting for its
+  join result).
+With these, Earth patrol loads into activity:in_world in ~50 s headless.
+
+**Fireteams in the activity host.** Members' activity clients join the session host's
+instance without a startup; client messages carry the target instance id (u64 before the
+payload), so the backend keeps a registry of instances. Before a member's client is
+created, the session host sends `request_peer_reservation` (12, payload 0x80800BB9 {u32
+request, {count, [identity 0x80800C2D]}}); the member waits for "session host to include us
+in the registered peer mask", i.e. for the reservation to appear in the membership. The
+backend now reserves slots, pushes membership updates to every connection of the instance,
+and a joining member takes over its reserved slot (matched by machine id).
+- Machine ids come from the MAC address (sceNetGetMacAddress / sceNetCtlGetInfo 2); a fixed
+  MAC made every console 02:D1:00:00:00:01 and a member's join "booted" the leader (it
+  found itself in the wrong slot). d1-native derives the MAC from the online id.
+- A member that lags behind the leader's life-cycle state too long is booted
+  ("invalid_life_cycle_hierarchy" timeout); two instances on two cores are slow enough to
+  hit it when the leader launches right after the join.
+
+## 2026-10-16 (later): two players in the same patrol
+
+The fireteam leader (A) launches Earth patrol from orbit and the member (B) follows into the
+same world: both reach activity:in_world in one run (~10 min headless, two instances).
+What it took beyond the reservations:
+- **Membership slot @0x248** (i4, optional) is a boot reason (1 = `debug-command`), not a
+  slot index; B in slot 1 was booted by its own client. Now left out.
+- **Join timing**: a platform join that arrives while loading (before orbit sets the
+  "joined from the system" flag) is dropped with message 0x26BC328; the join test now waits
+  for orbit or the world.
+- **Citizen join** (B into A's public region): A reports its region session in
+  `client_authoritative_data_update` (21; delta-encoded against the previous update,
+  0x29D620 -> 0x2C9D20 / 0x2C7FA0, payload type *0x191A300). The description is the region
+  session's 78-byte data (8-bit count 0x4E + id, host 10.0.2.n:3074, DemonWare key;
+  trailing zero bytes are not sent). The region entry's @0x28 struct carries it (0x808043BC
+  count + bytes) and the public host instance (i64 @0xA8). The backend finds the
+  description by its shape (until type 21's delta encoding is decoded), links the public
+  instance when the ambassador joins it (same activity index; the public client starts
+  with insertion point -1), and pushes membership. B then joins A's group session as a
+  citizen ("citizen joining to slot 1") and its public client joins the public instance.
+- **Intro-screen hang** (headless, ~1 in 4 two-instance boots): the handler's accept
+  listener (0x78E950 -> mode UI object +0x21A0) is registered, but the title screen's UI
+  (0x9CE1D0) never calls it. The vtable slot (0x1946568) now points to a wrapper that
+  re-registers while the flag is clear; with D1_AUTOPRESS (tests only) it also sets the flag
+  after 20 s. Bootload steps are traced (0x79A730).
+
+**Next layer: the simulation's players.** D1_TRACE_PLAYERS logs the machine ids in the
+game's player records (*(*0x273EA80 + 8), 0x2AF0 each, machine id @0x620). In the shared
+patrol B has [A, B], A only [A]. Players are added by simulation-queue `player_update`
+events (0xBAD260, from the dispatcher 0xBB4690), not by the activity membership, which A
+does receive (pushed) with both players.
+
+## 2026-10-16 (evening): both players simulated in the shared patrol
+
+A and B now both hold [A, B] in their player records in Earth patrol (ftp30). Three
+backend fixes, found by tracing the simulation's player diff (D1_TRACE_PLAYERS):
+- **Who makes player_update events**: 0xB9FAC0 (gated by *0x28A5410 and 0x906E00) →
+  0xBB6080 → 0xBA6760 / 0xBA6830 diffs the simulation tracker (P = *(*0x2801518); 20 slots
+  of 0xE8 from +0x18, mask +0x10, change number +0xC, known peers 20 × u64 @+0x123C) against
+  the activity session's membership (session = 0x75F130(handle), state +0x8C48 4..9;
+  membership +0x620: simulated mask +0x1C54, identity +0x1C5C, account +0x1CE0, character
+  +0x1CE8, peer index +0x1C64). A remote player is only created when (a) its fireteam id
+  (0x75F210 "fireteam_from_player": membership slot properties @0xA0) is set, (b) its peer's
+  machine id is among the tracker's known peers, which come from the simulation entry's
+  peer list.
+- **Public instance checksum**: the scenario tag holds one checksum per activity client
+  kind (+0xC private, +0x10 public; 0x299B00 indexes by the client's kind). Every public
+  client failed "activity checksum mismatch" and never instantiated the public world. The
+  host startup blob's byte 4 is the instance kind (1 private, 2 public); activities.json
+  now has `checksum_public`.
+- **Fireteam id in the public instance**: citizens join the public instance with fireteam
+  id 0 (identity member 5 and properties @0xA0) and the private instance id in properties
+  @0x18; the host fills in the fireteam id from that private instance.
+- **Membership change number** (@0): the simulation entry's peer list (Q + 0x12A78 +
+  i*0x18258, mask +0x4C, ids +0x5C) is rebuilt from the membership's peer mask @0x5028 only
+  when @0 changes (0xBA3090; built by 0xBA35E0). It was always 1, so a peer that joined
+  after the simulation started was never added on the host. Every membership now gets a
+  new number.
+
+Still open: the A↔B channel sometimes closes with "connection-overflowed" (A's reliable
+window fills while B, starved on two shared cores, is slow to ack); a session host
+migration follows. Seen in most two-instance runs before these fixes, not in ftp30.
+
+Next layer, from ftp32 (D1_TRACE_SPAWN now logs each player entity's first spawn check and
+every change of its result): each client runs spawn checks only for its own player's
+entities (A: 0x..2000 and 0xEC700000, B: 0x..2001 and 0xEC710001, low bits = player index).
+The other player's record exists but no entity is checked for it, so the remote player's
+entity, which should arrive by replication from its owner, is not created yet.
+
+## 2026-10-16 (evening): entity replication between the two consoles
+
+- **Simulation views** (one per remote machine; entry list *(sim entry + 0x38), 19 slots @+0x118;
+  view: machine +0x54, peer +0x5C, channel +0x68, state +0x74, replicating +0xA4) were
+  established both ways (state 5) in the shared patrol, but no entity crossed: each side's
+  entity database (sim entry + 0x1B0; per index a 6-byte record @+0xB4 (i16 entity record),
+  owned mask @+0x120B8) held only its own entities, and the per-view replication object
+  (database +0x18 + k*8; +0xC view, +0x28 creations awaiting delivery, decremented by the
+  delivery callback 0xB5E000) kept every creation queued.
+- The writer (0xB5C530) runs only while the entity database view (sim view + 0xA8) has
+  +9 and +0xA set; +0xA is sim view +0xB2, set by 0xBB3EA0 when the domain watcher
+  (0xBA32D0 -> 0xBA3770) is called with the peer's bit of the membership mask **@0x5030**
+  (0x2A5490), which the backend sent as 0. Now all members are in it: B receives A's
+  entities (ftp38: 3 of A's 4) and A briefly held B's one before it went away again.
+- Entity indices: each member now gets its own 256-index slice of 8192..12287 (by slot in
+  the instance) instead of all members sharing the whole range. Player simulation entities
+  are not allocated from it (they are 0x2000 + player index on every machine).
+- D1_TRACE_PLAYERS also logs the views, the per-slice entity counts and the replication
+  queues.
+- ftp39/ftp40: replication runs both ways for the whole session. B holds all of A's
+  entities (8192..8195, the last two parented to the second), A holds B's one (8448).
+  Both machines show the same player simulation entity handles in the player records
+  (+0x4: A 0x..ff2000, B 0x..ff2001), and each side's copy of the other's record carries
+  that player's gear tags (0x80A7xxxx). Whether the remote biped is drawn is not checked
+  yet (headless runs, null GPU).
+
+## 2026-10-16 (afternoon): first Windows two-player test; why the world stayed black
+
+The user's two-instance run on Windows reached activity:in_world in Earth patrol on both
+machines with a healthy channel, but both screens stayed black. Cause: the backend's
+D1B_TEST_CHARACTER character had an empty creation request, so the player configuration
+(player record +0x850 race/gender/class, +0x85C body tag, resolved at +0x1660) stayed unset
+(0xFF / -1) and the player never got a unit (the director shows the dead camera). Headless
+runs had hidden it: there the leader used a character made on the creation screens. The
+test character now carries such a creation request; with two fresh accounts both players
+get units (ftp43). D1_TRACE_PLAYERS logs each record's configuration.
+
+Also seen in that run (not fixed yet): the Destiny 2 pre-order screen comes back after every
+dismissal (no server request is made on dismiss), and the director lists no destinations
+for the test characters.
+
+### The Destiny 2 pre-order screen: client state round trip
+
+The client reports its own state every few seconds with world server requests 0x2BD
+(account: 0x80801716 = {0x8080172C {128 x u64 bit words, 4 x u32}, 0x808017D6 settings
+(0x808017F0: subtitles, brightness, ...)}) and 0x2BE (active character: 0x8080193C, which
+holds location and loadout-like data). The same types sit in the profile: 0x808018C7
+member 5 (+0x80) and the active character 0x80801714 member 7 (+0x2C40). The backend
+answered both with an empty status and never put them back in the profile, so dismissing
+the Destiny 2 pre-order screen (account words go from [0] to [0x18800, 20, 0]) was undone:
+the screen came straight back. The backend now stores both per account / character and
+pushes the profile when the account state changes; with that, a rendered orbit run that
+presses Circle keeps the screen dismissed (dir3). D1_TRACE_UNLOCK logs unlock
+expressions (0x28E590: ops {u8 kind, u32 operand}, 1 flag, 10 unlock value, 11 constant)
+with their callers.
+
+## 2026-10-16 (afternoon): first co-op session on Windows
+
+Two instances on the user's laptop (Intel Arc), one backend: Player 2 joined Player 1's
+fireteam from orbit (F10), Player 1 launched Earth patrol (F9), and both loaded into the
+Cosmodrome as their Guardians; Player 1's view shows Player 2's nameplate and transmat
+arrival. Needed on the way: the test character's appearance (spawn), the client state round
+trip (pre-order screen), players known from sign-in (friend lists), configs carrying every
+test switch (D1B_* in d1-native.cfg). Both instances ran at 7-20 fps in the world with the
+renderer's command recording at 35-125 ms per frame: two games and two renderers sharing
+one laptop CPU/GPU. Texture flicker while moving was seen again (renderer, not co-op).
+
+## 2026-10-16 (evening): the Director, unlock flag storage and the server time
+
+The orbit screen is the ship view; the Director opens with the cursor on SET DESTINATION
+and Cross (headless: `D1_STATE_PRESS=setup:orbit:h@26+30,j@58+14,x@76`, now matched to the
+exact state and with left-stick letters h/j/k/l). For test characters it showed only Earth.
+Three things were missing, all on the backend side; with them the Director shows the full
+solar system (Earth, Moon, Venus, Mars, Reef, Saturn, Tower, Vanguard, Crucible; dir29).
+
+- **Activity states.** 0x264360(component, list) picks a director activity's state from
+  {i8 state, unlock expression} entries scanned from the last: the first true one wins
+  (none: 0). 0x58FD40 shows nodes at state 3 and up (4: new). Story missions read
+  {2 default} {3: 35xx or 2549} {4: own flag}, many hidden by "0 if NOT 98/435/5998".
+  Destinations (0x5909B0) have two more expressions each; the solar-system gates are
+  flags 3850, 98, 2539 and 170|2549. `D1_TRACE_DIRECTOR=1` logs the lists.
+- **Where flags live.** 0x28E0C0 merges three arrays, first non-zero wins: scopes 9..0
+  (0x28BC60 applied 9 down to 0: 7 character stored flags +0x53C0, 5 profile overrides,
+  4 profile stored flags +0x383C, 3 profile extra +0x5430, 0 character overrides), scope
+  10 (inventory/record derived) and scopes 12/11 (schedule, class grants). The stored
+  arrays map slot -> master index through definitions-manager lists (vtable +0x290
+  profile 3100, +0x298 profile extra 274, +0x2A0 character 2189), now in
+  backend/data/unlock_flag_slots.json. Overrides lose to a stored slot applied later
+  (flag 98 is profile slot 57: our all-false profile array reset it). The backend now
+  writes each flag setting to its slot and uses the override lists only for flags with
+  none. `D1_WATCH_FLAGS=<i>,...` logs which scope writes a flag.
+- **Server time.** Scope 12 is a schedule of {flag, state, Unix time} (8476 entries,
+  2014-2025: expansion releases, events, weekly rotations) evaluated at 0x265100(context,
+  character): the active character's member 9 (0x80801755) member 7 {present, i64 seconds}
+  (+0x3E80/+0x3E88), else a context clock that starts at 0. The backend never sent it, so
+  the client lived in 1970. It now sends the current time (`D1B_SERVER_TIME` overrides).
+  The schedule then sets the expansion flags itself (430/433/434/435/5998) and shows the
+  Iron Banner announcement in orbit.
+
+Veteran test characters (`D1B_PROLOGUE_DONE=1`): 836 true, 2838 false, plus 98, 2539,
+2549, 2566, 3850, 3916 true.
+
+## 2026-10-16 (night): unlocks, ownership, the Tower, and gear
+
+- **Content ownership.** 623 of 653 activities failed their world-transition purchase
+  prerequisites (0x5505C0; D1_DUMP_PREREQS runs it for every activity). The ownership flags
+  are profile-extra account flags: 833 (base game; 407 activities test `834 or (833 and not
+  830)`), 2668-2670, 5021, 6029. The backend sets them (D1B_OWN_ALL=0 to disable); 3 fail now.
+- **Activity permission** (0x2648D0 via 0x547EF0): availability from a provider (*0x26527D8,
+  vtable +0x40 -> 0x528C50, answers 7 "unavailable" for e.g. Moon missions) plus two
+  requirement lists. The active character's member 15 member 7 (+0x714C) bypasses the lists
+  (D1B_ALL_ACTIVITIES); d1-native D1_BYPASS=activities passes the check, shows Director nodes
+  in state 2 (locked) as 3, and passes the matchmaking composition check 0xB0C6D0's
+  big-party-count-exceeds-teams (settings +0xC4 = 0, source not found) that kept the Tower
+  restarting matchmaking. The Tower and Moon missions load.
+- **Tower zones.** Walking into a private zone (PRV72.72) starts a z-leg slice-set transition
+  (token 2) that precaches and then waits for the host-tabulated region table to carry the
+  region with the player's new token. The client reports where it goes in
+  client_authoritative_data_update (21), which is delta-encoded and not decoded yet.
+- **Item table.** tools/d1_item_table.py -> backend/data/items.json: client item index = row
+  of the inventory item map 80A5FFBE (vtable +0x168/+0x410), names from 80A5FF9C (= the
+  client's 0x549570 table) and the string banks 80A5E21A, slot/level/tier at definition
+  +0x88..+0x8A, class from the equip flag at +0x164 (Hunter 2488-2492, Titan 2510-2514,
+  Warlock 2517-2521; weapon types 2523-2531, 3228, 5001: granted by class, scope 11).
+- **Gear.** Equipment slot order (vtable +0x100, 17 rows {bucket hash, slot code @+5}):
+  subclass, helmet, gauntlets, chest, legs, class item, primary, special, heavy, ship,
+  sparrow, ghost, emblem, shader, emote, horn, artifact. A character's gear lives in: the
+  loadout 0x80801855 (peer character member 3, summary member 4; entries in slot order, the
+  player configuration 0x912240 reads fixed entries), inventory items 0x80801732 (family 4
+  slot 3, id lookup 0x56DC00 by (family, type)), and the active character's member 5
+  (20 equipped ids). The can-equip check 0x269A50 (D1_TRACE_EQUIP) failed the weapons on the
+  weapon-slot flags 2502-2504 and ship/emblem/shader on 2090/2075/2544; with those set every
+  item passes, the character screen shows the full Hunter kit and level 40 (0x80801923
+  {f32, i32 level, i16 light} works). Still open: the in-world Guardian is unarmed (Ghost in
+  hand), item icons spin (not loaded), light 0 (items carry no stats), sparrow crashes when
+  summoned without an instance (0x7420F0; left out of the kit).
+
+## 2026-10-17: the input stack, PC key bindings, key names in button prompts
+
+- **Backfill**: every decompile since 2026-10-14 is now in the repo: 137 more named functions
+  in reconstruction/functions.json (plus 24 below, 443 in all) and 1165 unedited decompiles
+  in reconstruction/unsorted/decompiled/ (README there: how to reproduce them; Ghidra
+  scripts in tools/ghidra/). The graph (uregraph) has the same function nodes.
+- **Input globals** 0x1AD40D0 (0xD30 bytes; init 0xACEF0, per-frame 0xACF80, reset
+  0xAD160): two 0x3B0-byte pad buffers (index 0x1AD4840) of four 0xC0-byte engine pad
+  states (0xAD490), and a **developer keyboard and mouse** block that nothing on the PS4
+  fills: keys at 0x1AD4878 + k*4 {u16 held time, u8 down frames} in Bungie's key enum
+  (0 Esc, 1-12 F1-F12, 17-26 digits, 31 Q, 32 W, 33 E, 34 R, 45 A, 46 S, 47 D, 57 left
+  shift, 68 right shift, 69 left ctrl, 71 left alt, 72 space, 77-80 arrows; 0x69-0x6C = either
+  shift / ctrl / win / alt), mouse at 0x1AD4860 {i32 dx, i32 dy, ...} when 0x1AD40D3.
+- **input_abstraction_update** 0x926910 for player 0 uses that block while the pad is idle:
+  W-S / A-D -> left stick floats (+0x2A0 / +0x2A4), arrows -> look, mouse dx/dy * -pi/1000
+  / turn speed -> +0x2A8 / +0x2B0 with +0x280 = 1 (the per-frame "external" look mode), and
+  fixed developer keys for the 21 abstract buttons. Abstract button k (0x273EFE0 + k*0x14
+  per player 0x300) is engine pad button k: 0 L2, 1 R2 (analog), 2 up, 3 down, 4 left,
+  5 right, 6 Options, 7 touch pad, 8 L3, 9 R3, 10 Cross, 11 Circle, 12 Square, 13 Triangle,
+  14 L1, 15 R1, 16 touch pad (pad mask table 0x15B5AB0); 17-20 only through remapping.
+- **Weapons**: 0xBD5AA0(unit) = current weapon index (0 primary, 1 special, 2 heavy),
+  0xBD5340(unit, i) the weapon in slot i, 0xBD7310 the next usable index. The player
+  control record's +0x64 / +0x68 (current / desired) cannot select a weapon: 0x91EE90 resets
+  them from the unit (0xBD5B80) each update (traced: a write of +0x68 = 1 is gone the next
+  update). The weapon keys therefore tap Triangle (primary <-> special) or hold it ~1 s
+  (heavy) until 0xBD5AA0 reports the weapon; headless traces show 0 -> 1, 0 -> 2, 2 -> 0,
+  0 -> 1, 1 -> 0 (D1_WEAPON_TEST, D1_TRACE_WEAPON).
+- **Button prompts**: text is built from localized string parts (0x94AF70 -> 0x8DA890 ->
+  0x8DA9D0 per part: a run from 0x8DA760 {+0x30 pool, +0x38 UTF-16 buffer, +0x40 length},
+  text decoded by 0x8D5530: UTF-8 (flag +0x1B bit 2) or UTF-16, every unit + the part's
+  cipher shift). Button glyphs are private-use characters in parts of their own: Cross
+  U+E020 U+E000, Circle E020 E001, Square E020 E002, Triangle E020 E003, touch pad E021
+  E005, R2 E006, L2 E007, L1 E008, R1 E009, R3 E010, L3 E012, D-pad up/right/down/left
+  E013-E016, Options E017. Button variables ({f2:<hash>} parts, 20 in the English strings)
+  resolve through 0x94B0F0: action -> the controller layout's button -> glyph name hash
+  (0x2744880.., set by 0x94C350) -> glyph string in tag 0x80AA949E (217 glyph strings,
+  12 languages; English 0x80AB0EE2) via 0x8D5220. Charm's decoder keeps only the low byte of
+  shifted single-byte characters, which turned these into control characters;
+  tools/d1_global_strings_resolve.py now decodes like the game.
+- **d1-native**: PC key bindings (Destiny 2 PC defaults, bind_* in d1-native.cfg) become
+  DualShock 4 input (held / tapped buttons, stick directions, weapon keys). 0x8D5530 is
+  reimplemented (hooks.cpp string_part_decode) and, while the keyboard and mouse were used
+  last (prompts = auto), a glyph-only part becomes the bound key's name ("[E]") in a run
+  grown from the same pool (0x8D9820; old buffer freed with 0x8DD4C0(&pool, ptr) - passing
+  only a {pool, ptr} pair, as Ghidra's signature suggests, corrupts the pool and hangs the
+  boot). Headless check: the title screen's Cross prompt becomes "[Space]", interact
+  "[E]", the touch pad "[M]"; the game boots and plays as before.
+- Not done yet: the menu cursor (Director, character screen) still moves with the left stick
+  (WASD); a mouse-driven cursor needs the UI cursor code found.
+- **First start on a new account** (user test, 2026-10-17): profile_setup passes the
+  brightness screen (step 1 -> 2 by its own "completed" event) but stays at step 3 after
+  the screen bounds screen is confirmed: no 0x22 event, a spinner over the background.
+  Reproduced headless with controller prompts (not the prompt change). `profile` is now in
+  the default bypass list. Correction after test-12/13: the order is 0x16 screen bounds
+  (step 1, works), then UI 0x15 (step 3) and 0x17 (step 5), which never come up (spinner)
+  on a new account; `profile` now completes only steps 3 and 5, so the screen bounds screen
+  is played (`profile_all` completes all three). Why 0x15 / 0x17 never load is open.
+- **Prompt regression (test-12)**: removing the backdrop glyph (U+E020/E021) by making its
+  run empty drops the whole text: the title's "press to play", the orbit popups and bottom
+  bar vanished. Backdrops are now replaced by a space, and key names have no brackets
+  (the menu tab hints "[Q]" wrapped in their slots). Rendered checks: title "PRESS SPACE TO
+  PLAY", the orbit Iron Banner popup "Space OK". The left-stick glyph (U+E012) shows the move
+  keys ("WASD"), the right-stick one (U+E010) "Mouse".
+- **Still controller icons**: HUD prompts such as the Ghost's "summon vehicle" /
+  "go to orbit" do not go through localized text (no call of 0x748FE0 / 0x745650 outside
+  0x94B0F0), so they are icon widgets with fixed images; not replaced yet.
+- **Weapon stats / ammo**: item definitions keep their investment stats at +0x130 (one
+  0x80801776) +0x30: {u32 stat index, i32 value} (tools/d1_item_table.py -> items.json
+  "stats"; weapons carry indices 0, 11-23, 26-28). The loadout's members 13-15 (0x80804703 at
+  +0x888/+0x908/+0x988) hold the primary / special / heavy weapon's list; the character data
+  copies them to +0x14E0/+0x1560/+0x15E0 (loadout + 0xC58, as the perk lists 9-11 -> +0x1400)
+  and 0x910C60 fills the weapon config's 20 stat slots from them. Before, those were zero:
+  special and heavy had no ammo (user test). D1_TRACE_GEAR now shows each config's slots
+  (Fatebringer 60 90 ... 95, Praedyth's 80 60 ..., Gjallarhorn 40 100 ...).
+
+## 2026-10-17 (afternoon): back to inventory
+
+- **Item lookups** (D1_TRACE_LOOKUP=3, headless, orbit + character screen): the 14 equipped
+  items are found in context 4 (profile) by 0x5751AA; the loadout gear cache 0x556C70 also
+  looks each one up in contexts 3 (account summary) and 0 (peer view), where there are no
+  item objects (it then loads only the item's own resources, 0x5568C0: the item strings tag
+  0x54D110 and definitions vtable +0x558, plus the 8 sub-item indices at item +0x26).
+- **Resources** (D1_TRACE_RESOURCES=1, 0x349C10 reimplemented: 0xE2280 on the loaded set
+  0x2693C10): opening the character screen loads the kit's definitions (0x25B07E) and item
+  strings tags (0x54B220); all of them load. So the slot spinners are not definitions or
+  strings: the item strings tag +0x60 is the icon record (e.g. 0x80A59CBE in
+  investment_globals: {name hash, two texture tags, ...}), loaded by the UI's own path.
+- **Item object 0x80801732** members: 0 id, 1 {owner, location: 2 bits, bias 1 (-1..2)},
+  2 {i32, i32, i16}, 3 item index, 4 eight sub-item indices (i16), 5 instance data
+  0x80801846 {0x8080176b {i32, i32, i32, i16}, 5 x {...}, i16, 36 bytes, 8 bytes, u8},
+  6 eight i16, 7 eight i32. Every member has a presence bit; absent = client default.
+- **Active character member 8** (+0x3660, 0x808047A7): {u7 count, up to 127 x 0x8080176b}
+  - the list 0x273E40/0x273EF0 iterates (entries with an item index at +0xC); 0x551400 reads
+  it with the item table 0x54C020. Probably stackables (materials, consumables).
+- The backend now also sends a backpack of unequipped items (D1B_BACKPACK, default a set
+  of exotic weapons) as item objects owned by the character, and the sparrow again
+  (D1B_NO_SPARROW=1 leaves it out): the user's test showed "no vehicles available" because
+  the kit had none. The headless Ghost-menu summon (touch pad + Square) did not reach
+  0x7420F0, so the old crash is not re-checked yet.
+- **The character's inventory list**: active character member 3 (+0x30, 0x80800F9F) is
+  {i32 count, 340 x 0x808016E0 {i16 item index, i64 instance id, i32, i32, i32}}. The world
+  tag loader (fillers at vtable 0x193EB40 etc.: peer view 0x576070 -> 0x556C70 on the
+  summary's loadout; character instance 0x576410 -> 0x554B90) walks it from +0x38 and loads
+  each item's gear (0x5551A0 with the definition's +0x58 index; equipped ones checked
+  against the equipment by 0x269750). The backend never sent it: the game had item objects
+  and an equipment list but no items "in" the character. It now lists the equipped and
+  backpack items (D1B_NO_INVENTORY=1 leaves it out). User test-15: the sparrow spawns and
+  can be ridden; the sniper has a magazine (4) from the weapon stats; the weapon in hand,
+  the item icons and the inventory tab were still missing.
+- **Fast rendered checks**: D1_NG_EVERY=100000 D1_NG_EVERY_WORLD=<s> D1_NG_EVERY_STATE=
+  setup:orbit draws nothing until orbit, which then renders after ~2.5 min instead of
+  ~11 min. Attached in the world the first frames stay black (llvmpipe at 0.5 fps).
+
+## 2026-10-17 (afternoon): seeing the world here; the invisible weapon
+
+- **Rendered checks in the world** without the user: a fresh test character, orbit,
+  `D1_LAUNCH_ACTIVITY=93` (Earth patrol), nothing drawn until 45 s into the world
+  (`D1_NG_EVERY=100000 D1_NG_EVERY_WORLD=45`), then drawing at a 640x360 internal resolution
+  with frames and render targets dumped (`D1_NG_FRAMES`, `D1_NG_DUMP_EVERY`, `D1_NG_SNAP`,
+  `D1_NG_TARGETS`): about 8 minutes from start to an in-world frame on llvmpipe. (Earlier
+  attempts showed black frames because the X screenshot was taken, not the frame; auto
+  exposure also needs ~40 s of world time.) User test-16 reproduced: HUD Fatebringer 10/44,
+  special 6, heavy 0, hands in the holding pose, no weapon.
+- **Not drawn at all**: the frame's depth targets contain the hands but no weapon, so the
+  game submits no weapon draws (not a shading problem).
+- **Weapon gear** (D1_TRACE_GEARCACHE): the weapon gear cache (registry *0x26BEA80, made by
+  0x63F0E0 with the player/ship/ghost/vehicle registries) gets one request per weapon from
+  0x914A80 (0x672B60 builds the description from the weapon config) via 0x63FB20 ->
+  0x63BB10. Entry states (0x639D30 / 0x639E00): 1 load the tags, 2-5 build, 6 done, 7
+  failed; all three weapons reach 6. Their descriptions were all -1: a loadout entry's
+  member 6 (0x808046BC, 6 x {i8 key, i16 index}) holds the item's gear parts, which the
+  weapon config (0x9109B0) looks up for keys 5-7 in the investment gear table (0x54C6B0:
+  investment globals +0x320). Those parts are the definition arrangement's second list
+  (+0x20, class 0x8080101C: weapons keys 5/6, armor 0/1/2) - and they are **dyes**
+  (gear tags 0x80801AF4 such as content\sandbox\shared\weapon_dyes\weapon_slot_0_raid_1
+  .gear_dye). The backend now sends them (items.json "gear"); the requests carry the dye
+  tags, but the weapon is still not drawn. The weapon's art comes from the sandbox pattern
+  row (weapon config +0: gear 0x80A6A02E etc., type 0x80800734, ~20 KB, in
+  investment_assets) and is loaded too. Solved below.
+
+## 2026-10-17 (evening): weapon, armour and ship models (loadout base gear)
+
+- **Cause**: loadout entry member 3 (0x8080183C @+0xC, i16) is the item's **base gear
+  index** into the gear base table 0x54C5B0 (the definition arrangement's base, items.json
+  `base`: Fatebringer 1378). The backend sent 0. 0x54DFF0 (player record build) resolves each
+  slot's base with 0x54F840 (base entry part hashes, gender variants @+4, override indices
+  from member 4 @+0xE, 7 x i16; 0x58EA60 hash -> tag) into up to eight part tags at player
+  record +0x9C8 + slot * 0x20. With 0 the weapons had no parts at all and the armour got a
+  stand-in (0x809F837E in every body slot).
+- **The path to the screen**: the player configuration (0x912240) copies the slot's parts
+  into each weapon configuration (0x910C60 -> 0x9109B0: +0x24, plus dyes from member 6 keys
+  5-7); 0x669B20 builds the weapon object's gear description (0x672B60) and sets its weapon
+  gear component (0x644640). Gear components (registry 0x26BEAB0: 0 player 0x641BB0, 1 weapon
+  0x6440E0, 2 ship 0x642A30) update through 0x63D0E0 / 0x63D290 and install each part with
+  0x63EA00, which spawns the part's child object (0x308EB0) - the visible model. Traced with
+  `D1_TRACE_CALLS=63ea00:80,9109b0:12/1+20`: before, all weapon slots were -1; after, each
+  weapon has 5-6 parts (Fatebringer 80a743a4 80a73ba9 ...), the body five Iron Banner pieces
+  and the ship six parts (80a7bd65 ...).
+- **Verified rendered** (wrun.sh, Earth patrol): Fatebringer drawn in the hand, real
+  gauntlets on the arms.
+- The weapon gear cache (0x63FB20) only carries the dyes (build type 1: done once the tags
+  load); it gates loading (0x9141F0), it is not the model.
+- **New research tool**: `D1_TRACE_CALLS=off[:n][/arg[+bytes]],...` logs the first n calls of
+  up to 16 eboot functions (six integer arguments, return value, caller) and can dump the
+  memory an argument points at. A gdb watchpoint (Python breakpoint classes, armed from a
+  breakpoint on `d1::install_game_hooks` once the eboot is mapped) found 0x54F840.
+
+## 2026-10-17 (night): frame timing, CPU use, aim, scene resolution, level / grimoire
+
+- **Slow motion above 30 fps**: the game-time update (0x591710) runs elapsed / period ticks
+  but caps the count per frame (about two: min(0xB9F400, 2 x time scale, ...)), keeping the
+  remainder only when not capped. With `fps = 120` (8.3 ms period) a 20-25 ms frame lost
+  time. The game_time_hook now runs in both modes: one tick of the frame's real length
+  (1-33.4 ms), then (capped mode) the period goes back to 1/N for the limiter's wait.
+- **CPU**: perf on the headless build (Linux, `perf record -g`, scratch tooling): 29% of
+  samples were context switches from sceKernelWaitSema / SignalSema (notify_all woke every
+  waiter per unit) and 11% the wake-ups themselves. Semaphores now notify one waiter per
+  unit unless a waiter wants more than one (context switches 29% -> 17%). Implemented
+  imports now jump straight to their code (the logging entry with two shared atomic
+  counters ran on every call; D1_CALL_STATS=1 keeps it). Windows sleep_us spun out every
+  sleep under 0.6 ms and the last 0.5 ms of longer ones; it now waits on a high-resolution
+  timer (long sleeps spin only their last 0.3 ms). Import counts in the world (headless,
+  per frame): ~150 semaphore waits and signals, 1560 sceGnmIsUserPaEnabled, 10 yields.
+- **Mouse buttons**: Mouse2 was SDL button 2 (middle); Mouse1-5 now map to left, right,
+  middle, X1, X2. `aim = toggle` (settings) makes the aim action a toggle.
+- **3D scene resolution**: 0x7ED1C0 returns the scene size from globals 0x18DCC58 /
+  0x18DCC5C (u16 1920, 1080) clamped to 320..1920 x 240..1080; the world's render targets
+  follow it, so `render_resolution` only resized display buffers and UI. Patched (globals
+  and clamp immediates at 0x7ED1DA / 0x7ED200): 960x540 renders a correct world at 960x540
+  (wrun.sh). Above 1920x1080 the game crashes in a job at the title screen (eboot+0xFF000,
+  job pointer 0x19C2F) - some per-frame buffer is sized for 1080p; the scene is capped at
+  1920x1080 until that is found.
+- **Level, Light, grimoire**: 0x80801923 {f32, i32, i16} is not {progress, level, light}:
+  checked on screen with distinct values, it is the nameplate's progress bar towards the
+  next level, the **grimoire score** (the stacked-cards number on the character screen) and
+  an index the game fills itself. The character level comes from the level progression
+  (definitions globals +0x166 = 117; scope 1 = active character member 8, 0x8080176B
+  {i32 total xp, i32, i32, i16 progression}); its 40 steps need 0, 900, 4100, 5000, 6000,
+  7000, 8000, 30 x 9000, 10000, 15000, 20000 xp (346000 for 40; 0x274AF0 walks them,
+  0x266520 / 0x265C50 recompute active character member 17 from it). The backend sends the
+  progression now; the screens still show level 0 (the value they read is not found yet).
+  Light is computed (0x2661E0) from the equipped items' stat 0 (definitions globals +0x140),
+  each item's value coming from its talent grid (instance data member 2, i16 @+0x20 ->
+  definitions vtable +0x4E0), the grid nodes' step states and the quality bytes
+  (instance +0x46 / +0x7E, 0x286CE0 interpolates min..max); items carry no instance data
+  yet, so Light is 0. Instance member 0 (0x8080176B) is the item's own progression (scope 2),
+  not a primary stat.
+- New research switches: D1_TRACE_LEVEL (level progression steps, talent grid probes),
+  D1_DUMP_MEM (write memory at a global pointer chain to a file at a time in a state),
+  D1_FIND_MEM (find a byte pattern in guest memory).
+
+## 2026-10-17 (late): game time internals, renderer costs on a real GPU, the native device layer
+
+Game time (0x591D40 -> 0x591710, per frame):
+- Frame timestamps come from the TSC (sceKernelReadTsc / sceKernelGetTscFrequency, scale
+  stored by time_control init 0x593F00 at time_control_globals (0x26BCD18) +0x28 as
+  ticks per microsecond); 0x594460 (frame begin / limiter) waits until the last frame + the
+  period (time_control_config 0x26BCD08 +8, us) and passes the frame's microseconds on.
+- 0x591710(elapsed, &dt, &ticks, &dt2, &ticks2): in the fixed-tick mode (0x18DCAA4 set and
+  game speed 1) every frame is one tick of the nominal length (game time globals 0x26BC880
+  +8, seconds; +4 integer ticks per second; 0x591B80 / 0x591BF0 return them). The tick's dt
+  is that nominal, not the elapsed time - the whole simulation steps by it.
+- 0x591C80 (230 callers) converts seconds to ticks with the current integer rate; 0x591BA0
+  advances the tick counter (game time globals 2 +0xC).
+- The orbit character screen lost its character whenever the nominal was not exactly
+  1 / integer rate (29 ticks a second at 33.366 ms): the hook now sets both as a consistent
+  pair before the call. Scoping the real tick to the player update alone does not work:
+  the kick curves (0x8FFD80, from the frame driver 0x74D110) and everything else step by the
+  nominal too, so it has to follow the frame globally.
+- Here (Linux) game time = real time at 30 and 144 fps and walking 3 s covers the same
+  distance at both (player position: player globals 0x273EB28 +0x90). The user still sees a
+  sped-up game on Windows; a 10 s "timing:" summary (real / measured / game seconds) was
+  added to find out where.
+
+Renderer cost on the user's RTX 5090 (test-19, Earth patrol, ~3,900 draws a frame): the
+converting renderer's thread spends ~10.4 ms a frame (commands 3.6, pipeline lookup 2.5,
+descriptors 1.25, geometry 1-3, pre-pass 1.3); the game's frame is 13-19 ms. Stutter came
+from a texture mip check that read the staging copy back from write-combined video memory
+(5-9 ms) - fixed - and from first-time pipeline creation. The null GPU still parses ~68k
+PM4 packets per flip next to the native renderer. Job threads (4 + 4) poll lock-free
+queues (0xFA750, mfence loop) and wait on semaphores: most of the CPU use.
+
+Decision: replace the conversion of PM4 command buffers with a native Vulkan implementation
+of Bungie's GPU device layer (0x7DB000-0x7E6000, calling Gnmx at 0xF88000-0xF90000 and the
+Gnm builders at 0xF7C000-0xF88000). Mapping in progress.
