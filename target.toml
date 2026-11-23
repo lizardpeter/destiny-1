@@ -20,7 +20,7 @@ compiler = "clang (PS4 SDK toolchain), x86-64, System V ABI"
 [[build]]
 id = "ps4-0133"
 kind = "retail"
-analyze = true
+analyze = false  # analysed (analysis/ps4-0133); set true only to redo it
 title_id = "CUSA00219"
 version = "01.33"
 exe = { key = "destiny/CUSA00219_01.33/eboot.bin", sha256 = "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833" }

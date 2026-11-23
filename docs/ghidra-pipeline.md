@@ -36,6 +36,21 @@ from the `PT_GNU_EH_FRAME` segment and `CreateUnwindFunctions.java` creates a fu
 analysis. `functions.tsv` carries the unwind table's length for each function beside Ghidra's, and
 `summary.json` counts any the analysis still lacks.
 
+## Measured (Ghidra 12.1.4)
+
+| | |
+|---|---|
+| Functions | 56,061 (every one of the unwind table's 54,533, plus 1,528 Ghidra found without unwind entries) |
+| Decompiled | 54,590; 3 failed; the other 1,468 are thunks |
+| Import stubs named | 641 of 642 |
+| Analysis time | 8 minutes, heap 13 GB; six decompile shards of 2 to 4 minutes |
+| Size | 454 MB in git: 221 MB disassembly, 107 MB pseudocode, 119 MB Ghidra tables and project |
+
+The unwind table's length is longer than Ghidra's function body for 18,223 functions, by 196 KB in total
+(`unwind_size` against `size` in `functions.tsv`). For 15,930 of them the difference is under 16 bytes:
+the unwind length runs to the next function and includes the alignment padding. The rest are worth a look
+when reconstructing a function: code after a call Ghidra believes never returns is the usual cause.
+
 ## Imports
 
 Ghidra does not read the PS4's dynamic tables, and the executable names its imports by NID (a hash).
