@@ -1,0 +1,11 @@
+{
+  "build": "ps4-0133",
+  "functions": 56061,
+  "decompiled": 54590,
+  "decompile_failed": 3,
+  "named_by_import_or_symbol": 641,
+  "blocks": 290,
+  "code_bytes": 18235076,
+  "unwind_functions": 54533,
+  "unwind_functions_missing": 0
+}

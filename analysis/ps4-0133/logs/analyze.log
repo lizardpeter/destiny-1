@@ -1,0 +1,156 @@
+2026-11-23 18:38:21 INFO  (LoggingInitialization) Using log config file: jar:file:/opt/ghidra/Ghidra/Framework/Generic/lib/Generic.jar!/generic.log4j.xml  
+2026-11-23 18:38:21 INFO  (LoggingInitialization) Using log file: /tmp/raw/analyze.log  
+2026-11-23 18:38:21 DEBUG (GhidraObjectInputFilter) Including serial input filter: FileSystem/data/client.rmi.serial.filter  
+2026-11-23 18:38:22 INFO  (Preferences) Loading user preferences: /home/runner/.config/ghidra/ghidra_12.1.4_PUBLIC/preferences  
+2026-11-23 18:38:22 INFO  (ClassSearcher) Searching for classes...  
+2026-11-23 18:38:22 INFO  (ClassSearcher) Class search complete (762 ms)  
+2026-11-23 18:38:23 INFO  (DefaultSSLContextInitializer) Initializing SSL Context  
+2026-11-23 18:38:23 INFO  (SecureRandomFactory) Initializing Random Number Generator...  
+2026-11-23 18:38:23 INFO  (SecureRandomFactory) Random Number Generator initialization complete: NativePRNGNonBlocking  
+2026-11-23 18:38:23 INFO  (DefaultTrustManagerFactory) Trust manager disabled, cacerts have not been set  
+2026-11-23 18:38:24 INFO  (FileCacheMaintenanceDaemon) Starting cache cleanup: /var/tmp/runner-ghidra/fscache2  
+2026-11-23 18:38:24 INFO  (FileCacheMaintenanceDaemon) Finished cache cleanup, estimated storage used: 0  
+2026-11-23 18:38:24 INFO  (AnalyzeHeadless) Headless startup complete (3978 ms)  
+2026-11-23 18:38:24 INFO  (ClassSearcher) Class searcher loaded 59 extension points (20 false positives)  
+2026-11-23 18:38:25 INFO  (HeadlessAnalyzer) HEADLESS Script Paths:
+    /opt/ghidra/Ghidra/Features/SystemEmulation/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/GnuDemangler/ghidra_scripts
+    /home/runner/work/destiny-1/destiny-1/tools/ghidra
+    /opt/ghidra/Ghidra/Features/WildcardAssembler/ghidra_scripts
+    /opt/ghidra/Ghidra/Processors/DATA/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/DecompilerDependent/ghidra_scripts
+    /opt/ghidra/Ghidra/Processors/JVM/ghidra_scripts
+    /opt/ghidra/Ghidra/Debug/Debugger-rmi-trace/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/MicrosoftCodeAnalyzer/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/VersionTracking/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/PyGhidra/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/SwiftDemangler/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/Base/ghidra_scripts
+    /opt/ghidra/Ghidra/Processors/Atmel/ghidra_scripts
+    /opt/ghidra/Ghidra/Debug/Debugger/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/Decompiler/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/FunctionID/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/PDB/ghidra_scripts
+    /opt/ghidra/Ghidra/Processors/8051/ghidra_scripts
+    /opt/ghidra/Ghidra/Processors/PIC/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/FileFormats/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/BSim/ghidra_scripts
+    /opt/ghidra/Ghidra/Features/BytePatterns/ghidra_scripts  
+2026-11-23 18:38:25 INFO  (HeadlessAnalyzer) HEADLESS: execution starts  
+2026-11-23 18:38:25 INFO  (HeadlessAnalyzer) Creating project: /tmp/proj/d1  
+2026-11-23 18:38:25 DEBUG (DefaultProjectManager) No tools found; Installing default tools  
+2026-11-23 18:38:25 DEBUG (DefaultProjectManager) 	no recent project directories found  
+2026-11-23 18:38:25 INFO  (DefaultProject) Creating project: /tmp/proj/d1  
+2026-11-23 18:38:25 INFO  (HeadlessAnalyzer) REPORT: Processing input files:   
+2026-11-23 18:38:25 INFO  (HeadlessAnalyzer)      project: /tmp/proj/d1  
+2026-11-23 18:38:25 INFO  (HeadlessAnalyzer) IMPORTING: file:///tmp/in/ps4-0133.elf  
+2026-11-23 18:38:26 INFO  (ProgramLoader) Using Loader: Executable and Linking Format (ELF)  
+2026-11-23 18:38:26 INFO  (ProgramLoader) Using Language/Compiler: x86:LE:64:default:gcc  
+2026-11-23 18:38:26 INFO  (ProgramLoader) Using Library Search Path: [., /bin, /lib, /lib64, /lib/x86_64-linux-gnu, /lib/aarch64-linux-gnu, /usr/bin, /usr/lib, /usr/X11R6/bin, /usr/X11R6/lib, /usr/java/packages/lib, /usr/lib64]  
+2026-11-23 18:38:26 INFO  (ProgramLoader) Additional info:
+Loading file:///tmp/in/ps4-0133.elf?MD5=78c0dff99f91116fc698075906f22245...
+ELF Dynamic table appears to have been stripped from binary
+------------------------------------------------
+
+  
+2026-11-23 18:38:26 INFO  (HeadlessAnalyzer) IMPORTING: Loaded 0 additional files  
+2026-11-23 18:38:27 INFO  (HeadlessAnalyzer) REPORT: Execute script: PrepAnalysis.java   
+2026-11-23 18:38:28 INFO  (HeadlessAnalyzer) SCRIPT: /home/runner/work/destiny-1/destiny-1/tools/ghidra/PrepAnalysis.java  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> JVM max heap: 13312 MB, processors: 4  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: Stack.Max Threads = 2  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Min absolute reference = 4  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Function parameter/return Pointer analysis = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Create Data from pointer = false  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: Stack.Create Local Variables = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: Decompiler Switch Analysis.Analysis Decompiler Timeout (sec) = 60  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Trust values read from writable memory = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Require pointer param data type = false  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Stored Value Pointer analysis = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: Stack = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Speculative reference max = 256  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Max Threads = 2  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> set x86 Constant Reference Analyzer.Max Threads = 1  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: Decompiler Switch Analysis = true  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: x86 Constant Reference Analyzer.Speculative reference min = 1024  
+2026-11-23 18:38:28 INFO  (GhidraScript) PrepAnalysis.java> option: Stack.Create Param Variables = false  
+2026-11-23 18:38:28 INFO  (HeadlessAnalyzer) REPORT: Execute script: CreateUnwindFunctions.java '/tmp/raw/unwind.tsv'   
+2026-11-23 18:38:28 INFO  (HeadlessAnalyzer) SCRIPT: /home/runner/work/destiny-1/destiny-1/tools/ghidra/CreateUnwindFunctions.java  
+2026-11-23 18:39:29 INFO  (GhidraScript) CreateUnwindFunctions.java> unwind: 54533 listed, 54221 functions created, 0 failed  
+2026-11-23 18:39:29 INFO  (HeadlessAnalyzer) ANALYZING all memory and code: file:///tmp/in/ps4-0133.elf  
+2026-11-23 18:41:27 WARN  (ClearFlowAndRepairCmd) WARNING! Repairing body of function at 0026e8f0  
+2026-11-23 18:41:27 WARN  (ClearFlowAndRepairCmd) WARNING! Repairing body of function at 00556200  
+2026-11-23 18:41:27 WARN  (ClearFlowAndRepairCmd) WARNING! Repairing body of function at 00a85300  
+2026-11-23 18:41:39 WARN  (DecompileCallback) Decompiling 0102b740: Unable to read bytes at ram:801912b10  
+2026-11-23 18:41:40 WARN  (DecompileCallback) Decompiling 0102ac40: Unable to read bytes at ram:8019129c0  
+2026-11-23 18:41:40 WARN  (DecompileCallback) Decompiling 00137b90: Unable to read bytes at ram:6365786562696c2f  
+2026-11-23 18:41:41 WARN  (DecompileCallback) Decompiling 00137f10: Unable to read bytes at ram:6365786562696c37  
+2026-11-23 18:42:40 WARN  (DecompileCallback) Decompiling 0102f110: Unable to read bytes at ram:801913590  
+2026-11-23 18:42:40 WARN  (DecompileCallback) Decompiling 002cb240: Unable to read bytes at ram:801912090  
+2026-11-23 18:43:00 WARN  (DecompileCallback) Decompiling 004aa560: Unable to read bytes at ram:6365786562696c2f  
+2026-11-23 18:43:09 WARN  (DecompileCallback) Decompiling 0102ee30: Unable to read bytes at ram:801913440  
+2026-11-23 18:43:25 ERROR (VarnodeContext) VarnodeContext: out of address spaces at @00d14142 for: XMM15_Db-00d14142  
+2026-11-23 18:44:07 ERROR (VarnodeContext) VarnodeContext: out of address spaces at @00d34b95 for: XMM1_Db-00d34b95  
+2026-11-23 18:44:36 ERROR (VarnodeContext) VarnodeContext: out of address spaces at @00db26ab for: XMM10_Da-00db26ab  
+2026-11-23 18:45:38 INFO  (PackedDatabaseCache) Packed database cache: /var/tmp/runner-ghidra/packed-db-cache  
+2026-11-23 18:45:38 DEBUG (PackedDatabaseCache) Caching packed database: /opt/ghidra/Ghidra/Features/Base/data/typeinfo/generic/generic_clib_64.gdt  
+2026-11-23 18:45:38 DEBUG (PackedDatabase) Unpacking database /opt/ghidra/Ghidra/Features/Base/data/typeinfo/generic/generic_clib_64.gdt -> /var/tmp/runner-ghidra/packed-db-cache/pdbE73AD4FD/db.1.gbf  
+2026-11-23 18:45:38 DEBUG (PackedDatabaseCache) Cache update completed: /opt/ghidra/Ghidra/Features/Base/data/typeinfo/generic/generic_clib_64.gdt  
+2026-11-23 18:45:38 INFO  (ApplyDataArchiveAnalyzer) Applied data type archive: generic_clib_64  
+2026-11-23 18:45:56 ERROR (VarnodeContext) VarnodeContext: out of address spaces at @00d140f9 for: XMM1-00d140f9  
+2026-11-23 18:46:33 ERROR (VarnodeContext) VarnodeContext: out of address spaces at @00db2642 for: XMM0_Db-00db2642  
+2026-11-23 18:47:13 ERROR (VarnodeContext) VarnodeContext: out of address spaces at @00d34b35 for: XMM1_Db-00d34b35  
+2026-11-23 18:47:22 INFO  (AutoAnalysisManager) -----------------------------------------------------
+    ASCII Strings                              2.572 secs
+    Apply Data Archives                        0.253 secs
+    Call Convention ID                         0.122 secs
+    Call-Fixup Installer                       0.268 secs
+    Create Address Tables                      3.925 secs
+    Create Address Tables - One Time           1.725 secs
+    Create Function                            0.117 secs
+    Data Reference                             4.659 secs
+    Decompiler Switch Analysis               105.012 secs
+    Demangler GNU                              0.064 secs
+    Disassemble                                0.059 secs
+    Disassemble Entry Points                   0.361 secs
+    Embedded Media                             0.228 secs
+    External Entry References                  0.000 secs
+    Function ID                               20.012 secs
+    Function Start Pre Search                  0.123 secs
+    Function Start Search                      0.886 secs
+    Function Start Search After Code           0.890 secs
+    Function Start Search After Data           1.140 secs
+    Non-Returning Functions - Discovered     115.741 secs
+    Non-Returning Functions - Known            0.084 secs
+    Reference                                  6.008 secs
+    Shared Return Calls                        4.382 secs
+    Stack                                     92.848 secs
+    Subroutine References                      3.025 secs
+    x86 Constant Reference Analyzer          107.644 secs
+-----------------------------------------------------
+     Total Time   472 secs
+-----------------------------------------------------
+  
+2026-11-23 18:47:22 INFO  (HeadlessAnalyzer) REPORT: Analysis succeeded for file: file:///tmp/in/ps4-0133.elf  
+2026-11-23 18:47:22 INFO  (HeadlessAnalyzer) REPORT: Execute script: ApplyImports.java '/tmp/raw/imports.tsv'   
+2026-11-23 18:47:22 INFO  (HeadlessAnalyzer) SCRIPT: /home/runner/work/destiny-1/destiny-1/tools/ghidra/ApplyImports.java  
+2026-11-23 18:47:22 INFO  (GhidraScript) ApplyImports.java> imports: 3788 slots labelled, 641 stubs named  
+2026-11-23 18:47:22 INFO  (HeadlessAnalyzer) REPORT: Execute script: ExportAll.java '/tmp/raw'   
+2026-11-23 18:47:22 INFO  (HeadlessAnalyzer) SCRIPT: /home/runner/work/destiny-1/destiny-1/tools/ghidra/ExportAll.java  
+2026-11-23 18:47:25 INFO  (GhidraScript) ExportAll.java> exported 5000 functions  
+2026-11-23 18:47:28 INFO  (GhidraScript) ExportAll.java> exported 10000 functions  
+2026-11-23 18:47:32 INFO  (GhidraScript) ExportAll.java> exported 15000 functions  
+2026-11-23 18:47:35 INFO  (GhidraScript) ExportAll.java> exported 20000 functions  
+2026-11-23 18:47:38 INFO  (GhidraScript) ExportAll.java> exported 25000 functions  
+2026-11-23 18:47:42 INFO  (GhidraScript) ExportAll.java> exported 30000 functions  
+2026-11-23 18:47:46 INFO  (GhidraScript) ExportAll.java> exported 35000 functions  
+2026-11-23 18:47:52 INFO  (GhidraScript) ExportAll.java> exported 40000 functions  
+2026-11-23 18:47:55 INFO  (GhidraScript) ExportAll.java> exported 45000 functions  
+2026-11-23 18:47:58 INFO  (GhidraScript) ExportAll.java> exported 50000 functions  
+2026-11-23 18:48:01 INFO  (GhidraScript) ExportAll.java> exported 55000 functions  
+2026-11-23 18:48:01 INFO  (GhidraScript) ExportAll.java> functions: 56061  
+2026-11-23 18:48:05 INFO  (HeadlessAnalyzer) ANALYZING changes made by post scripts: file:///tmp/in/ps4-0133.elf  
+2026-11-23 18:48:05 INFO  (HeadlessAnalyzer) REPORT: Post-analysis succeeded for file: file:///tmp/in/ps4-0133.elf  
+2026-11-23 18:48:06 INFO  (LocalFileSystem) /ps4-0133.elf: file created (runner)  
+2026-11-23 18:48:06 INFO  (HeadlessAnalyzer) REPORT: Save succeeded for: /ps4-0133.elf (d1:/ps4-0133.elf)  
+2026-11-23 18:48:06 INFO  (HeadlessAnalyzer) REPORT: Import succeeded  
