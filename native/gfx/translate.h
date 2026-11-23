@@ -11,15 +11,27 @@
 //
 // Resources are resolved statically: user SGPRs and extended user data (Gnm input usage
 // slots), resource tables and the SMRD loads that read them map every T#, S# and V# the
-// shader uses to an engine API slot. Each slot becomes a descriptor binding:
-//   set = stage (0 vertex, 1 pixel); binding = texture slot, 16 + sampler slot,
-//   32 + constant buffer slot.
+// shader uses to an engine API slot. All shaders index into a single global descriptor set
+// (set 0) bound once per command buffer:
+//   bindings 0..11: bindless sampled image arrays (uint32_t(TexDim) * 3 + tex_kind)
+//   binding 12:     bindless sampler array
+//   binding 13:     upload ring storage buffer (constant buffers and per-stage slot tables)
+// Push constants carry two 32-bit dword offsets into the ring storage buffer (offset 0 =
+// vertex stage table, offset 4 = pixel stage table). Each stage table is 32 dwords:
+//   dwords 0..15:   constant buffer dword offset in the ring for API slot 0..15
+//   dwords 16..31:  (view_id & 0xFFFF) | (sampler_id << 16) for API slot 0..15
 #pragma once
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace d1::gcn {
+
+constexpr uint32_t kBindlessImageBindings = 12;
+constexpr uint32_t kBindlessSamplerBinding = 12;
+constexpr uint32_t kBindlessRingBinding = 13;
+constexpr uint32_t kMaxBindlessViews = 16384;
+constexpr uint32_t kMaxBindlessSamplers = 1024;
 
 enum class Stage : uint8_t { Vertex, Pixel };
 
@@ -79,6 +91,9 @@ struct Result {
     std::vector<uint32_t> spirv;
     std::vector<Binding> bindings;
     std::vector<VertexAttrib> attribs;  // vertex
+    uint16_t tex_mask = 0;              // bitmask of texture API slots (0..15) used
+    uint16_t samp_mask = 0;             // bitmask of sampler API slots (0..15) used
+    uint16_t cb_mask = 0;               // bitmask of constant buffer API slots (0..15) used
     uint32_t param_exports = 0;         // vertex: mask of parameter outputs (locations)
     uint32_t ps_inputs = 0;             // pixel: mask of interpolated attributes read
     uint32_t ps_flat_inputs = 0;        // pixel: attributes read flat (v_interp_mov)

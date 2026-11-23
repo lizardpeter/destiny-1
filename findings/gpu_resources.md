@@ -133,3 +133,21 @@ In an orbit run, about 130 lookups hit addresses whose registered handle no long
 there (`handle ... now names 0`). Several were around `0x4045_xxxx`, where the UI builds T#s in
 scratch memory. The registry now stores the handle with each entry and rejects the entry when
 `resolve_handle_safe(handle)` names another address.
+
+
+## Resource Bind/Repoint Dispatch & TFX Technique State (2026-11-23)
+
+- **Resource manager bind (`0x7D2E80`, `*0x254EE38`) and repoint (`0x7D3160`, `*0x254EE40`) 18-type switch tables (`0x7D2F84` / `0x7D3258`)**:
+  - Types **1, 2, 3** -> `0x7D4D40` / `0x7D4840`: Texture (`Gnm::Texture`, 32-byte `T#` at tag address).
+  - Type **4** -> `0x7D4C30` / `0x7D4720`: Vertex Buffer (`+0x0` u32 size, `+0x4` u32 stride, `+0x28` u64 base, `+0x30` u32 vertex count).
+  - Type **6** -> `0x7D4CB0` / `0x7D47B0`: Index Buffer (`+0x8` u64 size, `+0x30` u64 base, `+0x38` u32 is_32bit, `+0x3C` u32 index count).
+  - Type **7** -> `0x7D4DA0`: Generic `Gnm::Buffer` (`V#` at tag address).
+  - Type **8** -> `0x7D4B90`: Pixel Shader (`Gnm::PsShader` at tag address `rbx`, writes `spiShaderPgmLoPs/HiPs` at `+0x8/+0xC`).
+  - Type **9** -> `0x7D48C0`: Vertex Shader (`VsWrapper` at tag address `rbx`, `Gnm::VsShader` at `+0x14`, writes `spiShaderPgmLoVs/HiVs` at `+0x1C/+0x20` and fetch shader address at `+0x8 = addr + *(uint32_t*)(rbx + 0x4)`).
+  - Type **10** -> `0x7D4AB0`: Geometry Shader; Types **11 & 14** -> `0x7D4970`: LS/ES Shader; Types **12 & 13** -> `0x7D49F0`: HS/CS Shader; Type **18** -> `0x73D50`: Generic data block pointer.
+- **TFX technique state application (`0x82B3F0..0x82B830`)**:
+  - TFX techniques store a packed 4-byte default preset word at `technique + 0x20`, a VS tag handle at `technique + 0x28` (`0x82D070`), and a PS tag handle at `technique + 0x2A8` (`0x82D020`).
+  - At draw time, `0x82B3F0..0x82B730` combine `[technique + 0x20]` with per-pass overrides `[tfx_ctx + 0x15D0/0x15D4]` and apply presets dynamically on the device context (`0x7DF1A0` blend, `0x7DF3F0` depth/stencil, `0x7DF310` raster/cull).
+- **First-person camera FOV computation (`0x8E8240..0x8E82A3`, `0x8E4090..0x8E42A5`)**:
+  - `0x8E8240` multiplies the FOV angle in `%xmm0` by `0.5 * pi / 180` (`*(float*)0x166A2E8`) and calls `tanf` (`0x12AB9A0`) at `0x8E825E` and `0x8E8299` to build frustum planes and projection tangents before culling.
+  - `0x8E4090..0x8E429E` computes the first-person ADS zoom factor on the camera state (`+0x340(%r12)`).

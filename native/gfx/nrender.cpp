@@ -302,6 +302,14 @@ struct Alloc {
     int block = -1;  // -1: dedicated allocation
 };
 
+struct ViewHandle {
+    VkImageView view = VK_NULL_HANDLE;
+    uint16_t id = 0;
+    uint8_t dim = 0;        // gcn::TexDim (0..3)
+    uint8_t kind = 0;       // 0 = float, 1 = uint, 2 = sint
+    bool filterable = true;
+};
+
 struct Image {
     VkImage image = VK_NULL_HANDLE;
     Alloc mem;
@@ -312,39 +320,36 @@ struct Image {
     uint64_t base = 0;
     VkImageView attachment = VK_NULL_HANDLE;
     VkImageAspectFlags att_aspect = 0;  // attachment view made when first rendered to (0: none)
-    std::unordered_map<uint64_t, VkImageView> views;
+    std::unordered_map<uint64_t, ViewHandle> views;
+    std::unordered_map<uint64_t, VkImageView> slice_attachments;
     uint64_t last_used = 0;
     uint32_t bind_slice = 0;  // layered target: the slice the current pass renders
-    // textures: the guest memory they were copied from, and its version then (write tracking)
     uint64_t src_addr = 0, src_size = 0, version = ~0ull, checked = 0;
-    uint32_t torn = 0;  // reloads in a row that were rewritten while being copied
-    // render targets: guest layout (for readback) and whether any draw samples it
+    uint32_t torn = 0;
     uint32_t tile_mode = 0, pitch = 0, bpp = 0;
     bool sampled = false;
-    // small render targets: the memory's version when the GPU last rendered it (write
-    // tracking); a CPU write since then makes the memory, not the image, the current contents
     uint64_t tv_version = ~0ull, tv_size = 0, tv_frame = 0;
-    // textures of engine resources: the resource's id << 32 | epoch when copied, and a hash of
-    // the guest memory then (a new epoch with the same contents - a move - keeps the image)
     uint64_t res_val = 0, content = 0;
-    bool stale = false;  // its memory was written by a copy command: reload at the next use
-    uint64_t bound_serial = 0;  // render targets: when last bound for drawing
+    bool stale = false;
+    uint64_t bound_serial = 0;
 };
 
 struct Shader {
     VkShaderModule module = VK_NULL_HANDLE;
-    VkShaderModule rect_gs = VK_NULL_HANDLE;  // vertex: rect-list expansion for this shader's outputs
+    VkShaderModule rect_gs = VK_NULL_HANDLE;
     gcn::Result res;
     bool ok = false;
 };
 
 struct Pipeline {
     VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
-    VkDescriptorSetLayout sets[2] = {};
-    bool push_ps = false;  // the pixel shader's set is a push descriptor set
     Shader* vs = nullptr;
     Shader* ps = nullptr;
+};
+
+struct SamplerEntry {
+    VkSampler smp = VK_NULL_HANDLE;
+    uint16_t id = 0;
 };
 
 struct Buffer {
@@ -518,12 +523,23 @@ struct Renderer {
     std::unordered_map<uint64_t, std::unique_ptr<Image>> targets;   // (base, format, size)
     std::unordered_map<uint64_t, Image*> target_by_base;            // newest target at an address
     std::vector<std::unique_ptr<Image>> retired;                    // replaced targets (still referenced)
-    std::unordered_map<uint64_t, std::unique_ptr<Image>> textures;  // T# hash
-    std::unordered_map<uint64_t, VkSampler> samplers;
+    std::unordered_map<uint64_t, std::unique_ptr<Image>> textures;  // T# hash or resource ID
+    std::unordered_map<uint64_t, SamplerEntry> samplers;
     std::unordered_map<uint64_t, std::unique_ptr<Shader>> shaders;
     std::unordered_map<uint64_t, std::unique_ptr<Pipeline>> pipelines;
-    std::unique_ptr<Image> dummy[4];  // per TexDim
+    std::unique_ptr<Image> dummy[4][3];  // per (TexDim, tex_kind)
+    VkImageView dummy_views[gcn::kBindlessImageBindings] = {};
     VkSampler dummy_sampler = VK_NULL_HANDLE;
+    VkDescriptorPool bindless_pool = VK_NULL_HANDLE;
+    VkDescriptorSetLayout bindless_layout = VK_NULL_HANDLE;
+    VkDescriptorSet bindless_set = VK_NULL_HANDLE;
+    VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
+    std::mutex bindless_m;
+    uint16_t next_view_id = 1, next_sampler_id = 1;
+    std::vector<uint16_t> free_view_ids;
+    std::atomic<uint64_t> geo_evict_gen{1};
+    uint16_t alloc_bindless_view(VkImageView v, uint8_t dim, uint8_t kind);
+    void free_bindless_view(uint16_t id, uint8_t dim, uint8_t kind);
     Stats st;
 
     // per-submission recording state
@@ -537,7 +553,7 @@ struct Renderer {
     std::unique_ptr<Image> make_image(VkFormat f, uint32_t w, uint32_t h, uint32_t d, uint32_t layers, uint32_t levels,
                                       bool cube, bool is3d, bool depth, bool stencil);
     void destroy_image(Image* img);
-    VkImageView view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level, bool depth_aspect, bool stencil_aspect = false);
+    ViewHandle view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level, bool depth_aspect, bool stencil_aspect = false);
     uint64_t ring_alloc(uint64_t size, uint64_t align = 256);
     Buffer make_readback_buffer(uint64_t size);
     // bumped whenever a render target appears or the image bound at an address changes: what
@@ -556,7 +572,7 @@ struct Renderer {
     }
     // pipeline() key without the parts that need the shared maps; ambiguous = a T# names an
     // address whose sampled image changes kind (then only pipeline() under the lock decides)
-    uint64_t pipe_key(const Draw& dr, Image* const* colors, Image* depth, bool& ambiguous) const;
+    uint64_t pipe_key(const Draw& dr, Image* const* colors, Image* depth) const;
     // what a pipeline sees of a render target sampled as a texture: dimensionality and kind
     static uint32_t target_attrs(const Image* i) {
         if (!i) return 0;
@@ -606,6 +622,10 @@ struct Renderer {
         VkBuffer ib = VK_NULL_HANDLE;
         VkDeviceSize ioff = 0;
         VkIndexType itype = VK_INDEX_TYPE_UINT16;
+        uint32_t stage_table[2][32]{};
+        uint32_t stage_table_dword[2]{};
+        bool stage_valid[2]{};
+        Draw::Cb cb_bound[2][16]{};
     };
     // What one recording (a submission's command buffer) is in the middle of: the main
     // recorder serves the submitting thread; others record lists on the engine's threads.
@@ -693,7 +713,7 @@ struct Renderer {
             else ++i;
     }
     uint64_t snap_reused = 0;
-    VkImageView target_view(Image* img, const Image* like, const uint32_t* t);
+    ViewHandle target_view(Image* img, const Image* like, const uint32_t* t);
     static bool verify_late() { static const bool v = std::getenv("D1_NG_VERIFY_LATE") != nullptr; return v; }
     void note_copy(uint8_t kind, uint64_t addr, uint64_t size) {
         if (verify_late() && rc().lr && size && size <= (1u << 20)) rc().copies.push_back({kind, addr, size, hash_bytes(reinterpret_cast<const void*>(addr), size)});
@@ -703,7 +723,7 @@ struct Renderer {
     Recorder up_rec;  // uploads and target set-up for lists recorded on engine threads
     Recorder* pre_for = nullptr;  // the list whose textures pre_pass is preparing (in the upload slot)
     // the loader thread: engine resources prepared when the engine binds or moves them
-    struct LoadJob { bool tex; uint32_t t[8]; uint64_t base, size, res, obj; };
+    struct LoadJob { uint8_t kind; uint32_t t[8]; uint64_t base, size, res, obj; };  // kind: 0 buf, 1 tex, 2 vs, 3 ps
     std::mutex load_m;
     std::condition_variable load_cv;
     std::deque<LoadJob> load_q;
@@ -713,6 +733,7 @@ struct Renderer {
     void start_loader();
     void load_texture(const LoadJob& j);
     void load_buffer(const LoadJob& j);
+    void load_shader(const LoadJob& j);
     void prefetch(const LoadJob& j) {
         if (!load_on) return;
         {
@@ -752,8 +773,10 @@ struct Renderer {
                 dyn_q.push_back({d->caller, d->count});
             }
             const uint64_t a = d->caller, e = d->caller + d->count;
+            bool any_stale = false;
             for (auto& [k, img] : textures)
-                if (img && img->src_size && a < img->src_addr + img->src_size && e > img->src_addr && !img->stale) img->stale = true, ++dma_stale;
+                if (img && img->src_size && a < img->src_addr + img->src_size && e > img->src_addr && !img->stale) img->stale = true, ++dma_stale, any_stale = true;
+            if (any_stale) ++views_gen;
             dma_texture_check(d->caller, d->count);
         }
     }
@@ -803,7 +826,7 @@ struct Renderer {
                 bool hit = it != r.end() && it->first < e;
                 if (!hit && it != r.begin()) hit = std::prev(it)->second > a;
                 if (!hit) continue;
-                img->stale = true, ++cpu_stale;
+                img->stale = true, ++cpu_stale, ++views_gen;
                 static int told = 0;
                 if (told++ < 30 && std::getenv("D1_NG_LOG_DYN"))
                     log("native renderer: CPU write into texture %#llx %ux%u fmt %d (%s): copied again", (unsigned long long)a, img->w,
@@ -927,19 +950,21 @@ struct Renderer {
     std::unordered_map<uint64_t, std::vector<Image*>> images_by_base;  // every render target image per address
     uint64_t bind_serial = 0;
     Image* target_for(const fmt::TSharp& ts);
-    VkImageView texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t res = 0);
+    ViewHandle texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t res = 0);
     Image* upload_texture(const uint32_t* t, uint64_t res = 0);
+    void resolve_draw_resources(const std::vector<Draw*>& draws, bool have_lock);
     // the textures map key: the T#, or for an engine resource its identity and the T# without
-    // its base address (a resource the engine moves keeps its key)
+    // its base address or streaming mip clamp (min_lod / base_level) so mip streaming updates
+    // the existing image in place instead of creating a new one
     static uint64_t tex_key(const uint32_t* t, uint64_t res) {
         if (!res) return hash_bytes(t, 32);
         uint32_t c[8];
         std::memcpy(c, t, 32);
-        c[0] = 0, c[1] &= ~0xFFu;
+        c[0] = 0, c[1] &= ~0xFFFFFu, c[3] &= ~0xF000u;
         return hash_bytes(c, 32, (res >> 32) * 0x9E3779B97F4A7C15ull) | 1;
     }
     void evict_textures();
-    VkSampler sampler(const uint32_t* s, bool nearest = false);
+    uint16_t sampler_id(const uint32_t* s, bool nearest = false);
     Shader* shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in = 0,
                    uint32_t sint_in = 0, uint32_t scaled_in = 0);
     // what this GPU supports per format (cached): vertex buffers, sampling, rendering
@@ -1126,6 +1151,8 @@ bool Renderer::init(const Options& o) {
     }
     uint64_t ring_mb = 256;
     if (const char* v = std::getenv("D1_NG_RING_MB")) ring_mb = std::max<uint64_t>(64, std::strtoull(v, nullptr, 10));
+    if (ctx.props.limits.maxStorageBufferRange >= (64ull << 20))
+        ring_mb = std::min<uint64_t>(ring_mb, ctx.props.limits.maxStorageBufferRange >> 20);
     ring = make_buffer(ring_mb << 20, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                           VK_BUFFER_USAGE_TRANSFER_DST_BIT, true, std::getenv("D1_NG_RING_SYSMEM") == nullptr);
@@ -1133,19 +1160,105 @@ bool Renderer::init(const Options& o) {
         log("native renderer: no host-visible memory for the %llu MiB upload ring", (unsigned long long)ring_mb);
         return false;
     }
-    // placeholder textures for unbound slots (black, alpha 0)
+    // placeholder textures for unbound slots (black, alpha 0) across all (TexDim, tex_kind) combinations
     begin_record();
+    const VkFormat dummy_fmts[3] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R8G8B8A8_SINT};
     for (int k = 0; k < 4; ++k) {
         const auto dim = gcn::TexDim(k);
-        dummy[k] = make_image(VK_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, dim == gcn::TexDim::Cube ? 6 : 1, 1,
-                              dim == gcn::TexDim::Cube, dim == gcn::TexDim::Tex3D, false, false);
-        VkClearColorValue zero{};
-        VkImageSubresourceRange r{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS};
-        vkCmdClearColorImage(rc().cmd, dummy[k]->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &r);
+        for (int kind = 0; kind < 3; ++kind) {
+            dummy[k][kind] = make_image(dummy_fmts[kind], 1, 1, 1, dim == gcn::TexDim::Cube ? 6 : 1, 1,
+                                        dim == gcn::TexDim::Cube, dim == gcn::TexDim::Tex3D, false, false);
+            VkClearColorValue zero{};
+            VkImageSubresourceRange r{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS};
+            vkCmdClearColorImage(rc().cmd, dummy[k][kind]->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &r);
+            VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+            vci.image = dummy[k][kind]->image;
+            vci.viewType = view_type(dim);
+            vci.format = dummy_fmts[kind];
+            vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, dim == gcn::TexDim::Cube ? 6u : 1u};
+            vkCreateImageView(ctx.device, &vci, nullptr, &dummy_views[k * 3 + kind]);
+        }
     }
     submit_and_wait();
     VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     vkCreateSampler(ctx.device, &sci, nullptr, &dummy_sampler);
+    // global bindless descriptor table (set 0: bindings 0..11 sampled image arrays, 12 sampler array, 13 upload ring)
+    {
+        const VkDescriptorPoolSize sizes[] = {
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, gcn::kBindlessImageBindings * gcn::kMaxBindlessViews},
+            {VK_DESCRIPTOR_TYPE_SAMPLER, gcn::kMaxBindlessSamplers},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
+        };
+        VkDescriptorPoolCreateInfo dpci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        dpci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        dpci.maxSets = 4;
+        dpci.poolSizeCount = 3;
+        dpci.pPoolSizes = sizes;
+        if (vkCreateDescriptorPool(ctx.device, &dpci, nullptr, &bindless_pool) != VK_SUCCESS) {
+            log("native renderer: failed to create bindless descriptor pool");
+            return false;
+        }
+        VkDescriptorSetLayoutBinding bindings[14]{};
+        VkDescriptorBindingFlags bflags[14]{};
+        const VkDescriptorBindingFlags uab = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                             VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                                             VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+        const VkShaderStageFlags stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        for (uint32_t b = 0; b < gcn::kBindlessImageBindings; ++b) {
+            bindings[b] = {b, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, gcn::kMaxBindlessViews, stages, nullptr};
+            bflags[b] = uab;
+        }
+        bindings[gcn::kBindlessSamplerBinding] = {gcn::kBindlessSamplerBinding, VK_DESCRIPTOR_TYPE_SAMPLER,
+                                                  gcn::kMaxBindlessSamplers, stages, nullptr};
+        bflags[gcn::kBindlessSamplerBinding] = uab;
+        bindings[gcn::kBindlessRingBinding] = {gcn::kBindlessRingBinding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, stages, nullptr};
+        bflags[gcn::kBindlessRingBinding] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+        VkDescriptorSetLayoutBindingFlagsCreateInfo bfci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
+        bfci.bindingCount = 14;
+        bfci.pBindingFlags = bflags;
+        VkDescriptorSetLayoutCreateInfo slci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &bfci};
+        slci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+        slci.bindingCount = 14;
+        slci.pBindings = bindings;
+        if (vkCreateDescriptorSetLayout(ctx.device, &slci, nullptr, &bindless_layout) != VK_SUCCESS) {
+            log("native renderer: failed to create bindless descriptor set layout");
+            return false;
+        }
+        VkPushConstantRange pcr{stages, 0, 8};
+        VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        plci.setLayoutCount = 1;
+        plci.pSetLayouts = &bindless_layout;
+        plci.pushConstantRangeCount = 1;
+        plci.pPushConstantRanges = &pcr;
+        if (vkCreatePipelineLayout(ctx.device, &plci, nullptr, &pipe_layout) != VK_SUCCESS) {
+            log("native renderer: failed to create bindless pipeline layout");
+            return false;
+        }
+        VkDescriptorSetAllocateInfo dsai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        dsai.descriptorPool = bindless_pool;
+        dsai.descriptorSetCount = 1;
+        dsai.pSetLayouts = &bindless_layout;
+        if (vkAllocateDescriptorSets(ctx.device, &dsai, &bindless_set) != VK_SUCCESS) {
+            log("native renderer: failed to allocate bindless descriptor set");
+            return false;
+        }
+        // Populate slot 0 of every image array with its dummy view, slot 0 of sampler array with dummy_sampler, and binding 13 with the ring buffer
+        VkWriteDescriptorSet writes[14]{};
+        VkDescriptorImageInfo img_infos[13]{};
+        for (uint32_t b = 0; b < gcn::kBindlessImageBindings; ++b) {
+            img_infos[b] = {VK_NULL_HANDLE, dummy_views[b], VK_IMAGE_LAYOUT_GENERAL};
+            writes[b] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, bindless_set, b, 0, 1,
+                         VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, &img_infos[b], nullptr, nullptr};
+        }
+        img_infos[12] = {dummy_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
+        writes[12] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, bindless_set, gcn::kBindlessSamplerBinding, 0, 1,
+                      VK_DESCRIPTOR_TYPE_SAMPLER, &img_infos[12], nullptr, nullptr};
+        VkDescriptorBufferInfo ring_info{ring.buf, 0, ring.size};
+        writes[13] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, bindless_set, gcn::kBindlessRingBinding, 0, 1,
+                      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &ring_info, nullptr};
+        vkUpdateDescriptorSets(ctx.device, 14, writes, 0, nullptr);
+    }
     // pipeline cache from the last run (the driver checks it matches this GPU and driver)
     {
         std::vector<char> data;
@@ -1198,13 +1311,8 @@ bool Renderer::init(const Options& o) {
         log("native renderer: recording on %u thread%s (runs of %u+ draws in one pass split)", rec_threads + 1,
             rec_threads ? "s" : "", rec_min_run);
     }
-    // D1_ND_RECORD=0: lists are recorded on the GPU queue thread at submission (as before)
-    {
-        const char* v = std::getenv("D1_ND_RECORD");
-        list_rec = (!v || std::atoi(v) != 0) && !debug && passlog_frame == UINT64_MAX && !std::getenv("D1_NG_TRACE") &&
-                   !std::getenv("D1_NG_DRAWSTATS");
-        log("native renderer: command lists recorded %s", list_rec ? "on the engine's threads as they end" : "at submission");
-    }
+    list_rec = !debug && passlog_frame == UINT64_MAX && !std::getenv("D1_NG_TRACE") && !std::getenv("D1_NG_DRAWSTATS");
+    log("native renderer: command lists recorded %s", list_rec ? "on the engine's threads as they end" : "at submission");
     start_loader();
     {
         const char* v = std::getenv("D1_NG_DYNAMIC_COPY");
@@ -1234,7 +1342,10 @@ void Renderer::begin_record() {
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(sb.cmd, &bi);
     rc().dstate.valid = false;
+    rc().dstate.stage_valid[0] = rc().dstate.stage_valid[1] = false;
     rc().cmd = sb.cmd;
+    if (bindless_set && pipe_layout)
+        vkCmdBindDescriptorSets(sb.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_layout, 0, 1, &bindless_set, 0, nullptr);
     rc().snaps.clear(), rc().snap_key = 0, rc().fresh.clear(), rc().pass_live.clear(), rc().pass_written.clear();
     barrier();  // earlier submissions' writes before anything here
 }
@@ -1563,10 +1674,49 @@ void Renderer::heap_free(Alloc& a) {
     a = Alloc{};
 }
 
+uint16_t Renderer::alloc_bindless_view(VkImageView v, uint8_t dim, uint8_t kind) {
+    if (!v || !bindless_set) return 0;
+    uint16_t id = 0;
+    {
+        std::lock_guard lk(bindless_m);
+        if (!free_view_ids.empty()) {
+            id = free_view_ids.back();
+            free_view_ids.pop_back();
+        } else if (next_view_id < gcn::kMaxBindlessViews) {
+            id = next_view_id++;
+        } else {
+            return 0;
+        }
+    }
+    const uint32_t binding = uint32_t(dim) * 3 + uint32_t(kind);
+    VkDescriptorImageInfo ii{VK_NULL_HANDLE, v, VK_IMAGE_LAYOUT_GENERAL};
+    VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, bindless_set, binding, id, 1,
+                           VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, &ii, nullptr, nullptr};
+    vkUpdateDescriptorSets(ctx.device, 1, &w, 0, nullptr);
+    return id;
+}
+
+void Renderer::free_bindless_view(uint16_t id, uint8_t dim, uint8_t kind) {
+    if (!id || !bindless_set) return;
+    const uint32_t binding = uint32_t(dim) * 3 + uint32_t(kind);
+    VkDescriptorImageInfo ii{VK_NULL_HANDLE, dummy_views[binding], VK_IMAGE_LAYOUT_GENERAL};
+    VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, bindless_set, binding, id, 1,
+                           VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, &ii, nullptr, nullptr};
+    vkUpdateDescriptorSets(ctx.device, 1, &w, 0, nullptr);
+    std::lock_guard lk(bindless_m);
+    free_view_ids.push_back(id);
+}
+
 void Renderer::destroy_image(Image* img) {
     if (!img) return;
-    for (auto& [k, v] : img->views) vkDestroyImageView(ctx.device, v, nullptr);
+    for (auto& [k, v] : img->views) {
+        if (v.id) free_bindless_view(v.id, v.dim, v.kind);
+        if (v.view) vkDestroyImageView(ctx.device, v.view, nullptr);
+    }
     img->views.clear();
+    for (auto& [k, v] : img->slice_attachments)
+        if (v) vkDestroyImageView(ctx.device, v, nullptr);
+    img->slice_attachments.clear();
     if (img->attachment) vkDestroyImageView(ctx.device, img->attachment, nullptr);
     img->attachment = VK_NULL_HANDLE;
     if (img->image) vkDestroyImage(ctx.device, img->image, nullptr);
@@ -1659,8 +1809,8 @@ std::unique_ptr<Image> Renderer::make_image(VkFormat f, uint32_t w, uint32_t h, 
     return img;
 }
 
-VkImageView Renderer::view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level,
-                           bool depth_aspect, bool stencil_aspect) {
+ViewHandle Renderer::view(Image* img, VkImageViewType type, VkComponentMapping comp, uint32_t base_level,
+                          bool depth_aspect, bool stencil_aspect) {
     if (img->is3d) type = VK_IMAGE_VIEW_TYPE_3D;
     if (type == VK_IMAGE_VIEW_TYPE_CUBE && (!img->cube || img->layers < 6)) type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     if (type == VK_IMAGE_VIEW_TYPE_3D && !img->is3d) type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
@@ -1685,8 +1835,20 @@ VkImageView Renderer::view(Image* img, VkImageViewType type, VkComponentMapping 
                                                                                             : img->layers};
     VkImageView v = VK_NULL_HANDLE;
     vkCreateImageView(ctx.device, &vci, nullptr, &v);
-    img->views[key] = v;
-    return v;
+    const uint8_t dim = type == VK_IMAGE_VIEW_TYPE_2D       ? uint8_t(gcn::TexDim::Tex2D)
+                      : type == VK_IMAGE_VIEW_TYPE_2D_ARRAY ? uint8_t(gcn::TexDim::Tex2DArray)
+                      : type == VK_IMAGE_VIEW_TYPE_3D       ? uint8_t(gcn::TexDim::Tex3D)
+                                                            : uint8_t(gcn::TexDim::Cube);
+    const uint8_t kind = stencil_aspect ? 1u
+                       : img->depth     ? 0u
+                       : is_int_format(img->format) ? (is_sint_format(img->format) ? 2u : 1u)
+                                                    : 0u;
+    const bool filterable = !stencil_aspect && (format_props(img->format).optimalTilingFeatures &
+                                                VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
+    const uint16_t id = alloc_bindless_view(v, dim, kind);
+    ViewHandle vh{v, id, dim, kind, filterable};
+    img->views[key] = vh;
+    return vh;
 }
 
 // The ring is circular in absolute positions: an allocation may reuse space once every
@@ -1832,9 +1994,9 @@ VkImageView Renderer::attachment_view(Image* img) {
         }
         return img->attachment;
     }
-    const uint64_t key = 0xA77AC4ull << 32 | img->bind_slice;
-    auto it = img->views.find(key);
-    if (it != img->views.end()) return it->second;
+    const uint64_t key = img->bind_slice;
+    auto it = img->slice_attachments.find(key);
+    if (it != img->slice_attachments.end()) return it->second;
     VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vci.image = img->image;
     vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -1842,7 +2004,7 @@ VkImageView Renderer::attachment_view(Image* img) {
     vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, img->bind_slice, 1};
     VkImageView v = VK_NULL_HANDLE;
     vkCreateImageView(ctx.device, &vci, nullptr, &v);
-    img->views[key] = v;
+    img->slice_attachments[key] = v;
     return v;
 }
 
@@ -1967,17 +2129,11 @@ Image* Renderer::upload_texture(const uint32_t* t, uint64_t res) {
             return img;
         }
         uint64_t v = mem_version(img->src_addr, img->src_size);
-        static const bool dyn_check = [] { const char* e = std::getenv("D1_NG_DYN_CHECK"); return !e || std::atoi(e) != 0; }();
+        static const bool dyn_check = [] { const char* e = std::getenv("D1_NG_DYN_CHECK"); return e && std::atoi(e) != 0; }();
         if (v == img->version && dyn_check && dynamic_copy && img->content && guest_region_extent(img->src_addr) >= img->src_size) {
-            // CPU-written memory: not every write is announced (the glyph cache the UI's text
-            // draws from is written directly), so the contents are compared once per submission
             if (hash_bytes(reinterpret_cast<const void*>(img->src_addr), img->src_size) != img->content) {
                 ++dyn_verify_missed;
-                static int told = 0;
-                if (told++ < 30 && std::getenv("D1_NG_LOG_DYN"))
-                    log("native renderer: dynamic texture %#llx (%llu bytes, %ux%u fmt %d) changed without an event", (unsigned long long)img->src_addr,
-                        (unsigned long long)img->src_size, img->w, img->h, int(img->format));
-                v = ~0ull - 1;  // (copied again below)
+                v = ~0ull - 1;
             } else ++dyn_verify_hits;
         }
         if (v == img->version) {
@@ -2470,17 +2626,20 @@ thread_local Renderer::Recorder* Renderer::tr = nullptr;
 void Renderer::evict_geo() {
     const uint64_t horizon = 3000, now = submit_seq.load();
     if (now < horizon) return;
+    bool any = false;
     for (GeoShard& sh : geo_shards) {
         std::lock_guard lk(sh.m);
         for (auto it = sh.map.begin(); it != sh.map.end();) {
             if (it->second.last_used + horizon < now) {
                 if (it->second.valid) geo_free_later(it->second.block, it->second.off, it->second.size);
                 it = sh.map.erase(it);
+                any = true;
             } else {
                 ++it;
             }
         }
     }
+    if (any) geo_evict_gen.fetch_add(1, std::memory_order_release);
 }
 
 // Textures unused for a while are dropped (re-uploaded if the game uses them again): the
@@ -2516,10 +2675,10 @@ Image* Renderer::target_for(const fmt::TSharp& ts) {
 }
 
 thread_local Image* tv_texture = nullptr;  // (texture_view: the uploaded texture it returned a view of, if any)
-VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t res) {
+ViewHandle Renderer::texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t res) {
     tv_texture = nullptr;
     const auto vt = view_type(dim);
-    if (!t) return view(dummy[int(dim)].get(), vt, {}, 0, false);
+    if (!t) return {dummy_views[int(dim) * 3], 0, uint8_t(dim), 0, true};
     const auto ts = fmt::decode_tsharp(t);
     VkComponentMapping comp{swz(ts.dst_sel & 7), swz(ts.dst_sel >> 3 & 7), swz(ts.dst_sel >> 6 & 7),
                             swz(ts.dst_sel >> 9 & 7)};
@@ -2536,8 +2695,6 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t 
         img->sampled = true;
         sampled_bases.insert(ts.base);
         if (img->depth) return view(img, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true);
-        // the render target stored shader component k in memory channel swap(k); our image
-        // holds shader components, so map the T#'s memory channels back
         if (img->swap == 1) {
             auto back = [](VkComponentSwizzle s) {
                 return s == VK_COMPONENT_SWIZZLE_R ? VK_COMPONENT_SWIZZLE_B : s == VK_COMPONENT_SWIZZLE_B ? VK_COMPONENT_SWIZZLE_R : s;
@@ -2548,20 +2705,19 @@ VkImageView Renderer::texture_view(const uint32_t* t, gcn::TexDim dim, uint64_t 
     }
     auto it = textures.find(tex_key(t, res));
     Image* img = it != textures.end() ? it->second.get() : nullptr;
-    if (!img) return view(dummy[int(dim)].get(), vt, {}, 0, false);
+    const uint8_t fallback_kind = ts.nfmt == 4 ? 1u : ts.nfmt == 5 ? 2u : 0u;
+    if (!img) return {dummy_views[int(dim) * 3 + fallback_kind], 0, uint8_t(dim), fallback_kind, fallback_kind == 0};
     img->last_used = rc().submit_no;
     tv_texture = img;
-    // MIN_LOD: the streaming system has not loaded the finer mips yet (their memory is still
-    // zero): start the view at the first mip it allows
     const uint32_t first = std::min(std::max(ts.base_level, (ts.min_lod + 255) >> 8), std::max(ts.last_level, ts.base_level));
     return view(img, vt, comp, first, false);
 }
 
-VkSampler Renderer::sampler(const uint32_t* s, bool nearest) {
-    if (!s) return dummy_sampler;
+uint16_t Renderer::sampler_id(const uint32_t* s, bool nearest) {
+    if (!s) return 0;
     const uint64_t key = hash_bytes(s, 16) ^ (nearest ? 0x6A09E667F3BCC909ull : 0);
     auto it = samplers.find(key);
-    if (it != samplers.end()) return it->second;
+    if (it != samplers.end()) return it->second.id;
     VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sci.addressModeU = address_mode(s[0] & 7);
     sci.addressModeV = address_mode(s[0] >> 3 & 7);
@@ -2572,21 +2728,17 @@ VkSampler Renderer::sampler(const uint32_t* s, bool nearest) {
     sci.maxLod = float(s[1] >> 12 & 0xFFF) / 256.0f;
     int32_t bias = int32_t(s[2] & 0x3FFF);
     if (bias & 0x2000) bias -= 0x4000;
-    sci.mipLodBias = std::clamp(float(bias) / 256.0f, -15.99f, 15.99f);  // (the smallest maxSamplerLodBias GPUs report is 15-16)
+    sci.mipLodBias = std::clamp(float(bias) / 256.0f, -15.99f, 15.99f);
     const uint32_t mag = s[2] >> 20 & 3, min = s[2] >> 22 & 3, mip = s[2] >> 26 & 3;
     sci.magFilter = mag == 0 ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
     sci.minFilter = min == 0 ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
     sci.mipmapMode = mip == 2 ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    if (nearest) {  // (an image format the GPU cannot filter - integer formats, some float ones: undefined with LINEAR)
+    if (nearest) {
         sci.magFilter = sci.minFilter = VK_FILTER_NEAREST;
         sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     }
-    if (mip == 0) sci.maxLod = sci.minLod;  // no mipmapping
+    if (mip == 0) sci.maxLod = sci.minLod;
     if (sci.maxLod < sci.minLod) sci.maxLod = sci.minLod;
-    // No compareEnable: the shaders do depth comparisons themselves (image_sample_c becomes a plain
-    // sample and a compare), and a comparison sampler used by a non-Dref instruction is
-    // undefined in Vulkan (Intel's sampler then compares against whatever the coordinates
-    // hold: shadows and lights flicker). GCN ignores the S# compare function for plain samples.
     (void)cmp;
     (void)aniso;
     const uint32_t border = s[3] >> 30;
@@ -2595,8 +2747,19 @@ VkSampler Renderer::sampler(const uint32_t* s, bool nearest) {
                                   : VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
     VkSampler smp = VK_NULL_HANDLE;
     vkCreateSampler(ctx.device, &sci, nullptr, &smp);
-    samplers[key] = smp;
-    return smp;
+    uint16_t id = 0;
+    {
+        std::lock_guard lk(bindless_m);
+        if (next_sampler_id < gcn::kMaxBindlessSamplers) id = next_sampler_id++;
+    }
+    if (id && bindless_set) {
+        VkDescriptorImageInfo ii{smp, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
+        VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, bindless_set, gcn::kBindlessSamplerBinding,
+                               id, 1, VK_DESCRIPTOR_TYPE_SAMPLER, &ii, nullptr, nullptr};
+        vkUpdateDescriptorSets(ctx.device, 1, &w, 0, nullptr);
+    }
+    samplers[key] = {smp, id};
+    return id;
 }
 
 Shader* Renderer::shader(const Draw& dr, bool vs, const gcn::TexDim* dims, const uint8_t* kinds, uint32_t uint_in,
@@ -2682,102 +2845,48 @@ gcn::TexDim slot_dim(const uint32_t* t) {
 }
 
 // Memoized: a draw's pipeline depends only on its shaders, primitive, render state, vertex
-// formats, target formats and its T#s' type / format / address (and what render target an
-// address is) - hashed here in far less time than resolving them again for every draw.
-uint64_t Renderer::pipe_key(const Draw& dr, Image* const* colors, Image* depth, bool& ambiguous) const {
-    uint64_t k = mix(mix(uint64_t(dr.vs), uint64_t(dr.ps)), uint64_t(dr.prim) | uint64_t(dr.tex_mask[0]) << 8 | uint64_t(dr.tex_mask[1]) << 24);
+// formats (dr.vb_sig), target formats and its pre-resolved 4-bit per-slot (TexDim, tex_kind)
+// signatures (dr.tex_sig[0..1]). Because dr.tex_sig already incorporates resolved render-target
+// dimensions and integer kinds, pipe_key is invariant across render-target rebinds.
+uint64_t Renderer::pipe_key(const Draw& dr, Image* const* colors, Image* depth) const {
+    uint64_t k = mix(mix(uint64_t(dr.vs), uint64_t(dr.ps)),
+                     uint64_t(dr.prim) | uint64_t(dr.tex_mask[0]) << 8 | uint64_t(dr.tex_mask[1]) << 24);
     k = mix(mix(k, uint64_t(dr.blend) | uint64_t(dr.target_mask) << 32), uint64_t(dr.su_sc_mode) | uint64_t(dr.depth_ctl) << 32);
-    k = mix(k, dr.stencil_ctl);
-    for (int i = 0; i < 8; ++i) k = mix(k, uint64_t(colors[i]));
-    k = mix(k, uint64_t(depth));
-    for (int i = 0; i < 16; ++i) k = mix(k, uint64_t(dr.vb[i][1] >> 16) | uint64_t(dr.vb[i][3]) << 32);
-    const uint32_t na = amb_n.load(std::memory_order_acquire);
-    ambiguous = na > kAmbMax;
-    for (int s = 0; s < 2; ++s)
-        for (uint32_t m = dr.tex_mask[s]; m; m &= m - 1) {
-            const uint32_t* t = dr.tex[s][__builtin_ctz(m)];
-            k = mix(mix(k, uint64_t(t[0]) | uint64_t(t[1]) << 32), uint64_t(t[2]) | uint64_t(t[3]) << 32);
-            if (na && !ambiguous) {
-                const uint64_t base = (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8;
-                for (uint32_t i = 0; i < na; ++i)
-                    if (amb_arr[i] == base) { ambiguous = true; break; }
-            }
-        }
+    k = mix(mix(k, dr.stencil_ctl), dr.vb_sig);
+    k = mix(mix(k, dr.tex_sig[0]), dr.tex_sig[1]);
+    uint64_t cpack = 0;
+    for (int i = 0; i < 8; ++i)
+        if (colors[i]) cpack = mix(cpack, uint64_t(colors[i]->format) << (i * 4) | (i + 1));
+    k = mix(k, cpack);
+    k = mix(k, depth ? (uint64_t(depth->format) | (uint64_t(depth->stencil) << 16)) : 0);
     return k;
 }
 
 Pipeline* Renderer::pipeline(const Draw& dr, Image* const* colors, Image* depth) {
-    uint64_t k = mix(mix(uint64_t(dr.vs), uint64_t(dr.ps)), uint64_t(dr.prim) | uint64_t(dr.tex_mask[0]) << 8 | uint64_t(dr.tex_mask[1]) << 24);
-    k = mix(mix(k, uint64_t(dr.blend) | uint64_t(dr.target_mask) << 32), uint64_t(dr.su_sc_mode) | uint64_t(dr.depth_ctl) << 32);
-    k = mix(k, dr.stencil_ctl);
-    for (int i = 0; i < 8; ++i) k = mix(k, uint64_t(colors[i]));
-    k = mix(k, uint64_t(depth));
-    for (int i = 0; i < 16; ++i) k = mix(k, uint64_t(dr.vb[i][1] >> 16) | uint64_t(dr.vb[i][3]) << 32);
-    for (int s = 0; s < 2; ++s)
-        for (uint32_t m = dr.tex_mask[s]; m; m &= m - 1) {
-            const uint32_t* t = dr.tex[s][__builtin_ctz(m)];
-            k = mix(mix(k, uint64_t(t[0]) | uint64_t(t[1]) << 32), uint64_t(t[2]) | uint64_t(t[3]) << 32);
-            if (!ambiguous_bases.empty()) {
-                const uint64_t base = (uint64_t(t[0]) | uint64_t(t[1] & 0xFF) << 32) << 8;
-                if (std::binary_search(ambiguous_bases.begin(), ambiguous_bases.end(), base))
-                    k = mix(k, target_attrs(target_for(fmt::decode_tsharp(t))));
-            }
-        }
+    const uint64_t k = pipe_key(dr, colors, depth);
     PipeMemo& e = pipe_memo[k & (pipe_memo.size() - 1)];
-    if (e.key == k && e.gen == targets_gen) return ++st.memo_hits, e.p;
+    if (e.key == k && e.p) return ++st.memo_hits, e.p;
     ++st.memo_misses;
-    if (e.key == k) ++st.memo_gen;
     Pipeline* p = pipeline_resolve(dr, colors, depth);
-    e = {k, targets_gen, p};
+    e = {k, 1, p};
     return p;
 }
 
 Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image* depth) {
-    // per texture slot: the image dimensionality (a T# on a render target samples our 2D
-    // target image) and whether it is sampled with integer types
     gcn::TexDim dims[2][16];
     uint8_t kinds[2][16] = {};
     for (int s = 0; s < 2; ++s)
         for (int i = 0; i < 16; ++i) {
-            const uint32_t* t = dr.T(s, i);
-            dims[s][i] = slot_dim(t);
-            if (!t) continue;
-            const auto ts = fmt::decode_tsharp(t);
-            if (ts.type == 11) {  // cube maps: what they are (diagnostics, once per address)
-                static std::unordered_set<uint64_t> seen;
-                if (seen.size() < 32 && seen.insert(ts.base).second) {
-                    auto rt = target_by_base.find(ts.base);
-                    log("native renderer: cube T# %llx %ux%u f%u.%u mips %u-%u arrays %u-%u tile %u%s",
-                        (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt, ts.base_level, ts.last_level,
-                        ts.base_array, ts.last_array, ts.tiling, rt != target_by_base.end() ? " (a render target)" : "");
-                    if (const char* dir = std::getenv("D1_NG_DUMP_TEX")) {
-                        const auto fi0 = fmt::data_format(ts.dfmt);
-                        tiling::Surface sf0;
-                        sf0.tile_mode = ts.tiling, sf0.bpp = fi0.bpp, sf0.block = fi0.block, sf0.pow2 = ts.pow2;
-                        sf0.width = ts.width, sf0.height = ts.height, sf0.pitch = ts.pitch, sf0.layers = 6;
-                        sf0.levels = std::min(ts.last_level + 1, tiling::kMaxMips);
-                        tiling::layout(sf0);
-                        char path[512];
-                        std::snprintf(path, sizeof path, "%s/cube_%llx.bin", dir, (unsigned long long)ts.base);
-                        if (guest_region_extent(ts.base) >= sf0.total_size)
-                            if (FILE* f = std::fopen(path, "wb")) {
-                                std::fwrite(t, 4, 8, f);
-                                std::fwrite(reinterpret_cast<const void*>(ts.base), 1, sf0.total_size, f);
-                                std::fclose(f);
-                            }
-                    }
-                }
-            }
-            if (Image* ri = target_for(ts)) {
-                dims[s][i] = ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D;
-                const VkFormat f = ri->format;
-                kinds[s][i] = ri->depth || !is_int_format(f) ? 0 : is_sint_format(f) ? 2 : 1;
+            const uint8_t dk = dr.tex_dk[s][i];
+            if (dr.tex_mask[s] >> i & 1) {
+                dims[s][i] = gcn::TexDim(dk & 3);
+                kinds[s][i] = (dk >> 2) & 3;
             } else {
-                kinds[s][i] = ts.nfmt == 4 ? 1 : ts.nfmt == 5 ? 2 : 0;
+                dims[s][i] = gcn::TexDim::Tex2D;
+                kinds[s][i] = 0;
             }
         }
     Shader* vs = shader(dr, true, dims[0], kinds[0]);
-    // vertex inputs whose format comes from the V#: integer formats need integer inputs
     uint32_t uin = 0, sin = 0;
     for (const auto& a : vs->res.attribs)
         if (a.dfmt == 0xFF && a.location < 32) {
@@ -2785,7 +2894,6 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
             if (nf == 4) uin |= 1u << a.location;
             if (nf == 5) sin |= 1u << a.location;
         }
-    // SCALED formats this GPU cannot read as vertex attributes: integer fetch + conversion
     uint32_t scl = 0;
     for (const auto& a : vs->res.attribs) {
         if (a.location >= 32) continue;
@@ -2816,35 +2924,6 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
 
     auto p = std::make_unique<Pipeline>();
     p->vs = vs, p->ps = ps;
-    // descriptor set layouts (push descriptors): set 0 vertex, set 1 pixel
-    for (int s = 0; s < 2; ++s) {
-        const Shader* sh = s ? ps : vs;
-        std::vector<VkDescriptorSetLayoutBinding> b;
-        if (sh) for (const auto& x : sh->res.bindings) {
-            VkDescriptorSetLayoutBinding lb{};
-            lb.binding = x.binding;
-            lb.descriptorType = x.kind == gcn::Binding::Texture ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                              : x.kind == gcn::Binding::Sampler ? VK_DESCRIPTOR_TYPE_SAMPLER
-                                                                : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            lb.descriptorCount = 1;
-            lb.stageFlags = s ? VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_VERTEX_BIT;
-            b.push_back(lb);
-        }
-        VkDescriptorSetLayoutCreateInfo dci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        dci.bindingCount = uint32_t(b.size());
-        dci.pBindings = b.data();
-        // one push descriptor set per pipeline layout is allowed: the pixel shader's (the most
-        // textures and samplers)
-        if (s == 1 && push_fn && !b.empty() && b.size() <= max_push && b.size() <= 48) {
-            dci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-            p->push_ps = true;
-        }
-        vkCreateDescriptorSetLayout(ctx.device, &dci, nullptr, &p->sets[s]);
-    }
-    VkPipelineLayoutCreateInfo lci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    lci.setLayoutCount = 2;
-    lci.pSetLayouts = p->sets;
-    vkCreatePipelineLayout(ctx.device, &lci, nullptr, &p->layout);
 
     VkPipelineShaderStageCreateInfo stages[3]{{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
                                               {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
@@ -2972,7 +3051,7 @@ Pipeline* Renderer::pipeline_resolve(const Draw& dr, Image* const* colors, Image
     gci.pDepthStencilState = &ds;
     gci.pColorBlendState = &cbs;
     gci.pDynamicState = &dy;
-    gci.layout = p->layout;
+    gci.layout = pipe_layout;
     if (const VkResult r = vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &p->pipeline); r != VK_SUCCESS) {
         p->pipeline = VK_NULL_HANDLE;
         static int logged = 0;
@@ -3100,6 +3179,8 @@ void Renderer::run_parallel(Draw* const* run, size_t n) {
         bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
         bi.pInheritanceInfo = &ii;
         vkBeginCommandBuffer(r.cmd, &bi);
+        if (bindless_set && pipe_layout)
+            vkCmdBindDescriptorSets(r.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_layout, 0, 1, &bindless_set, 0, nullptr);
         for (size_t i = b; i < e; ++i) draw(*run[i], r, colors, depth);
         vkEndCommandBuffer(r.cmd);
     };
@@ -3117,6 +3198,9 @@ void Renderer::run_parallel(Draw* const* run, size_t n) {
     vkCmdExecuteCommands(rc().cmd, T, cbs.data());
     for (const Rec& r : recs) merge(r);
     rc().dstate.valid = false;  // (the primary's bindings and dynamic state are undefined after secondaries)
+    rc().dstate.stage_valid[0] = rc().dstate.stage_valid[1] = false;
+    if (bindless_set && pipe_layout)
+        vkCmdBindDescriptorSets(rc().cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_layout, 0, 1, &bindless_set, 0, nullptr);
     end_pass();
     ++par_runs, par_draws += n;
 }
@@ -3291,7 +3375,7 @@ uint32_t Renderer::run_writes(const Draw* const* run, size_t n) {
 
 // A render target sampled as a texture (as texture_view does it), from `img` - the target
 // itself or its snapshot - with the channel order of `like`.
-VkImageView Renderer::target_view(Image* img, const Image* like, const uint32_t* t) {
+ViewHandle Renderer::target_view(Image* img, const Image* like, const uint32_t* t) {
     if (img->depth) return view(img, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true);
     const auto ts = fmt::decode_tsharp(t);
     VkComponentMapping comp{swz(ts.dst_sel & 7), swz(ts.dst_sel >> 3 & 7), swz(ts.dst_sel >> 6 & 7), swz(ts.dst_sel >> 9 & 7)};
@@ -3483,7 +3567,7 @@ void Renderer::masked_stencil_clear(Image* depth, uint32_t value, uint32_t write
         gci.pDepthStencilState = &ds;
         gci.pColorBlendState = &cbs;
         gci.pDynamicState = &dy;
-        gci.layout = empty_layout;
+        gci.layout = pipe_layout;
         if (vkCreateGraphicsPipelines(ctx.device, pcache, 1, &gci, nullptr, &pipe) != VK_SUCCESS) pipe = VK_NULL_HANDLE;
     }
     if (!pipe) return;
@@ -3497,17 +3581,89 @@ void Renderer::masked_stencil_clear(Image* depth, uint32_t value, uint32_t write
     vkCmdDraw(rc().cmd, 3, 1, 0, 0);
 }
 
-// One draw into a recording context: the main command buffer (serially, as the submission is
-// executed) or, for runs of plain draws inside one render pass, a worker's secondary command
-// buffer (parallel: the shared caches are taken under their locks, constants and streamed
-// vertices go to the worker's own slice of the ring, statistics to the context).
+// Pre-resolves every draw's textures and samplers to bindless IDs and 4-bit (TexDim, tex_kind)
+// signatures before the draw loop runs. Uses thread-local caches validated by views_gen so the
+// shared renderer mutex is only taken on a cache miss when called without the lock.
+void Renderer::resolve_draw_resources(const std::vector<Draw*>& draws, bool have_lock) {
+    struct TvEntry { uint64_t key = 0, gen = 0; ViewHandle vh{}; Image* tex = nullptr; };
+    static thread_local std::unique_ptr<TvEntry[]> tvc_ptr;
+    if (!tvc_ptr) tvc_ptr = std::make_unique<TvEntry[]>(4096);
+    TvEntry* const tvc = tvc_ptr.get();
+    struct SmpPair { uint64_t key = 0; uint16_t lin = 0, near = 0; };
+    static thread_local std::unique_ptr<SmpPair[]> smc_ptr;
+    if (!smc_ptr) smc_ptr = std::make_unique<SmpPair[]>(1024);
+    SmpPair* const smc = smc_ptr.get();
+
+    const uint64_t gen = views_gen.load(std::memory_order_acquire) ^ (targets_gen.load(std::memory_order_acquire) * 0x9E3779B97F4A7C15ull);
+    const uint64_t sub_no = rc().submit_no;
+    for (Draw* dp : draws) {
+        Draw& dr = *dp;
+        if (dr.kind != Draw::Indexed && dr.kind != Draw::Auto) continue;
+        if (!dr.vb_sig) {
+            uint64_t vsig = 0;
+            for (uint32_t i = 0; i < 16; ++i)
+                vsig = mix(vsig, uint64_t(dr.vb[i][1] >> 16) | uint64_t(dr.vb[i][3]) << 32);
+            dr.vb_sig = vsig | 1;
+        }
+        for (int s = 0; s < 2; ++s) {
+            uint64_t tsig = 0;
+            uint16_t fmask = 0;
+            for (uint32_t msk = dr.tex_mask[s]; msk; msk &= msk - 1) {
+                const uint32_t slot = __builtin_ctz(msk);
+                const uint32_t* T = dr.tex[s][slot];
+                const gcn::TexDim dim = slot_dim(T);
+                const uint64_t tres = dr.tex_res[s][slot];
+                const uint64_t key = (hash_bytes(T, 32) ^ tres * 0xC2B2AE3D27D4EB4Full) ^
+                                     (uint64_t(dim) + 1) * 0x9E3779B97F4A7C15ull;
+                TvEntry& e = tvc[key & 4095];
+                ViewHandle vh;
+                if (e.key == key && e.gen == gen) {
+                    vh = e.vh;
+                    if (e.tex) e.tex->last_used = sub_no;
+                } else {
+                    std::unique_lock<std::mutex> lk(this->m, std::defer_lock);
+                    if (!have_lock) lk.lock();
+                    vh = texture_view(T, dim, tres);
+                    Image* tex = tv_texture;
+                    if (Image* ri = target_for(fmt::decode_tsharp(T)))
+                        vh = texture_view(T, ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D, tres), tex = nullptr;
+                    e = {key, gen, vh, tex};
+                }
+                dr.tex_view[s][slot] = vh.id;
+                const uint8_t dk = uint8_t((vh.dim & 3) | ((vh.kind & 3) << 2));
+                dr.tex_dk[s][slot] = dk;
+                if (vh.filterable) fmask |= uint16_t(1u << slot);
+                tsig |= uint64_t(dk & 0xF) << (slot * 4);
+            }
+            dr.tex_filter_mask[s] = fmask;
+            dr.tex_sig[s] = tsig;
+
+            for (uint32_t msk = dr.smp_mask[s]; msk; msk &= msk - 1) {
+                const uint32_t slot = __builtin_ctz(msk);
+                const uint32_t* S = dr.smp[s][slot];
+                const uint64_t key = hash_bytes(S, 16) | 1;
+                SmpPair& se = smc[key & 1023];
+                if (se.key != key) {
+                    std::unique_lock<std::mutex> lk(this->m, std::defer_lock);
+                    if (!have_lock) lk.lock();
+                    const uint16_t lin = sampler_id(S, false);
+                    const uint16_t near = sampler_id(S, true);
+                    se = {key, lin, near};
+                }
+                dr.smp_lin[s][slot] = se.lin;
+                dr.smp_near[s][slot] = se.near;
+            }
+        }
+    }
+}
+
+// One draw into a recording context: references only finished GPU objects (pipelines, bindless
+// texture/sampler IDs, geometry cache buffers, and ring buffer offsets) with state-diffed
+// command emission and no global renderer lock on the draw path.
 void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run_depth) {
-    const bool lr = rc().lr;
-    auto guard = [&](std::mutex& mx) {
-        return r.parallel ? std::unique_lock<std::mutex>(lr && &mx != &skip_m ? m : mx) : std::unique_lock<std::mutex>();
-    };
     auto skip = [&](const char* why) {
-        auto lk = guard(skip_m);
+        std::unique_lock<std::mutex> lk(skip_m, std::defer_lock);
+        if (r.parallel) lk.lock();
         this->skip(why);
     };
     VkCommandBuffer cmd = r.cmd;
@@ -3518,11 +3674,6 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         t0 = t;
     };
     if (!dr.vs || uint64_t(dr.vs) < 0x10000 || (dr.ps && uint64_t(dr.ps) < 0x10000)) {
-        auto lk = guard(skip_m);
-        static std::unordered_set<uint64_t> seen;
-        if (seen.insert(dr.caller).second && seen.size() < 20)
-            log("native renderer: draw without shaders (vs %p ps %p) from eboot+%#llx", (const void*)dr.vs,
-                (const void*)dr.ps, (unsigned long long)dr.caller);
         return skip("no shader");
     }
     Image* colors[8] = {};
@@ -3534,50 +3685,95 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         depth = depth_target(dr.depth);
     }
     if (!depth && std::none_of(colors, colors + 8, [](Image* x) { return x != nullptr; })) return skip("no target");
+
+    // 1. Pipeline lookup via lock-free thread-local memo table (invariant across target changes)
     Pipeline* p = nullptr;
-    if (lr && r.parallel) {
-        // this thread's cache of pipeline() results (the shared memo needs the lock)
-        struct TlMemo { uint64_t key = 0, gen = 0; Pipeline* p = nullptr; };
-        static thread_local TlMemo tlm[4096];
-        bool amb;
-        const uint64_t k = pipe_key(dr, colors, depth, amb);
-        const uint64_t gen = targets_gen.load(std::memory_order_acquire);
-        TlMemo& e = tlm[k & 4095];
-        if (!amb && e.key == k && e.gen == gen && e.p) {
+    {
+        struct TlMemo { uint64_t key = 0; Pipeline* p = nullptr; };
+        static thread_local std::unique_ptr<TlMemo[]> tlm_ptr;
+        if (!tlm_ptr) tlm_ptr = std::make_unique<TlMemo[]>(8192);
+        TlMemo* const tlm = tlm_ptr.get();
+        const uint64_t k = pipe_key(dr, colors, depth);
+        TlMemo& e = tlm[k & 8191];
+        if (e.key == k && e.p) {
             p = e.p;
             ++r.memo_tl;
         } else {
-            auto lk = guard(pipe_m);
+            std::unique_lock<std::mutex> lk(pipe_m, std::defer_lock);
+            if (r.parallel) lk.lock();
             p = pipeline(dr, colors, depth);
-            if (!amb) e = {k, gen, p};
+            if (p) e = {k, p};
         }
-    } else {
-        auto lk = guard(pipe_m);
-        p = pipeline(dr, colors, depth);
     }
     if (!p) return skip("pipeline");
     lap(r.t_pipe);
-    // geometry into the ring
+
+    // 2. Geometry resolution: thread-local fast cache for engine resource buffers (whole buffer
+    // bound once, sub-meshes indexed via firstIndex with vertexOffset = 0)
+    struct TlGeo { uint64_t res = 0, rbase = 0, rsize = 0, gen = 0; VkBuffer buf = VK_NULL_HANDLE; uint64_t off = 0; };
+    static thread_local std::unique_ptr<TlGeo[]> tlg_ptr;
+    if (!tlg_ptr) tlg_ptr = std::make_unique<TlGeo[]>(2048);
+    TlGeo* const tlg = tlg_ptr.get();
+    const uint64_t ggen = geo_evict_gen.load(std::memory_order_acquire);
+    const bool no_geo_cache = (debug_toggles() & 8) != 0;
+
     VkBuffer vbufs[16];
     VkDeviceSize voffs[16], vsizes[16];
     uint32_t vmask = 0;
-    // vertices the draw can reference: [first, last] from the indices
     uint32_t vfirst = 0, vlast = dr.count ? dr.count - 1 : 0;
-    bool ige = false;  // cached index buffer
+    bool ige = false, ige_whole = false;
+    uint32_t first_index = 0;
     const bool dyn_copy = dynamic_copy;
     VkBuffer ige_buf = VK_NULL_HANDLE;
     uint64_t ige_off = 0;
+    const uint32_t istride = dr.index32 ? 4u : 2u;
+
     if (dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count && dr.prim != 0x13) {
-        GeoHit h;
-        const uint64_t ibytes = uint64_t(dr.count) * (dr.index32 ? 4 : 2);
-        const bool ires = dr.ires.id && dr.index_addr >= dr.ires.base && dr.index_addr + ibytes <= dr.ires.base + dr.ires.size;
+        const uint64_t ibytes = uint64_t(dr.count) * istride;
+        const bool ires = dr.ires.id && dr.index_addr >= dr.ires.base &&
+                          dr.index_addr + ibytes <= dr.ires.base + dr.ires.size &&
+                          ((dr.index_addr - dr.ires.base) % istride == 0);
         if (!dr.ires.id) __atomic_fetch_add(&st.why_ib_noid, 1, __ATOMIC_RELAXED);
         else if (!ires) __atomic_fetch_add(&st.why_ib_range, 1, __ATOMIC_RELAXED);
-        // (memory that is no engine resource is dynamic data: copied for the draw, not cached)
-        if ((ires || !dyn_copy) && geo_get(dr.index_addr, ibytes, dr.index32 ? 4 : 2, dr.count, h, ires ? dr.ires.id : 0, dr.ires.base))
-            ige = true, ige_buf = h.buf, ige_off = h.off, vfirst = h.vfirst, vlast = h.vlast;
+        if (ires && !no_geo_cache) {
+            const uint64_t tk = mix(dr.ires.id, dr.ires.size);
+            TlGeo& te = tlg[tk & 2047];
+            if (te.res == dr.ires.id && te.rbase == dr.ires.base && te.rsize == dr.ires.size && te.gen == ggen && te.buf) {
+                ige = true, ige_whole = true, ige_buf = te.buf, ige_off = te.off;
+                first_index = uint32_t((dr.index_addr - dr.ires.base) / istride);
+            } else {
+                GeoHit h;
+                if (geo_get(dr.ires.base, dr.ires.size, 0, 0, h, dr.ires.id, dr.ires.base)) {
+                    te = {dr.ires.id, dr.ires.base, dr.ires.size, ggen, h.buf, h.off};
+                    ige = true, ige_whole = true, ige_buf = h.buf, ige_off = h.off;
+                    first_index = uint32_t((dr.index_addr - dr.ires.base) / istride);
+                }
+            }
+        } else if (!dyn_copy) {
+            GeoHit h;
+            if (geo_get(dr.index_addr, ibytes, int(istride), dr.count, h, 0, 0))
+                ige = true, ige_buf = h.buf, ige_off = h.off, vfirst = h.vfirst, vlast = h.vlast;
+        }
     }
-    if (!ige && dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
+
+    // Check if any vertex stream used by this draw lacks an engine resource buffer and needs [vfirst, vlast]
+    bool need_vrange = !ige && dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count;
+    if (!need_vrange && ige_whole) {
+        for (const auto& a : p->vs->res.attribs) {
+            if (a.index_vgpr != 0) continue;
+            const uint32_t slot = a.vb_slot & 15;
+            const uint32_t* v = dr.vb[slot];
+            const uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
+            const uint32_t stride = v[1] >> 16 & 0x3FFF;
+            const Draw::Res& R = dr.vres[slot];
+            if (!stride) continue;
+            if (!(R.id && dr.inline_vertices.empty() && base >= R.base && base < R.base + R.size && !no_geo_cache)) {
+                need_vrange = true;
+                break;
+            }
+        }
+    }
+    if (need_vrange && dr.kind == Draw::Indexed && dr.index_addr >= 0x10000 && dr.count) {
         vfirst = UINT32_MAX, vlast = 0;
         if (dr.index32) {
             const uint32_t* ix = reinterpret_cast<const uint32_t*>(dr.index_addr);
@@ -3590,20 +3786,51 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         }
         if (vfirst > vlast) vfirst = vlast = 0;
     }
+
     for (const auto& a : p->vs->res.attribs) {
         const uint32_t slot = a.vb_slot & 15;
         if (vmask >> slot & 1) continue;
         const uint32_t* v = dr.vb[slot];
-        uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
+        const uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
         const uint32_t stride = v[1] >> 16 & 0x3FFF;
-        // copy only vertices [vfirst, vlast] (bounded by the V#'s record count); vertexOffset
-        // in the draw shifts the indices back
         const uint32_t records = std::max(v[2], 1u);
-        // per-instance streams (fetched with the instance id) start at record 0
         const bool per_instance = a.index_vgpr != 0;
-        const uint32_t lo = per_instance ? 0 : vfirst, hi = per_instance ? std::max(dr.instances, 1u) - 1 : vlast;
+        const Draw::Res& R = dr.vres[slot];
+
+        // Fast path: engine vertex buffer resource bound from base (vfirst = 0 when ige_whole or auto draw)
+        if (R.id && dr.inline_vertices.empty() && stride && base >= R.base && base < R.base + R.size && !no_geo_cache) {
+            const uint32_t voff_idx = (!per_instance && !ige_whole) ? vfirst : 0;
+            const uint64_t src = base + uint64_t(voff_idx) * stride;
+            if (src < R.base + R.size) {
+                const uint64_t tk = mix(R.id, R.size);
+                TlGeo& te = tlg[tk & 2047];
+                VkBuffer gbuf = VK_NULL_HANDLE;
+                uint64_t goff = 0;
+                if (te.res == R.id && te.rbase == R.base && te.rsize == R.size && te.gen == ggen && te.buf) {
+                    gbuf = te.buf, goff = te.off;
+                } else {
+                    GeoHit h;
+                    if (geo_get(R.base, R.size, 0, 0, h, R.id, R.base)) {
+                        te = {R.id, R.base, R.size, ggen, h.buf, h.off};
+                        gbuf = h.buf, goff = h.off;
+                    }
+                }
+                if (gbuf) {
+                    const uint64_t rel = src - R.base;
+                    vbufs[slot] = gbuf;
+                    voffs[slot] = goff + rel;
+                    vsizes[slot] = std::min<uint64_t>(uint64_t(records - std::min(voff_idx, records - 1)) * stride, R.size - rel);
+                    vmask |= 1u << slot;
+                    continue;
+                }
+            }
+        }
+
+        // Dynamic / uncached vertex stream: when ige_whole was set, vfirst is shifted inside the buffer so vertexOffset stays 0
+        const uint32_t lo = per_instance ? 0 : (ige_whole ? 0 : vfirst);
+        const uint32_t hi = per_instance ? std::max(dr.instances, 1u) - 1 : vlast;
         const uint32_t first = stride ? lo : 0, last = stride ? std::min(hi, records - 1) : 0;
-        if (first >= records && stride) {  // every fetch is out of range: reads 0, as on GCN
+        if (first >= records && stride) {
             const uint64_t off = rec_ring(r, 16);
             if (off == UINT64_MAX) return skip("ring full");
             std::memset(ring.map + off, 0, 16);
@@ -3613,35 +3840,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         }
         uint64_t size = stride ? uint64_t(last - first + 1) * stride : 16;
         uint64_t src = base + uint64_t(first) * stride;
-        // an engine resource: the whole buffer, by its identity
-        {
-            const Draw::Res& R = dr.vres[slot];
-            if (!dr.inline_vertices.empty()) __atomic_fetch_add(&st.why_inline, 1, __ATOMIC_RELAXED);
-            else if (!R.id) __atomic_fetch_add(&st.why_vb_noid, 1, __ATOMIC_RELAXED);
-            else if (!(stride && base >= R.base && src < R.base + R.size)) {
-                __atomic_fetch_add(&st.why_vb_range, 1, __ATOMIC_RELAXED);
-                static std::atomic<int> told{0};
-                if (told++ < 10)
-                    log("ng geo: vertex range outside its buffer: base %#llx src %#llx size %llu stride %u records %u first %u | buffer %#llx +%llu",
-                        (unsigned long long)base, (unsigned long long)src, (unsigned long long)size, stride, records, first,
-                        (unsigned long long)R.base, (unsigned long long)R.size);
-            }
-        }
-        // (the last record may end past the buffer by its element's offset in the stride: the
-        // binding ends with the buffer, no fetch reads past it)
-        if (const Draw::Res& R = dr.vres[slot]; R.id && dr.inline_vertices.empty() && stride && base >= R.base &&
-                                                 src < R.base + R.size) {
-            GeoHit h;
-            if (geo_get(R.base, R.size, 0, 0, h, R.id, R.base)) {
-                vbufs[slot] = h.buf, voffs[slot] = h.off + (src - R.base);
-                vsizes[slot] = std::min<uint64_t>(size, R.size - (src - R.base));
-                vmask |= 1u << slot;
-                continue;
-            }
-        }
-        // the whole buffer from the geometry cache (write-tracked; not with engine resource events:
-        // what is not an engine resource is dynamic data, copied below for the draw)
-        if (dr.inline_vertices.empty() && stride && base >= 0x10000 && !dyn_copy) {
+        if (dr.inline_vertices.empty() && stride && base >= 0x10000 && !dyn_copy && !no_geo_cache) {
             GeoHit h;
             if (geo_get(base, uint64_t(records) * stride, 0, 0, h)) {
                 vbufs[slot] = h.buf, voffs[slot] = h.off + uint64_t(first) * stride;
@@ -3650,7 +3849,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                 continue;
             }
         }
-        if (!dr.inline_vertices.empty()) {  // V# base is an offset into the inline data
+        if (!dr.inline_vertices.empty()) {
             if (src >= dr.inline_vertices.size()) return skip("inline vertex offset");
             size = std::min<uint64_t>(size, dr.inline_vertices.size() - src);
             src += uint64_t(dr.inline_vertices.data());
@@ -3662,159 +3861,125 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         if (dr.inline_vertices.empty()) note_copy(1, src, size), r.recopy.push_back({src, off, size, 1});
         r.bytes_vtx += size;
         if (size < 16) std::memset(ring.map + off + size, 0, 16 - size);
-        // the binding starts at vertex `vfirst`; a stride-0 stream is one record for every vertex
         vbufs[slot] = ring.buf, voffs[slot] = off, vsizes[slot] = std::max<uint64_t>(size, 16);
         vmask |= 1u << slot;
     }
     lap(r.t_geo);
+
     if (!r.parallel) {
         const Draw* one = &dr;
         feedback_snapshots(&one, 1, colors, depth);
     }
-    // descriptors (copied constants, image views, samplers)
-    VkWriteDescriptorSet writes[2][48];
-    VkDescriptorImageInfo images[2][48];
-    VkDescriptorBufferInfo bufs[2][48];
-    uint32_t nw[2] = {};
+
+    // 3. Stage resource table diffing (dwords 0..15: constant buffer dword offsets in the ring;
+    // dwords 16..31: packed (view_id | sampler_id << 16)). Re-uploaded to the ring only when a
+    // stage's active slots changed since the previous draw.
+    DrawState& ds = *r.ds;
+    const bool has_snaps = !rc().snaps.empty();
+    bool push_dirty = !ds.valid;
     for (int s = 0; s < 2; ++s) {
         const Shader* sh = s ? p->ps : p->vs;
         if (!sh) continue;
-        for (const auto& b : sh->res.bindings) {
-            if (nw[s] >= 48) break;
-            auto& w = writes[s][nw[s]];
-            w = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-            w.dstBinding = b.binding;
-            w.descriptorCount = 1;
-            const uint32_t slot = b.api_slot & 15;
-            if (b.kind == gcn::Binding::Texture) {
-                w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                // per-thread cache of resolved views (valid while views_gen is unchanged: the
-                // shared maps are only taken on a miss)
-                struct TvEntry { uint64_t key = 0, gen = 0; VkImageView view = VK_NULL_HANDLE; Image* tex = nullptr; };
-                static thread_local TvEntry tvc[2048];
-                const uint32_t* T = dr.T(s, slot);
-                const gcn::TexDim dim = slot_dim(T);
-                const uint64_t tres = T ? dr.tex_res[s][slot & 15] : 0;
-                const uint64_t key = (T ? hash_bytes(T, 32) ^ tres * 0xC2B2AE3D27D4EB4Full : 0x5A5A) ^ (uint64_t(dim) + 1) * 0x9E3779B97F4A7C15ull;
-                const uint64_t gen = views_gen.load(std::memory_order_acquire);
-                TvEntry& e = tvc[key & 2047];
-                VkImageView v = VK_NULL_HANDLE;
-                if (!rc().snaps.empty() && T) {  // an attachment of this pass: its snapshot
-                    auto lk = guard(tex_m);
-                    const auto ts = fmt::decode_tsharp(T);
-                    auto sit = stencil_by_base.find(ts.base);
-                    if (sit != stencil_by_base.end() && sit->second->stencil) {  // (as texture_view: the stencil of a depth target)
-                        for (auto& [att, sn] : rc().snaps)
-                            if (att == sit->second) { v = view(sn, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true, true); break; }
-                    } else if (Image* ri = target_for(ts))
-                        for (auto& [att, sn] : rc().snaps)
-                            if (att == ri) { v = target_view(sn, ri, T); break; }
+        const uint32_t cb_m = sh->res.cb_mask;
+        const uint32_t tex_m = sh->res.tex_mask;
+        const uint32_t smp_m = sh->res.samp_mask;
+        if (!(cb_m | tex_m | smp_m)) continue;
+
+        bool stage_dirty = !ds.stage_valid[s];
+        // Constant buffers used by this shader stage
+        for (uint32_t m = cb_m; m; m &= m - 1) {
+            const uint32_t slot = __builtin_ctz(m);
+            const auto& c = dr.cb[s][slot];
+            if (ds.stage_valid[s] && ds.cb_bound[s][slot].addr == c.addr && ds.cb_bound[s][slot].size == c.size)
+                continue;
+            uint64_t off;
+            uint32_t size = std::max(16u, (c.size + 15) & ~15u);
+            if ((c.addr & kLateCb) && rc().lr) {
+                Recorder::Late& L = rc().late[s][slot];
+                if (!L.size) {
+                    const uint32_t want = std::min<uint32_t>(65536, std::max({256u, (c.size + 255) & ~255u, late_hint[s][slot].load()}));
+                    L.off = rec_ring(r, want);
+                    if (L.off == UINT64_MAX) return skip("ring full");
+                    L.size = want;
+                    rc().late_list.push_back({uint8_t(s), uint8_t(slot), want, L.off});
                 }
-                if (v) {
-                } else if (e.key == key && e.gen == gen && e.view) {
-                    v = e.view;
-                    if (e.tex) e.tex->last_used = rc().submit_no;  // (keeps it from being dropped as unused)
-                } else {
-                    auto lk = guard(tex_m);
-                    v = texture_view(T, dim, tres);
-                    Image* tex = tv_texture;
-                    if (T)
-                        if (Image* ri = target_for(fmt::decode_tsharp(T)))
-                            v = texture_view(T, ri->is3d ? gcn::TexDim::Tex3D : gcn::TexDim::Tex2D, tres), tex = nullptr;
-                    e = {key, gen, v, tex};
-                }
-                images[s][nw[s]] = {VK_NULL_HANDLE, v, VK_IMAGE_LAYOUT_GENERAL};
-                // D1_NG_LOG_FEEDBACK: (diagnostics) a draw sampling an image it renders into
-                static const bool log_fb = std::getenv("D1_NG_LOG_FEEDBACK") != nullptr;
-                if (log_fb && T) {
-                    auto lk = guard(tex_m);
-                    if (Image* ri = target_for(fmt::decode_tsharp(T))) {
-                        bool hit = ri == depth;
-                        for (int k = 0; k < 8; ++k) hit |= ri == colors[k];
-                        if (hit) {
-                            ++feedback_draws;
-                            static std::mutex fm;
-                            static std::set<std::pair<uint64_t, uint64_t>> seen;
-                            std::lock_guard fl(fm);
-                            if (seen.insert({uint64_t(dr.ps), uint64_t(ri)}).second && seen.size() < 60)
-                                log("native renderer: feedback: ps %#llx samples %s %ux%u fmt %d it renders into (t%u) | depth ctl %#x (z write %u), target mask %#x, blend %#x, from %#llx",
-                                    (unsigned long long)dr.ps, ri->depth ? "depth target" : "color target", ri->w, ri->h, int(ri->format), slot,
-                                    dr.depth_ctl, dr.depth_ctl >> 2 & 1, dr.target_mask, dr.blend, (unsigned long long)dr.caller);
-                        }
-                    }
-                }
-                w.pImageInfo = &images[s][nw[s]];
-            } else if (b.kind == gcn::Binding::Sampler) {
-                w.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                struct SmpEntry { uint64_t key = 0; VkSampler smp = VK_NULL_HANDLE; };
-                static thread_local SmpEntry smc[512];
-                const uint32_t* S = dr.S(s, slot);
-                // the formats it filters (a format without linear filtering gets a NEAREST sampler)
-                uint64_t fkey = 0;
-                for (uint32_t tm = sh->res.sampler_textures[slot & 15]; tm; tm &= tm - 1)
-                    if (const uint32_t* T = dr.T(s, __builtin_ctz(tm))) {
-                        const auto ts = fmt::decode_tsharp(T);
-                        fkey = fkey * 0x100000001B3ull + (uint64_t(ts.dfmt) << 8 | ts.nfmt) + 1;
-                    }
-                const uint64_t key = S ? (hash_bytes(S, 16) ^ fkey * 0x9E3779B97F4A7C15ull) | 1 : 0;
-                SmpEntry& e = smc[key & 511];
-                VkSampler smp;
-                if (key && e.key == key) {
-                    smp = e.smp;
-                } else {
-                    bool nearest = false;
-                    for (uint32_t tm = sh->res.sampler_textures[slot & 15]; tm; tm &= tm - 1)
-                        if (const uint32_t* T = dr.T(s, __builtin_ctz(tm))) {
-                            const auto ts = fmt::decode_tsharp(T);
-                            VkFormat f = fmt::vk_format(ts.dfmt, ts.nfmt);
-                            {
-                                auto lk = guard(tex_m);
-                                if (Image* ri = target_for(ts)) f = ri->format;
-                            }
-                            if (f != VK_FORMAT_UNDEFINED &&
-                                !(format_props(f).optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
-                                nearest = true;
-                        }
-                    auto lk = guard(tex_m);
-                    smp = sampler(S, nearest);
-                    if (key) e = {key, smp};
-                }
-                images[s][nw[s]] = {smp, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL};
-                w.pImageInfo = &images[s][nw[s]];
+                off = L.off, size = L.size;
+            } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) {
+                off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size);
+                r.bytes_cb += c.size;
+                note_copy(0, c.addr, c.size);
+                if (off != UINT64_MAX) r.recopy.push_back({c.addr, off, c.size, 0});
             } else {
-                w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                const auto& c = dr.cb[s][slot];
-                uint64_t off;
-                uint32_t size = std::max(16u, (c.size + 15) & ~15u);
-                if ((c.addr & kLateCb) && rc().lr) {  // inherited from earlier lists: the list's region for the slot, filled at submission
-                    Recorder::Late& L = rc().late[s][slot];
-                    if (!L.size) {
-                        const uint32_t want = std::min<uint32_t>(65536, std::max({256u, (c.size + 255) & ~255u, late_hint[s][slot].load()}));
-                        L.off = rec_ring(r, want);
-                        if (L.off == UINT64_MAX) return skip("ring full");
-                        L.size = want;
-                        rc().late_list.push_back({uint8_t(s), uint8_t(slot), want, L.off});
-                    }
-                    off = L.off, size = L.size;
-                } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) {
-                    off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size, note_copy(0, c.addr, c.size);
-                    if (off != UINT64_MAX) r.recopy.push_back({c.addr, off, c.size, 0});
-                }
-                else off = rec_ring(r, size), std::memset(ring.map + (off == UINT64_MAX ? 0 : off), 0, size);
-                if (off == UINT64_MAX) return skip("ring full");
-                bufs[s][nw[s]] = {ring.buf, off, size};
-                w.pBufferInfo = &bufs[s][nw[s]];
+                off = rec_ring(r, size);
+                if (off != UINT64_MAX) std::memset(ring.map + off, 0, size);
             }
-            ++nw[s];
+            if (off == UINT64_MAX) return skip("ring full");
+            const uint32_t dw_off = uint32_t(off >> 2);
+            ds.cb_bound[s][slot] = c;
+            if (ds.stage_table[s][slot] != dw_off) {
+                ds.stage_table[s][slot] = dw_off;
+                stage_dirty = true;
+            }
+        }
+
+        // Sampled image bindless IDs (low 16 bits of stage_table[s][16 + slot])
+        for (uint32_t m = tex_m; m; m &= m - 1) {
+            const uint32_t slot = __builtin_ctz(m);
+            uint16_t vid = dr.tex_view[s][slot];
+            if (has_snaps && (dr.tex_mask[s] >> slot & 1)) {
+                const uint32_t* T = dr.tex[s][slot];
+                const uint64_t base = (uint64_t(T[0]) | uint64_t(T[1] & 0xFF) << 32) << 8;
+                for (auto& [att, sn] : rc().snaps)
+                    if (att->base == base) {
+                        std::unique_lock<std::mutex> lk(this->m, std::defer_lock);
+                        if (r.parallel) lk.lock();
+                        const auto ts = fmt::decode_tsharp(T);
+                        auto sit = stencil_by_base.find(ts.base);
+                        if (sit != stencil_by_base.end() && sit->second == att && att->stencil)
+                            vid = view(sn, VK_IMAGE_VIEW_TYPE_2D, {}, 0, true, true).id;
+                        else if (target_for(ts) == att)
+                            vid = target_view(sn, att, T).id;
+                        break;
+                    }
+            }
+            const uint32_t prev = ds.stage_table[s][16 + slot];
+            if ((prev & 0xFFFFu) != vid) {
+                ds.stage_table[s][16 + slot] = (prev & 0xFFFF0000u) | vid;
+                stage_dirty = true;
+            }
+        }
+
+        // Sampler bindless IDs (high 16 bits of stage_table[s][16 + slot])
+        for (uint32_t m = smp_m; m; m &= m - 1) {
+            const uint32_t slot = __builtin_ctz(m);
+            const uint16_t used_tex = uint16_t(sh->res.sampler_textures[slot]) & dr.tex_mask[s];
+            const bool nearest = (used_tex & ~dr.tex_filter_mask[s]) != 0;
+            const uint16_t sid = nearest ? dr.smp_near[s][slot] : dr.smp_lin[s][slot];
+            const uint32_t prev = ds.stage_table[s][16 + slot];
+            if ((prev >> 16) != sid) {
+                ds.stage_table[s][16 + slot] = (prev & 0xFFFFu) | (uint32_t(sid) << 16);
+                stage_dirty = true;
+            }
+        }
+
+        if (stage_dirty) {
+            const uint64_t off = rec_ring(r, 128, 16);
+            if (off == UINT64_MAX) return skip("ring full");
+            std::memcpy(ring.map + off, ds.stage_table[s], 128);
+            ds.stage_table_dword[s] = uint32_t(off >> 2);
+            ds.stage_valid[s] = true;
+            push_dirty = true;
         }
     }
     lap(r.t_desc);
-    // indices
+
+    // 4. Indices
     uint32_t count = dr.count;
     uint64_t ioff = 0;
     VkBuffer index_buf = ring.buf;
     bool indexed = dr.kind == Draw::Indexed;
     VkIndexType itype = dr.index32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
+    int32_t vertex_offset = 0;
     if (dr.prim == 0x13 && indexed && dr.index_addr < 0x10000) return skip("null index buffer");
     if (dr.prim == 0x13) {  // quad list -> two triangles per quad
         const uint32_t quads = count / 4;
@@ -3833,192 +3998,39 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
             std::memcpy(out + q * 6, t, sizeof t);
         }
         ioff = o, count = quads * 6, indexed = true, itype = VK_INDEX_TYPE_UINT32;
+        first_index = 0;
+        vertex_offset = ige_whole ? 0 : -int32_t(vfirst);
     } else if (indexed && ige) {
         index_buf = ige_buf, ioff = ige_off;
+        vertex_offset = ige_whole ? 0 : -int32_t(vfirst);
     } else if (indexed) {
         if (dr.index_addr < 0x10000) return skip("null index buffer");
-        ioff = rec_copy(r, reinterpret_cast<const void*>(dr.index_addr), uint64_t(count) * (dr.index32 ? 4 : 2));
-        note_copy(2, dr.index_addr, uint64_t(count) * (dr.index32 ? 4 : 2));
-        r.bytes_idx += uint64_t(count) * (dr.index32 ? 4 : 2);
+        const uint64_t ibytes = uint64_t(count) * istride;
+        ioff = rec_copy(r, reinterpret_cast<const void*>(dr.index_addr), ibytes);
+        note_copy(2, dr.index_addr, ibytes);
+        r.bytes_idx += ibytes;
         if (ioff == UINT64_MAX) return skip("ring full");
-        r.recopy.push_back({dr.index_addr, ioff, uint64_t(count) * (dr.index32 ? 4 : 2), 2});
+        r.recopy.push_back({dr.index_addr, ioff, ibytes, 2});
+        first_index = 0;
+        vertex_offset = ige_whole ? 0 : -int32_t(vfirst);
     }
     if (!count) return;
 
     if (!r.parallel) begin_pass(colors, depth);
-    // D1_NG_DEBUG_PS=<hex>: only log draws using this pixel shader, with its constant buffers in full
-    static const uint64_t debug_ps = [] {
-        const char* v = std::getenv("D1_NG_DEBUG_PS");
-        return v ? std::strtoull(v, nullptr, 16) : 0ull;
-    }();
-    if (!r.parallel && debug && st.frames >= debug_from && debug_lines < 600 && (!debug_ps || uint64_t(dr.ps) == debug_ps)) {
-        ++debug_lines;
-        log("ng draw %s prim %u count %u inst %u | vs %p ps %p | c0 %llx d %llx | depth %#x stencil %#x/%#x blend %#x mask %#x "
-            "su %#x | vp %d %d %d %d z %g..%g | vb %u range %u..%u | from %#llx",
-            dr.kind == Draw::Indexed ? "idx" : "auto", dr.prim, dr.count, dr.instances, (const void*)dr.vs,
-            (const void*)dr.ps, (unsigned long long)dr.color[0][0] << 8, (unsigned long long)dr.depth[4] << 8,
-            dr.depth_ctl, dr.stencil_ctl, dr.stencil_ref, dr.blend, dr.target_mask, dr.su_sc_mode, dr.vp[0], dr.vp[1],
-            dr.vp[2], dr.vp[3], dr.znear, dr.zfar, dr.num_vb, vfirst, vlast, (unsigned long long)dr.caller);
-        std::string vbs;
-        for (const auto& a : p->vs->res.attribs) {
-            const uint32_t* v = dr.vb[a.vb_slot & 15];
-            char b[160];
-            std::snprintf(b, sizeof b, " [%u: %llx stride %u n %u dfmt %u nfmt %u inst %u]", a.vb_slot,
-                          (unsigned long long)(uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32), v[1] >> 16 & 0x3FFF, v[2],
-                          v[3] >> 15 & 0xF, v[3] >> 12 & 7, a.index_vgpr);
-            vbs += b;
-        }
-        for (const auto& b : p->vs->res.bindings)
-            if (b.kind == gcn::Binding::ConstBuffer) {
-                char t[96];
-                std::snprintf(t, sizeof t, " cb%u=%llx/%u", b.api_slot, (unsigned long long)dr.cb[0][b.api_slot & 15].addr,
-                              dr.cb[0][b.api_slot & 15].size);
-                vbs += t;
-            }
-        if (!p->vs->res.attribs.empty()) {  // packed bone index in position.w (16_16_16_16 snorm)
-            const uint32_t* v = dr.vb[p->vs->res.attribs[0].vb_slot & 15];
-            const uint64_t base = uint64_t(v[0]) | uint64_t(v[1] & 0xFFF) << 32;
-            const uint32_t stride = v[1] >> 16 & 0x3FFF;
-            if ((v[3] >> 15 & 0xF) == 12 && (v[3] >> 12 & 7) == 1 && base >= 0x10000 && stride) {
-                int mx = -1;
-                for (uint32_t i = vfirst; i <= vlast && i < v[2]; ++i)
-                    mx = std::max<int>(mx, reinterpret_cast<const int16_t*>(base + uint64_t(i) * stride)[3]);
-                char t[48];
-                std::snprintf(t, sizeof t, " maxw %d", mx);
-                vbs += t;
-            }
-        }
-        log("ng   attribs:%s", vbs.c_str());
-        if (p->ps) {
-            std::string ts;
-            for (const auto& b : p->ps->res.bindings) {
-                char t[256];
-                if (b.kind == gcn::Binding::Texture) {
-                    const uint32_t* T = dr.T(1, b.api_slot);
-                    if (!T) continue;
-                    const auto d = fmt::decode_tsharp(T);
-                    // D1_NG_DUMP_TEX=<dir>: (testing) the T# and its guest memory, for offline decoding
-                    if (const char* dir = std::getenv("D1_NG_DUMP_TEX")) {
-                        static std::unordered_set<uint64_t> dumped;
-                        tiling::Surface sf0;
-                        const auto fi0 = fmt::data_format(d.dfmt);
-                        sf0.tile_mode = d.tiling, sf0.bpp = fi0.bpp, sf0.block = fi0.block, sf0.pow2 = d.pow2;
-                        sf0.width = d.width, sf0.height = d.height, sf0.pitch = d.pitch;
-                        sf0.levels = std::min(d.last_level + 1, tiling::kMaxMips);
-                        tiling::layout(sf0);
-                        if (fi0.bpp && dumped.size() < 200 && dumped.insert(d.base).second &&
-                            guest_region_extent(d.base) >= sf0.total_size) {
-                            char path[512];
-                            std::snprintf(path, sizeof path, "%s/tex_%llx.bin", dir, (unsigned long long)d.base);
-                            if (FILE* f = std::fopen(path, "wb")) {
-                                std::fwrite(dr.T(1, b.api_slot), 4, 8, f);
-                                std::fwrite(reinterpret_cast<const void*>(d.base), 1, sf0.total_size, f);
-                                std::fclose(f);
-                            }
-                        }
-                    }
-                    // zero blocks per mip (streaming not done / never loaded)
-                    std::string zs;
-                    const auto fi = fmt::data_format(d.dfmt);
-                    if (fi.block && fi.bpp) {
-                        tiling::Surface sf;
-                        sf.tile_mode = d.tiling, sf.bpp = fi.bpp, sf.block = true, sf.pow2 = d.pow2;
-                        sf.width = d.width, sf.height = d.height, sf.pitch = d.pitch;
-                        sf.levels = std::min(d.last_level + 1, tiling::kMaxMips);
-                        tiling::layout(sf);
-                        if (guest_region_extent(d.base) >= sf.total_size)
-                            for (uint32_t lv = 0; lv < sf.levels && lv < 4; ++lv) {
-                                const uint8_t* m = reinterpret_cast<const uint8_t*>(d.base) + sf.mips[lv].offset;
-                                const uint32_t bs = fi.bpp / 8;
-                                uint64_t zero = 0, n = sf.mips[lv].size / bs;
-                                for (uint64_t q = 0; q < n; ++q) {
-                                    uint64_t acc = 0;
-                                    for (uint32_t z = 0; z < bs; z += 8) acc |= *reinterpret_cast<const uint64_t*>(m + q * bs + z);
-                                    zero += acc == 0;
-                                }
-                                char zb[24];
-                                std::snprintf(zb, sizeof zb, "%s%llu%%", lv ? "," : "/z", (unsigned long long)(n ? zero * 100 / n : 0));
-                                zs += zb;
-                            }
-                    }
-                    std::snprintf(t, sizeof t, " t%u:%llx/%ux%u/f%u.%u/mips%u-%u/minlod%.2f/sel%03o%s", b.api_slot,
-                                  (unsigned long long)d.base, d.width, d.height, d.dfmt, d.nfmt, d.base_level,
-                                  d.last_level, d.min_lod / 256.0, d.dst_sel, zs.c_str());
-                } else if (b.kind == gcn::Binding::Sampler) {
-                    const uint32_t* S = dr.S(1, b.api_slot);
-                    if (!S) continue;
-                    std::snprintf(t, sizeof t, " s%u:%08x.%08x.%08x.%08x", b.api_slot, S[0], S[1], S[2], S[3]);
-                } else {
-                    const auto& c = dr.cb[1][b.api_slot & 15];
-                    const float* fv = c.addr >= 0x10000 ? reinterpret_cast<const float*>(c.addr) : nullptr;
-                    if (fv && c.size >= 32)
-                        std::snprintf(t, sizeof t, " cb%u:%llx/%u[%g %g %g %g %g %g %g %g]", b.api_slot, (unsigned long long)c.addr,
-                                      c.size, fv[0], fv[1], fv[2], fv[3], fv[4], fv[5], fv[6], fv[7]);
-                    else
-                        std::snprintf(t, sizeof t, " cb%u:%llx/%u", b.api_slot, (unsigned long long)c.addr, c.size);
-                }
-                ts += t;
-            }
-            log("ng   ps textures:%s", ts.c_str());
-            if (debug_ps)
-                for (const auto& b : p->ps->res.bindings) {
-                    if (b.kind != gcn::Binding::ConstBuffer) continue;
-                    const auto& c = dr.cb[1][b.api_slot & 15];
-                    if (c.addr < 0x10000) continue;
-                    const float* fv = reinterpret_cast<const float*>(c.addr);
-                    std::string cs;
-                    for (uint32_t i = 0; i < std::min<uint32_t>(c.size / 4, 128); ++i) {
-                        char t[24];
-                        std::snprintf(t, sizeof t, " %g", fv[i]);
-                        cs += t;
-                    }
-                    log("ng   ps cb%u:%s", b.api_slot, cs.c_str());
-                }
-        }
-    }
     if (!r.parallel && st.frames == passlog_frame && !passlog.empty()) {
         auto& pl = passlog.back();
         if (!pl.draws++) {
             pl.first_vs = uint64_t(dr.vs), pl.first_ps = uint64_t(dr.ps), pl.caller = dr.caller;
-            if (p->ps)
-                for (const auto& b : p->ps->res.bindings) {
-                    if (b.kind != gcn::Binding::Texture) continue;
-                    const uint32_t* t = dr.T(1, b.api_slot);
-                    char buf[96];
-                    if (!t) std::snprintf(buf, sizeof buf, " t%u:none", b.api_slot);
-                    else {
-                        const auto ts = fmt::decode_tsharp(t);
-                        const bool rt = target_by_base.count(ts.base) != 0;
-                        auto it = textures.find(hash_bytes(t, 32));
-                        std::snprintf(buf, sizeof buf, " t%u:%s%llx/%ux%u/f%u.%u", b.api_slot,
-                                      rt ? "RT" : (it != textures.end() && it->second) ? "tex" : "MISSING",
-                                      (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt);
-                    }
-                    pl.tex += buf;
-                }
-            if (p->ps && !p->ps->res.problems.empty()) pl.tex += " [" + p->ps->res.problems[0] + "]";
         }
     }
-    // state the previous draw in this command buffer already set is not set again (bindings
-    // and dynamic state last for the whole command buffer)
-    DrawState& ds = *r.ds;
-    if (!ds.valid || ds.pipe != p->pipeline) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline), ds.pipe = p->pipeline;
-    for (int s = 0; s < 2; ++s)
-        if (nw[s] && s == 1 && p->push_ps) {
-            push_fn(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 1, nw[s], writes[s]);
-        } else if (nw[s]) {
-            VkDescriptorSet set;
-            {
-                auto lk = guard(set_m);
-                set = alloc_set(p->sets[s]);
-            }
-            if (!set) return skip("descriptor pool");
-            for (uint32_t k = 0; k < nw[s]; ++k) writes[s][k].dstSet = set;
-            vkUpdateDescriptorSets(ctx.device, nw[s], writes[s], 0, nullptr);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, uint32_t(s), 1, &set, 0, nullptr);
-        }
+
+    // 5. State-diffed command emission
+    if (!ds.valid || ds.pipe != p->pipeline)
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline), ds.pipe = p->pipeline;
+    if (push_dirty)
+        vkCmdPushConstants(cmd, pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 8, ds.stage_table_dword);
     if (!ds.valid) ds.vmask = 0;
-    for (uint32_t slot = 0; slot < 16;) {  // runs of changed bindings, one call each
+    for (uint32_t slot = 0; slot < 16;) {
         auto same = [&](uint32_t k) {
             return !(vmask >> k & 1) || ((ds.vmask >> k & 1) && ds.vb[k] == vbufs[k] && ds.voff[k] == voffs[k] && ds.vsize[k] == vsizes[k]);
         };
@@ -4029,30 +4041,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         for (uint32_t k = slot; k < end; ++k) ds.vb[k] = vbufs[k], ds.voff[k] = voffs[k], ds.vsize[k] = vsizes[k], ds.vmask |= 1u << k;
         slot = end;
     }
-    // D1_NG_LOG_TEXUSE: (diagnostics) each distinct (pixel shader, texture) a draw uses, with its target
-    if (static const bool lt = std::getenv("D1_NG_LOG_TEXUSE") != nullptr; lt && colors[0]) {
-        static std::mutex tm;
-        static std::set<std::pair<uint64_t, uint64_t>> seen;
-        std::lock_guard l(tm);
-        for (uint32_t msk = dr.tex_mask[1]; msk; msk &= msk - 1) {
-            const uint32_t* t = dr.tex[1][__builtin_ctz(msk)];
-            const auto ts = fmt::decode_tsharp(t);
-            if (seen.size() < 3000 && seen.insert({uint64_t(dr.ps), ts.base}).second)
-                log("ng texuse ps %#llx t%u %#llx %ux%u f%u.%u tile %u res %d | rt %#llx %ux%u", (unsigned long long)dr.ps,
-                    __builtin_ctz(msk), (unsigned long long)ts.base, ts.width, ts.height, ts.dfmt, ts.nfmt, ts.tiling,
-                    dr.tex_res[1][__builtin_ctz(msk)] != 0, (unsigned long long)colors[0]->base, colors[0]->w, colors[0]->h);
-        }
-    }
-    // D1_NG_LOG_CLIP: (diagnostics) the clip-control values draws use
-    if (static const bool lc = std::getenv("D1_NG_LOG_CLIP") != nullptr; lc) {
-        static std::mutex cm;
-        static std::set<uint32_t> seen;
-        std::lock_guard l(cm);
-        if (seen.insert(dr.clip).second && seen.size() < 40)
-            log("ng clip %#x: first ps %#llx depth ctl %#x vp z %g..%g (k %g)", dr.clip, (unsigned long long)dr.ps, dr.depth_ctl, dr.znear,
-                dr.zfar, dr.zk);
-    }
-    // viewport (GCN y points down the screen: flip with a negative height)
+
     VkViewport vp{};
     vp.x = float(dr.vp[0]), vp.width = float(dr.vp[2] > 0 ? dr.vp[2] : int32_t(rc().pass_w));
     vp.y = float(dr.vp[1] + (dr.vp[3] > 0 ? dr.vp[3] : int32_t(rc().pass_h)));
@@ -4090,44 +4079,17 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
     if (indexed) {
         if (ds.ib != index_buf || ds.ioff != ioff || ds.itype != itype)
             vkCmdBindIndexBuffer(cmd, index_buf, ioff, itype), ds.ib = index_buf, ds.ioff = ioff, ds.itype = itype;
-        vkCmdDrawIndexed(cmd, count, std::max(1u, dr.instances), 0, -int32_t(vfirst), 0);
+        vkCmdDrawIndexed(cmd, count, std::max(1u, dr.instances), first_index, vertex_offset, 0);
     } else {
         vkCmdDraw(cmd, count, std::max(1u, dr.instances), 0, 0);
     }
     if (predicated) vkCmdEndConditionalRenderingEXT(cmd);
     ++r.draws;
-    // D1_NG_DRAWSTATS: (diagnostics) per logged frame, draws and instances per shader pair
     static const bool drawstats = std::getenv("D1_NG_DRAWSTATS") != nullptr;
     if (!r.parallel && drawstats && st.frames == passlog_frame) {
         auto& e = frame_draws[uint64_t(dr.ps) ^ uint64_t(dr.vs) << 20];
         e.first += 1, e.second += std::max(1u, dr.instances) * uint64_t(count);
     }
-    // D1_NG_TRACE=<target base hex>,<x>,<y>,<w>: (testing) in the logged frame, a row of that
-    // target's pixels after every draw into it, to find which draw writes what
-    static const struct Trace { uint64_t base = 0; uint32_t x = 0, y = 0, w = 0, h = 1; } trace = [] {
-        Trace t;
-        if (const char* e = std::getenv("D1_NG_TRACE"))
-            std::sscanf(e, "%llx,%u,%u,%u,%u", reinterpret_cast<unsigned long long*>(&t.base), &t.x, &t.y, &t.w, &t.h);
-        return t;
-    }();
-    if (!r.parallel && trace.base && st.frames == passlog_frame)
-        for (int i = 0; i < 8; ++i)
-            if (colors[i] && colors[i]->base == trace.base && trace.x + trace.w <= colors[i]->w && trace.y + trace.h <= colors[i]->h &&
-                colors[i]->bpp && traces.size() < 4000) {
-                end_pass();
-                const uint32_t bytes = colors[i]->bpp / 8;
-                const uint64_t off = ring_alloc(uint64_t(trace.w) * trace.h * bytes, 16);
-                if (off == UINT64_MAX) break;
-                VkBufferImageCopy r{};
-                r.bufferOffset = off;
-                r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-                r.imageOffset = {int32_t(trace.x), int32_t(trace.y), 0};
-                r.imageExtent = {trace.w, trace.h, 1};
-                vkCmdCopyImageToBuffer(cmd, colors[i]->image, VK_IMAGE_LAYOUT_GENERAL, ring.buf, 1, &r);
-                barrier();
-                traces.push_back({uint64_t(dr.ps), uint64_t(dr.vs), dr.caller, off, bytes, trace.w * trace.h, dr.blend, dr.count});
-                break;
-            }
     lap(r.t_cmd);
 }
 
@@ -4170,14 +4132,7 @@ void Renderer::pre_pass(const std::vector<Draw*>& draws) {
                     const bool is_target = target_bases.count(b) != 0;
                     if (is_target) tsharp_bases.insert(b);  // (only render target addresses matter there)
                     if (!is_target || !target_current(b)) {
-                        Image* img = upload_texture(t, d->tex_res[s][i]);
-                        // (a CPU-written texture: checked again when the list is submitted)
-                        if (img && pre_for && dynamic_copy && !img->res_val && img->content && img->src_size) {
-                            Sub::DynUse u;
-                            std::memcpy(u.t, t, 32);
-                            u.hash = img->content;
-                            pre_for->dyn.push_back(u);
-                        }
+                        upload_texture(t, d->tex_res[s][i]);
                     }
                 }
     barrier();
@@ -4198,6 +4153,7 @@ void Renderer::execute(const std::vector<Draw*>& draws) {
     begin_record();
     run_copies(draws);
     pre_pass(draws);
+    resolve_draw_resources(draws, true);
     rc().q_on = false;
     for (Draw* d : draws) rc().q_on |= d->kind == Draw::ZPass;
     if (rc().q_on) {
@@ -4294,8 +4250,9 @@ void Renderer::start_loader() {
             }
             const uint64_t t0 = now_ns();
             if (opt.res_current(j.obj) != j.res) ++ld_stale;
-            else if (j.tex) load_texture(j);
-            else load_buffer(j);
+            else if (j.kind == 1) load_texture(j);
+            else if (j.kind == 0) load_buffer(j);
+            else load_shader(j);
             ld_ns += now_ns() - t0;
         }
     });
@@ -4372,14 +4329,28 @@ void Renderer::load_texture(const LoadJob& j) {
     up_rec.submit_no = submit_seq.load();
     begin_record();
     if (up_rec.cur == UINT32_MAX) return;
-    auto img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
+    std::unique_ptr<Image> img;
+    bool inplace = false;
+    if (it != textures.end() && it->second && it->second->format == f && it->second->w == ts.width &&
+        it->second->h == ts.height && it->second->d == sf.depth && it->second->layers == sf.layers &&
+        it->second->levels == sf.levels && it->second->cube == cube && it->second->is3d == is3d) {
+        img = std::move(it->second);
+        inplace = true;
+        ++st.tex_inplace;
+    } else {
+        img = make_image(f, ts.width, ts.height, sf.depth, sf.layers, sf.levels, cube, is3d, false, false);
+    }
     if (!img) return;
     Buffer sb;
     uint64_t base_off = ring_alloc(std::max<uint64_t>(total, 16), 256);
     const bool own = base_off == UINT64_MAX;
     if (!own) sb = ring, sb.map = ring.map + base_off;
     else sb = make_buffer(std::max<uint64_t>(total, 16), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true), base_off = 0;
-    if (!sb.map) { destroy_image(img.get()); return; }
+    if (!sb.map) {
+        if (inplace) textures[key] = std::move(img);
+        else destroy_image(img.get());
+        return;
+    }
     std::memcpy(sb.map, scratch.data(), total);
     std::vector<VkBufferImageCopy> regions;
     for (uint32_t lv = 0; lv < sf.levels; ++lv) {
@@ -4394,12 +4365,52 @@ void Renderer::load_texture(const LoadJob& j) {
     if (own) subs[up_rec.cur].staging.push_back(sb);
     img->res_val = j.res, img->src_addr = ts.base, img->src_size = sf.total_size, img->content = content, img->version = ~0ull;
     img->last_used = submit_seq.load();
-    if (it != textures.end()) bury(std::move(it->second));
+    if (!inplace && it != textures.end()) bury(std::move(it->second));
     textures[key] = std::move(img);
     ++views_gen;
     st.bytes_tex += total;
     ++st.textures;
     ++ld_tex;
+}
+
+void Renderer::load_shader(const LoadJob& j) {
+    if (j.base < 0x10000) return;
+    const bool vs = j.kind == 2;
+    if (!vs) return;  // pixel shaders depend on their paired VS semantics; VS with default Tex2D float can be pre-translated
+    const uint8_t* obj = reinterpret_cast<const uint8_t*>(j.base);
+    gcn::TexDim dims[16];
+    uint8_t kinds[16] = {};
+    for (int i = 0; i < 16; ++i) dims[i] = gcn::TexDim::Tex2D;
+    uint64_t key = mix(mix(uint64_t(obj), true), hash_bytes(dims, sizeof dims));
+    key = mix(mix(key, hash_bytes(kinds, 16)), 0);
+    {
+        std::lock_guard lk(pipe_m);
+        if (shaders.count(key)) return;
+    }
+    const GnmShader gs = parse_shader(obj, true);
+    if (!gs.code || !gs.code_size) return;
+    gcn::ShaderDesc d;
+    d.stage = gcn::Stage::Vertex;
+    d.id = uint64_t(obj);
+    d.code = gs.code, d.code_size = gs.code_size, d.slots = gs.slots, d.user_sgprs = gs.user_sgprs;
+    d.ps_input_addr = gs.ps_input_addr, d.fetch = gs.fetch, d.fetch_size = gs.fetch_size;
+    for (int i = 0; i < 16; ++i) d.tex_dims[i] = dims[i], d.tex_kind[i] = kinds[i];
+    auto sh = std::make_unique<Shader>();
+    sh->res = gcn::translate(d);
+    if (!sh->res.spirv.empty()) {
+        VkShaderModuleCreateInfo mci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        mci.codeSize = sh->res.spirv.size() * 4;
+        mci.pCode = sh->res.spirv.data();
+        sh->ok = vkCreateShaderModule(ctx.device, &mci, nullptr, &sh->module) == VK_SUCCESS;
+    }
+    std::lock_guard lk(pipe_m);
+    if (!shaders.count(key)) {
+        ++st.shaders;
+        if (!sh->ok) ++st.bad_shaders;
+        shaders[key] = std::move(sh);
+    } else if (sh->module) {
+        vkDestroyShaderModule(ctx.device, sh->module, nullptr);
+    }
 }
 
 // ---------------------------------------------------------------------------- lists on engine threads
@@ -4409,7 +4420,9 @@ void Renderer::load_texture(const LoadJob& j) {
 // changes, clears, queries, readbacks - and released for runs of plain draws, which take it
 // only for cache misses. Recorded slots wait for submit_recorded, in the engine's order.
 bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<LateCb>& late) {
-    static thread_local Recorder R;
+    static thread_local std::unique_ptr<Recorder> R_ptr;
+    if (!R_ptr) R_ptr = std::make_unique<Recorder>();
+    Recorder& R = *R_ptr;
     Recorder* const prev_tr = tr;
     R.lr = true;
     tr = &R;
@@ -4450,6 +4463,9 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     if (up_rec.cur != UINT32_MAX) pre_pass(items);
     pre_for = nullptr;
     tr = &R;
+    lk.unlock();
+    resolve_draw_resources(items, false);
+    relock();
     for (const Draw* d : items) R.q_on |= d->kind == Draw::ZPass;
     if (R.q_on) {
         Sub& sb = subs[R.cur];
@@ -4493,6 +4509,8 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
             feedback_snapshots(items.data() + i, j - i, colors, depth);
             begin_pass(colors, depth);
             lk.unlock();
+            std::vector<Draw*> run_slice(items.begin() + i, items.begin() + j);
+            resolve_draw_resources(run_slice, false);
             for (size_t k = i; k < j; ++k) draw(*items[k], run_rec, colors, depth);
             relock();
             i = j - 1;
@@ -5278,13 +5296,17 @@ void fill_late(const LateCb& l, uint64_t src, uint32_t size) {
 }
 void prefetch_texture(const uint32_t* tsharp, uint64_t res, uint64_t obj) {
     if (!g || !res) return;
-    Renderer::LoadJob j{true, {}, 0, 0, res, obj};
+    Renderer::LoadJob j{1, {}, 0, 0, res, obj};
     std::memcpy(j.t, tsharp, 32);
     g->prefetch(j);
 }
 void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj) {
     if (!g || !res) return;
-    g->prefetch({false, {}, base, size, res, obj});
+    g->prefetch({0, {}, base, size, res, obj});
+}
+void prefetch_shader(const uint8_t* shader, bool vs, uint64_t res, uint64_t obj) {
+    if (!g || !res || !shader) return;
+    g->prefetch({uint8_t(vs ? 2 : 3), {}, uint64_t(shader), 0, res, obj});
 }
 void cpu_wrote(uint64_t addr, uint64_t size) {
     if (!g || !g->dynamic_copy || addr < 0x10000) return;

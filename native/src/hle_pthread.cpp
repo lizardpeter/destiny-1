@@ -263,11 +263,15 @@ static int32_t scePthreadCreate(Thread** out, ThreadAttr** attr, void* (*entry)(
     pthread_attr_init(&ha);
     pthread_attr_setstacksize(&ha, std::max<uint64_t>(a.stack, 256 * 1024) + 64 * 1024);
     if (a.detach) pthread_attr_setdetachstate(&ha, PTHREAD_CREATE_DETACHED);
+    if (out) *out = t;
     int r = pthread_create(&t->host, &ha, thread_trampoline, t);
     pthread_attr_destroy(&ha);
-    if (r) return sce(r);
+    if (r) {
+        if (out) *out = nullptr;
+        delete t;
+        return sce(r);
+    }
     log("thread created: %s (entry %s)", name ? name : "?", describe_addr(reinterpret_cast<uint64_t>(entry)).c_str());
-    *out = t;
     return SCE_OK;
 }
 HLE("scePthreadCreate", scePthreadCreate)
@@ -297,21 +301,22 @@ static int32_t scePthreadYield() { sched_yield(); return SCE_OK; }
 HLE("scePthreadYield", scePthreadYield)
 static int ps4_sched_yield() { return sched_yield(); }
 HLE("sched_yield", ps4_sched_yield)
-static int32_t scePthreadGetprio(Thread* t, int* p) { *p = t->prio; return SCE_OK; }
+static int32_t scePthreadGetprio(Thread* t, int* p) { if (!t) t = ensure_self(nullptr); if (p) *p = t->prio; return SCE_OK; }
 HLE("scePthreadGetprio", scePthreadGetprio)
-static int32_t scePthreadSetprio(Thread* t, int p) { t->prio = p; return SCE_OK; }
+static int32_t scePthreadSetprio(Thread* t, int p) { if (!t) t = ensure_self(nullptr); t->prio = p; return SCE_OK; }
 HLE("scePthreadSetprio", scePthreadSetprio)
-static int32_t scePthreadGetschedparam(Thread* t, int* pol, int* prio) { if (pol) *pol = 1; if (prio) *prio = t->prio; return SCE_OK; }
+static int32_t scePthreadGetschedparam(Thread* t, int* pol, int* prio) { if (!t) t = ensure_self(nullptr); if (pol) *pol = 1; if (prio) *prio = t->prio; return SCE_OK; }
 HLE("scePthreadGetschedparam", scePthreadGetschedparam)
-static int32_t scePthreadSetschedparam(Thread* t, int, const int* prio) { if (prio) t->prio = *prio; return SCE_OK; }
+static int32_t scePthreadSetschedparam(Thread* t, int, const int* prio) { if (!t) t = ensure_self(nullptr); if (prio) t->prio = *prio; return SCE_OK; }
 HLE("scePthreadSetschedparam", scePthreadSetschedparam)
 static int p_setschedparam(Thread*, int, const int*) { return 0; }
 HLE("pthread_setschedparam", p_setschedparam)
-static int32_t scePthreadGetaffinity(Thread* t, uint64_t* m) { *m = t->affinity; return SCE_OK; }
+static int32_t scePthreadGetaffinity(Thread* t, uint64_t* m) { if (!t) t = ensure_self(nullptr); if (m) *m = t->affinity; return SCE_OK; }
 HLE("scePthreadGetaffinity", scePthreadGetaffinity)
-static int32_t scePthreadSetaffinity(Thread* t, uint64_t m) { t->affinity = m; return SCE_OK; }
+static int32_t scePthreadSetaffinity(Thread* t, uint64_t m) { if (!t) t = ensure_self(nullptr); t->affinity = m; return SCE_OK; }
 HLE("scePthreadSetaffinity", scePthreadSetaffinity)
 static int32_t scePthreadRename(Thread* t, const char* n) {
+    if (!t) t = ensure_self(nullptr);
     if (n) t->name = n;
     return SCE_OK;
 }

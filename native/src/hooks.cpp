@@ -2536,6 +2536,23 @@ void print_call_counts() {
     for (auto& c : g_counters) log("count eboot+%#llx: %llu", (unsigned long long)c.off, (unsigned long long)*c.count);
 }
 
+
+// ---- first-person camera field of view (eboot+0x8E8240)
+// void camera_set_fov(void* cam, float fov_deg): computes half-angle tangents via tanf (0x12AB9A0)
+// at +0x170/+0x174 on the camera before frustum culling and projection matrix assembly.
+// Scaling fov_deg by settings().fov / 72.0f changes the world camera FOV before culling,
+// preserves proportional ADS zoom (computed upstream at 0x8E4090..0x8E429E on cam+0x340),
+// leaves the weapon model projection untouched, and keeps hip-fire mouse sensitivity unchanged.
+using CameraFovFn = D1_SYSV void (*)(void*, float);
+static CameraFovFn g_camera_fov_orig = nullptr;
+static D1_SYSV void camera_fov_hook(void* cam, float fov_deg) {
+    const float cfg_fov = settings().fov;
+    if (cfg_fov > 0.0f && cfg_fov != 72.0f && fov_deg > 1.0f && fov_deg < 160.0f) {
+        fov_deg = std::clamp(fov_deg * (cfg_fov / 72.0f), 10.0f, 150.0f);
+    }
+    g_camera_fov_orig(cam, fov_deg);
+}
+
 void install_game_hooks() {
     const Module& exe = rt().modules[0];
     g_job_context = reinterpret_cast<JobContextFn>(exe.base + 0xFC520);
@@ -2577,6 +2594,8 @@ void install_game_hooks() {
         g_force_lifetime = v ? std::atoi(v) : 3;
         g_lifetime_orig = reinterpret_cast<LifetimeFn>(hook_function(exe.base + 0x10C500, reinterpret_cast<const void*>(&lifetime_hook)));
     }
+    g_camera_fov_orig = reinterpret_cast<CameraFovFn>(hook_function(exe.base + 0x8E8240, reinterpret_cast<const void*>(&camera_fov_hook)));
+    if (g_camera_fov_orig) log("hooks: camera FOV %.1f deg (default 72.0)", settings().fov);
     if (getenv("D1_TRACE_CAMERA"))
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))

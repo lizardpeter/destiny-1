@@ -8,6 +8,7 @@
 namespace d1 {
 
 struct Settings {
+    float fov = 72.0f;
     // game files: the installed 01.33 game (eboot.bin, sce_module/, packages/), only ever
     // read. Relative paths are relative to the executable's folder.
     std::string game_dir = "game";

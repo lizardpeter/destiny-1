@@ -64,6 +64,7 @@ game_log = true                # [D1_GAME_LOG]
 # Warfare 2019 / Overwatch): 1.0 = 0.0066 degrees per count, so the same number feels the
 # same as in Destiny 2. 1.5 at 3200 DPI is 28.9 cm per 360.
 # Zoom scale: 1 = the game's own aim-down-sights slowdown, 0 = the same speed when zoomed.
+fov = 72                       # [D1_FOV] field of view in degrees (72 = console default, e.g. 90 or 105)
 sensitivity = 1.5              # [D1_SENSITIVITY]
 mouse_invert = false           # [D1_MOUSE_INVERT=1]
 mouse_zoom_scale = 1.0         # [D1_MOUSE_ZOOM_SCALE]

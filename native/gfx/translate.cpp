@@ -157,9 +157,13 @@ private:
     // ---------------------------------------------------------------- resources
     void analyse_origins(const Program& p);
     ResRef resolve(uint32_t first_sgpr, size_t inst_index, uint8_t want_type);
-    Id texture_var(uint8_t api);
-    Id sampler_var(uint8_t api);
-    Id cbuffer_var(uint8_t api);
+    Id ring_var();
+    Id ring_load(Id dword_idx);
+    Id tex_array_var(TexDim td, uint8_t tk);
+    Id sampler_array_var();
+    Id load_texture(uint8_t api);
+    Id load_sampler(uint8_t api);
+    Id load_cb_base(uint8_t api);
 
     // ---------------------------------------------------------------- translation
     void prologue();
@@ -186,7 +190,8 @@ private:
     bool exec_changes_ = false;
     // origins of the SGPRs each memory instruction uses, by instruction index
     std::map<size_t, std::vector<Origin>> origins_;
-    std::map<uint8_t, Id> tex_vars_, samp_vars_, cb_vars_;
+    Id tex_array_vars_[kBindlessImageBindings] = {};
+    Id samp_array_var_ = 0, ring_var_ = 0, push_var_ = 0, table_off_ = 0;
     std::map<uint32_t, Id> ps_inputs_, ps_flat_inputs_, outputs_;
     Id frag_coord_ = 0, front_facing_ = 0, position_out_ = 0, frag_depth_ = 0;
     Id vertex_index_ = 0, instance_index_ = 0;
@@ -264,49 +269,106 @@ ResRef Translator::resolve(uint32_t first_sgpr, size_t index, uint8_t want) {
     return {};
 }
 
-Id Translator::texture_var(uint8_t api) {
-    auto& v = tex_vars_[api];
-    if (!v) {
-        const TexDim td = api < 16 ? d_.tex_dims[api] : TexDim::Tex2D;
-        const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;
-        const uint8_t tk = api < 16 ? d_.tex_kind[api] : 0;
-        const Id img = m_.t_image(tk == 0 ? tf_ : tk == 1 ? tu_ : ti_, dim, false, td == TexDim::Tex2DArray, false, 1);
-        v = global(m_.t_ptr(SCUniformConstant, img), SCUniformConstant);
-        m_.decorate(v, DecDescriptorSet, {d_.stage == Stage::Vertex ? 0u : 1u});
-        m_.decorate(v, DecBinding, {api});
-        r_.bindings.push_back({Binding::Texture, api, api});
-    }
-    return v;
-}
-Id Translator::sampler_var(uint8_t api) {
-    auto& v = samp_vars_[api];
-    if (!v) {
-        v = global(m_.t_ptr(SCUniformConstant, m_.t_sampler()), SCUniformConstant);
-        m_.decorate(v, DecDescriptorSet, {d_.stage == Stage::Vertex ? 0u : 1u});
-        m_.decorate(v, DecBinding, {16u + api});
-        r_.bindings.push_back({Binding::Sampler, api, 16u + api});
-    }
-    return v;
-}
-Id Translator::cbuffer_var(uint8_t api) {
-    auto& v = cb_vars_[api];
-    if (!v) {
+Id Translator::ring_var() {
+    if (!ring_var_) {
         const Id arr = m_.t_runtime_array(tu_);
         m_.decorate(arr, DecArrayStride, {4});
         const Id st = m_.t_struct({arr});
         m_.decorate(st, DecBlock);
         m_.member_decorate(st, 0, DecOffset, {0});
         m_.member_decorate(st, 0, DecNonWritable);
-        v = global(m_.t_ptr(SCStorageBuffer, st), SCStorageBuffer);
-        m_.decorate(v, DecDescriptorSet, {d_.stage == Stage::Vertex ? 0u : 1u});
-        m_.decorate(v, DecBinding, {32u + api});
-        r_.bindings.push_back({Binding::ConstBuffer, api, 32u + api});
+        ring_var_ = global(m_.t_ptr(SCStorageBuffer, st), SCStorageBuffer);
+        m_.decorate(ring_var_, DecDescriptorSet, {0});
+        m_.decorate(ring_var_, DecBinding, {kBindlessRingBinding});
+    }
+    return ring_var_;
+}
+
+Id Translator::ring_load(Id dword_idx) {
+    const Id pu = m_.t_ptr(SCStorageBuffer, tu_);
+    const Id p = m_.op_r(OpAccessChain, pu, {ring_var(), m_.c_u32(0), dword_idx});
+    return ld(p, tu_);
+}
+
+Id Translator::tex_array_var(TexDim td, uint8_t tk) {
+    const uint32_t b = uint32_t(td) * 3 + (tk < 3 ? tk : 0);
+    auto& v = tex_array_vars_[b];
+    if (!v) {
+        m_.capability(CapSampledImageArrayDynamicIndexing);
+        const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;
+        const Id sty = tk == 0 ? tf_ : tk == 1 ? tu_ : ti_;
+        const Id img = m_.t_image(sty, dim, false, td == TexDim::Tex2DArray, false, 1);
+        const Id arr = m_.t_array(img, kMaxBindlessViews);
+        v = global(m_.t_ptr(SCUniformConstant, arr), SCUniformConstant);
+        m_.decorate(v, DecDescriptorSet, {0});
+        m_.decorate(v, DecBinding, {b});
     }
     return v;
 }
 
+Id Translator::sampler_array_var() {
+    if (!samp_array_var_) {
+        m_.capability(CapSampledImageArrayDynamicIndexing);
+        const Id arr = m_.t_array(m_.t_sampler(), kMaxBindlessSamplers);
+        samp_array_var_ = global(m_.t_ptr(SCUniformConstant, arr), SCUniformConstant);
+        m_.decorate(samp_array_var_, DecDescriptorSet, {0});
+        m_.decorate(samp_array_var_, DecBinding, {kBindlessSamplerBinding});
+    }
+    return samp_array_var_;
+}
+
+Id Translator::load_texture(uint8_t api) {
+    const uint8_t slot = api & 15;
+    if (!(r_.tex_mask >> slot & 1)) {
+        r_.tex_mask |= uint16_t(1u << slot);
+        r_.bindings.push_back({Binding::Texture, slot, slot});
+    }
+    const TexDim td = d_.tex_dims[slot];
+    const uint8_t tk = d_.tex_kind[slot];
+    const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;
+    const Id sty = tk == 0 ? tf_ : tk == 1 ? tu_ : ti_;
+    const Id img_t = m_.t_image(sty, dim, false, td == TexDim::Tex2DArray, false, 1);
+    const Id arr_var = tex_array_var(td, tk);
+    const Id ts = ring_load(m_.op_r(OpIAdd, tu_, {table_off_, m_.c_u32(16u + slot)}));
+    const Id view_id = m_.op_r(OpBitwiseAnd, tu_, {ts, m_.c_u32(kMaxBindlessViews - 1)});
+    const Id p_img = m_.op_r(OpAccessChain, m_.t_ptr(SCUniformConstant, img_t), {arr_var, view_id});
+    return ld(p_img, img_t);
+}
+
+Id Translator::load_sampler(uint8_t api) {
+    const uint8_t slot = api & 15;
+    if (!(r_.samp_mask >> slot & 1)) {
+        r_.samp_mask |= uint16_t(1u << slot);
+        r_.bindings.push_back({Binding::Sampler, slot, 16u + slot});
+    }
+    const Id ts = ring_load(m_.op_r(OpIAdd, tu_, {table_off_, m_.c_u32(16u + slot)}));
+    const Id samp_id = m_.op_r(OpBitwiseAnd, tu_,
+                               {m_.op_r(OpShiftRightLogical, tu_, {ts, m_.c_u32(16)}), m_.c_u32(kMaxBindlessSamplers - 1)});
+    const Id p_smp = m_.op_r(OpAccessChain, m_.t_ptr(SCUniformConstant, m_.t_sampler()), {sampler_array_var(), samp_id});
+    return ld(p_smp, m_.t_sampler());
+}
+
+Id Translator::load_cb_base(uint8_t api) {
+    const uint8_t slot = api & 15;
+    if (!(r_.cb_mask >> slot & 1)) {
+        r_.cb_mask |= uint16_t(1u << slot);
+        r_.bindings.push_back({Binding::ConstBuffer, slot, 32u + slot});
+    }
+    return ring_load(m_.op_r(OpIAdd, tu_, {table_off_, m_.c_u32(slot)}));
+}
+
 // ---------------------------------------------------------------------------- prologue
 void Translator::prologue() {
+    {
+        const Id pst = m_.t_struct({tu_, tu_});
+        m_.decorate(pst, DecBlock);
+        m_.member_decorate(pst, 0, DecOffset, {0});
+        m_.member_decorate(pst, 1, DecOffset, {4});
+        push_var_ = global(m_.t_ptr(SCPushConstant, pst), SCPushConstant);
+        const Id p_off = m_.op_r(OpAccessChain, m_.t_ptr(SCPushConstant, tu_),
+                                 {push_var_, m_.c_u32(d_.stage == Stage::Vertex ? 0u : 1u)});
+        table_off_ = ld(p_off, tu_);
+    }
     if (d_.stage == Stage::Pixel) {
         // input VGPRs in SPI_PS_INPUT_ADDR order
         static const uint8_t counts[16] = {2, 2, 2, 3, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1};
@@ -459,10 +521,6 @@ void Translator::emit_scalar(const Inst& in) {
         return;
     }
     case Op::S_WQM_B64: {
-        // whole-quad mode: a lane is on when any lane of its quad is. Shaders switch it on
-        // around coordinate math inside branches so that the quad's other lanes compute the
-        // coordinates too and the sampler's derivatives see real values (the snow layer of the
-        // terrain: without it every partly covered quad sampled with garbage gradients).
         Id v = bit0(s0());
         if (d_.stage == Stage::Pixel) {
             m_.capability(CapGroupNonUniform);
@@ -512,7 +570,7 @@ void Translator::emit_smrd(const Inst& in, size_t index) {
         for (uint32_t i = 0; i < n; ++i) write_s(in.dst.code + i, m_.c_u32(0));
         return;
     }
-    const Id var = cbuffer_var(cb.api);
+    const Id cb_base = load_cb_base(cb.api);
     Id base;  // dword index
     if (in.smrd_imm) base = m_.c_u32(in.smrd_offset);
     else {
@@ -520,11 +578,10 @@ void Translator::emit_smrd(const Inst& in, size_t index) {
         o.code = uint16_t(in.smrd_offset);
         base = m_.op_r(OpShiftRightLogical, tu_, {in.smrd_offset == 255 ? m_.c_u32(in.literal) : read_u(o, in), m_.c_u32(2)});
     }
-    const Id pu = m_.t_ptr(SCStorageBuffer, tu_);
+    const Id ring_base = m_.op_r(OpIAdd, tu_, {cb_base, base});
     for (uint32_t i = 0; i < n; ++i) {
-        const Id idx = m_.op_r(OpIAdd, tu_, {base, m_.c_u32(i)});
-        const Id p = m_.op_r(OpAccessChain, pu, {var, m_.c_u32(0), idx});
-        write_s(in.dst.code + i, ld(p, tu_));
+        const Id idx = i ? m_.op_r(OpIAdd, tu_, {ring_base, m_.c_u32(i)}) : ring_base;
+        write_s(in.dst.code + i, ring_load(idx));
     }
 }
 
@@ -568,8 +625,6 @@ void Translator::emit_cmp(const Inst& in) {
     case Op::V_CMP_GT_U32: c = m_.op_r(OpUGreaterThan, tbool_, {ua(), ub()}); break;
     case Op::V_CMP_GE_U32: c = m_.op_r(OpUGreaterThanEqual, tbool_, {ua(), ub()}); break;
     case Op::V_CMP_CLASS_F32: {
-        // class mask bits: 0 sNaN, 1 qNaN, 2 -inf, 3 -normal, 4 -denormal, 5 -0, 6 +0, 7 +denormal,
-        // 8 +normal, 9 +inf
         const Id mask = ub();
         const Id x = u2f(ua());
         auto has = [&](uint32_t bit) {
@@ -654,7 +709,7 @@ void Translator::emit_vop(const Inst& in) {
     }
     case Op::V_MIN_I32: wu(i2u(m_.ext(ti_, GlslSMin, {si(0), si(1)}))); return;
     case Op::V_MAX_I32: wu(i2u(m_.ext(ti_, GlslSMax, {si(0), si(1)}))); return;
-    case Op::V_FRACT_F32:  // (GCN: below 1.0 always; fract of a tiny negative number rounds to 1.0 in IEEE)
+    case Op::V_FRACT_F32:
         wf(m_.ext(tf_, GlslNMin, {m_.ext(tf_, GlslFract, {f(0)}), u2f(m_.c_u32(0x3F7FFFFF))}));
         return;
     case Op::V_TRUNC_F32: wf(m_.ext(tf_, GlslTrunc, {f(0)})); return;
@@ -673,7 +728,6 @@ void Translator::emit_vop(const Inst& in) {
     case Op::V_COS_F32: wf(m_.ext(tf_, GlslCos, {m_.op_r(OpFMul, tf_, {f(0), m_.c_f32(6.28318530718f)})})); return;
     case Op::V_CVT_F32_I32: wf(m_.op_r(OpConvertSToF, tf_, {si(0)})); return;
     case Op::V_CVT_F32_U32: wf(m_.op_r(OpConvertUToF, tf_, {u(0)})); return;
-    // (GCN saturates and turns NaN into 0; out-of-range conversions are undefined in SPIR-V)
     case Op::V_CVT_I32_F32: {
         const Id x = f(0);
         const Id c = m_.ext(tf_, GlslNClamp, {x, m_.c_f32(-2147483648.0f), m_.c_f32(2147483520.0f)});
@@ -763,8 +817,6 @@ void Translator::emit_vop(const Inst& in) {
         wf(r);
         return;
     }
-    // SGPR spills into VGPR lanes: lane-select is a constant, values are uniform; each
-    // (VGPR, lane) becomes its own private variable
     case Op::V_WRITELANE_B32: {
         if (!in.src[1].is_inline_const()) { problem("v_writelane with a register lane select"); return; }
         st(spill_var(uint32_t(in.dst.vgpr()), inline_constant(in.src[1].code)), u(0));
@@ -821,7 +873,7 @@ void Translator::emit_exp(const Inst& in) {
             if (!position_out_) {
                 position_out_ = global(m_.t_ptr(SCOutput, tv4f_), SCOutput);
                 m_.decorate(position_out_, DecBuiltIn, {BuiltInPosition});
-                m_.decorate(position_out_, DecInvariant);  // (the same position in every pass that draws it)
+                m_.decorate(position_out_, DecInvariant);
             }
             st(position_out_, vec4());
         } else if (t >= 32 && t < 64) {
@@ -839,7 +891,6 @@ void Translator::emit_exp(const Inst& in) {
     }
     // pixel
     if (in.exp_done && exec_changes_) {
-        // a lane killed by EXEC (v_cmpx / exec masking) writes nothing: discard it
         const Id l_kill = m_.label(), l_cont = m_.label();
         const Id alive = exec_bit();
         m_.op(OpSelectionMerge, {l_cont, 0});
@@ -851,24 +902,20 @@ void Translator::emit_exp(const Inst& in) {
         r_.discards = true;
         m_.capability(CapDemoteToHelperInvocation);
     }
-    // D1_NG_PROBE=<pixel shader object hex>:<v>,<v>,<v>,<v>: (testing) MRT0 gets those VGPRs
-    // as they are at the final export instead of the colour, to look at a shader's values
     static const struct Probe { uint64_t id = 0; uint32_t v[4] = {}; } probe = [] {
         Probe p;
         if (const char* e = std::getenv("D1_NG_PROBE"))
             std::sscanf(e, "%llx:%u,%u,%u,%u", reinterpret_cast<unsigned long long*>(&p.id), &p.v[0], &p.v[1], &p.v[2], &p.v[3]);
         return p;
     }();
-    static const bool id_map = std::getenv("D1_NG_ID_MAP") != nullptr;  // (testing) MRT0 = a colour per shader
-    if (t == 0 && id_map && d_.stage == Stage::Pixel && outputs_[1]) {  // G-buffer shaders (MRT1 written first)
+    static const bool id_map = std::getenv("D1_NG_ID_MAP") != nullptr;
+    if (t == 0 && id_map && d_.stage == Stage::Pixel && outputs_[1]) {
         Id& var = outputs_[0];
         if (!var) {
             var = global(m_.t_ptr(SCOutput, tv4f_), SCOutput);
             m_.decorate(var, DecLocation, {0u});
             r_.color_outputs |= 1u;
         }
-        // only where the shader's own colour is black (or NaN): find who writes black pixels
-        // bytes 1..3 of the object address, stored exactly by an sRGB target
         auto lin = [](uint32_t b) {
             const double c = b / 255.0;
             return float(c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4));
@@ -930,12 +977,11 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     const TexDim td = tex.api < 16 ? d_.tex_dims[tex.api] : TexDim::Tex2D;
     const uint32_t ncoord = td == TexDim::Tex2D ? 2 : 3;  // 2D array / 3D / cube: 3 address VGPRs
     const Dim dim = td == TexDim::Tex3D ? Dim3D : td == TexDim::Cube ? DimCube : Dim2D;
-    // integer textures (UINT / SINT T#s) are sampled as integers: the VGPRs get the raw values
     const uint8_t tk = tex.api < 16 ? d_.tex_kind[tex.api] : 0;
     const Id sty = tk == 0 ? tf_ : tk == 1 ? tu_ : ti_;
     const Id rt = tk == 0 ? tv4f_ : m_.t_vec(sty, 4);
     const Id img_t = m_.t_image(sty, dim, false, td == TexDim::Tex2DArray, false, 1);
-    const Id image = ld(texture_var(tex.api), img_t);
+    const Id image = load_texture(tex.api);
     uint32_t a = in.vaddr;
     auto af = [&](uint32_t k) { return u2f(ld(vreg(k), tu_)); };
     auto au = [&](uint32_t k) { return ld(vreg(k), tu_); };
@@ -947,7 +993,7 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
             return m_.op_r(OpBitFieldSExtract, ti_, {u2i(packed), m_.c_u32(shift), m_.c_u32(6)});
         };
         offset = m_.op_r(OpCompositeConstruct, tv2i_, {field6(0), field6(8)});
-        m_.capability(CapImageGatherExtended);  // offsets come from a register
+        m_.capability(CapImageGatherExtended);
     }
     if (in.op == Op::IMAGE_SAMPLE_B) bias = af(a++);
     if (in.op == Op::IMAGE_SAMPLE_C || in.op == Op::IMAGE_SAMPLE_C_LZ) dref = af(a++);
@@ -994,8 +1040,6 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     for (uint32_t k = 0; k < ncoord; ++k) c[k] = af(a++);
     if (in.unorm) problem("unnormalized texture coordinates");
     if (td == TexDim::Cube) {
-        // GCN cube coordinates are (s, t, face) with s, t = sc / |ma| + 1.5 (v_cube*):
-        // rebuild the direction vector Vulkan wants
         const Id x = m_.op_r(OpFMul, tf_, {m_.op_r(OpFSub, tf_, {c[0], m_.c_f32(1.5f)}), m_.c_f32(2.0f)});
         const Id y = m_.op_r(OpFMul, tf_, {m_.op_r(OpFSub, tf_, {c[1], m_.c_f32(1.5f)}), m_.c_f32(2.0f)});
         const Id nx = m_.op_r(OpFNegate, tf_, {x}), ny = m_.op_r(OpFNegate, tf_, {y});
@@ -1012,7 +1056,7 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
         c[0] = dir[0], c[1] = dir[1], c[2] = dir[2];
     }
     const Id coord = ncoord == 2 ? m_.op_r(OpCompositeConstruct, tv2f_, {c[0], c[1]}) : m_.op_r(OpCompositeConstruct, tv3f_, {c[0], c[1], c[2]});
-    const Id sampler = ld(sampler_var(smp.api), m_.t_sampler());
+    const Id sampler = load_sampler(smp.api);
     const Id si = m_.op_r(OpSampledImage, m_.t_sampled_image(img_t), {image, sampler});
     Id v = 0;
     switch (in.op) {
@@ -1027,8 +1071,6 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     case Op::IMAGE_SAMPLE_L: v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 2, af(a)}); break;
     case Op::IMAGE_SAMPLE_LZ: v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 2, m_.c_f32(0.0f)}); break;
     case Op::IMAGE_SAMPLE_LZ_O: {
-        // Vulkan allows register offsets only on gathers: apply the texel offset to the
-        // coordinates (exact at LOD 0)
         m_.capability(CapImageQuery);
         const Id size = m_.op_r(OpImageQuerySizeLod, td == TexDim::Tex2D ? tv2i_ : tv3i_, {image, m_.c_i32(0)});
         const Id sx = m_.op_r(OpConvertSToF, tf_, {m_.op_r(OpCompositeExtract, ti_, {size, 0})});
@@ -1044,7 +1086,6 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     }
     case Op::IMAGE_SAMPLE_D: v = m_.op_rv(OpImageSampleExplicitLod, rt, {si, coord, 4 /*Grad*/, ddx, ddy}); break;
     case Op::IMAGE_SAMPLE_C: case Op::IMAGE_SAMPLE_C_LZ: {
-        // depth comparison: sampled through a non-depth image; compare in the shader
         const Id s = m_.op_rv(OpImageSampleExplicitLod, tv4f_, {si, coord, 2, m_.c_f32(0.0f)});
         const Id d = m_.op_r(OpCompositeExtract, tf_, {s, 0});
         const Id r = m_.op_r(OpSelect, tf_, {m_.op_r(OpFOrdLessThanEqual, tbool_, {dref, d}), m_.c_f32(1.0f), m_.c_f32(0.0f)});
@@ -1061,7 +1102,7 @@ void Translator::emit_mimg(const Inst& in, size_t index) {
     }
     case Op::IMAGE_GET_LOD: {
         m_.capability(CapImageQuery);
-        static const bool lod0 = std::getenv("D1_NG_GETLOD0") != nullptr;  // (testing)
+        static const bool lod0 = std::getenv("D1_NG_GETLOD0") != nullptr;
         const Id l = lod0 ? m_.op_r(OpCompositeConstruct, tv2f_, {m_.c_f32(0.0f), m_.c_f32(0.0f)})
                           : m_.op_r(OpImageQueryLod, tv2f_, {si, coord});
         v = m_.op_r(OpVectorShuffle, tv4f_, {l, l, 0, 1, 0, 1});
@@ -1086,7 +1127,6 @@ void Translator::emit_buffer_load(const Inst& in, size_t index) {
     }
     uint32_t n = 0;
     if (in.enc == Enc::MTBUF) {
-        // 32-bit formats only (copied as raw dwords; float/uint/sint all keep their bits)
         static const uint8_t dwords[16] = {0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 0, 3, 4, 0};
         if (!dwords[in.dfmt] || (in.nfmt != 4 && in.nfmt != 5 && in.nfmt != 7)) {
             problem("typed buffer load format " + std::to_string(in.dfmt) + "/" + std::to_string(in.nfmt));
@@ -1105,11 +1145,11 @@ void Translator::emit_buffer_load(const Inst& in, size_t index) {
     if (in.offen) addr = m_.op_r(OpIAdd, tu_, {addr, ld(vreg(va++), tu_)});
     addr = m_.op_r(OpIAdd, tu_, {addr, read_u(in.soffset, in)});
     const Id base = m_.op_r(OpShiftRightLogical, tu_, {addr, m_.c_u32(2)});
-    const Id var = cbuffer_var(cb.api);
-    const Id pu = m_.t_ptr(SCStorageBuffer, tu_);
+    const Id cb_base = load_cb_base(cb.api);
+    const Id ring_base = m_.op_r(OpIAdd, tu_, {cb_base, base});
     for (uint32_t i = 0; i < n; ++i) {
-        const Id p = m_.op_r(OpAccessChain, pu, {var, m_.c_u32(0), m_.op_r(OpIAdd, tu_, {base, m_.c_u32(i)})});
-        write_v(in.vdata + i, ld(p, tu_));
+        const Id idx = i ? m_.op_r(OpIAdd, tu_, {ring_base, m_.c_u32(i)}) : ring_base;
+        write_v(in.vdata + i, ring_load(idx));
     }
 }
 
@@ -1118,7 +1158,7 @@ void Translator::emit(const Inst& in, size_t index) {
     case Enc::SOP1: case Enc::SOP2: case Enc::SOPK: case Enc::SOPC:
         if (in.op == Op::S_SWAPPC_B64) return emit_fetch_call();
         return emit_scalar(in);
-    case Enc::SOPP: return;  // control flow is handled by the caller; waits / nops vanish
+    case Enc::SOPP: return;
     case Enc::SMRD: return emit_smrd(in, index);
     case Enc::VOP1: case Enc::VOP2: case Enc::VOPC: case Enc::VOP3: return emit_vop(in);
     case Enc::VINTRP: return emit_interp(in);
@@ -1127,8 +1167,6 @@ void Translator::emit(const Inst& in, size_t index) {
     case Enc::MTBUF: case Enc::MUBUF: return emit_buffer_load(in, index);
     case Enc::DS:
         if (in.op == Op::DS_SWIZZLE_B32) {
-            // quad-permute mode (offset bit 15) with one source lane for the whole quad: the
-            // manual derivative pattern; a quad broadcast does exactly that
             const uint32_t off = uint32_t(in.ds_offset1) << 8 | in.ds_offset0;
             const uint32_t sel = off & 3;
             const bool uniform = ((off >> 2) & 3) == sel && ((off >> 4) & 3) == sel && ((off >> 6) & 3) == sel;
@@ -1164,7 +1202,6 @@ void Translator::run() {
     const Id fn = m_.begin_function(tvoid_, m_.t_func(tvoid_));
     prologue();
 
-    // Blocks: split at branch targets and after branches. Skip branches on EXEC are dropped.
     auto is_branch = [](Op op) {
         return op == Op::S_BRANCH || op == Op::S_CBRANCH_SCC0 || op == Op::S_CBRANCH_SCC1 ||
                op == Op::S_CBRANCH_VCCZ || op == Op::S_CBRANCH_VCCNZ;
@@ -1181,8 +1218,7 @@ void Translator::run() {
         m_.op(OpReturn, {});
     } else {
         r_.uses_branches = true;
-        // pc-dispatch loop: header -> switch on the block index -> block -> continue -> header
-        std::map<uint32_t, uint32_t> block_of;  // start pc -> block index
+        std::map<uint32_t, uint32_t> block_of;
         for (uint32_t s : starts) block_of[s] = uint32_t(block_of.size());
         const uint32_t end_block = uint32_t(block_of.size());
         const Id pc = global(tpu_, SCPrivate, m_.c_u32(0));
@@ -1203,14 +1239,13 @@ void Translator::run() {
         }
         m_.op(OpSelectionMerge, {l_sw_merge, 0});
         m_.op_v(OpSwitch, sw);
-        // blocks
         std::vector<uint32_t> bstart(block_of.size());
         for (auto& [spc, bi] : block_of) bstart[bi] = spc;
         size_t k = 0;
         for (uint32_t b = 0; b < end_block; ++b) {
             m_.place_label(labels[b]);
             const uint32_t next_start = b + 1 < end_block ? bstart[b + 1] : 0xFFFFFFFFu;
-            while (k < n && prog_.insts[k].pc < bstart[b]) ++k;  // unreachable gap (should not happen)
+            while (k < n && prog_.insts[k].pc < bstart[b]) ++k;
             Id next = m_.c_u32(b + 1 < end_block ? b + 1 : end_block);
             bool ended = false;
             while (k < n && prog_.insts[k].pc < next_start) {
@@ -1225,11 +1260,7 @@ void Translator::run() {
                         else if (in.op == Op::S_CBRANCH_SCC1) cond = ld(scc(), tbool_);
                         else if (in.op == Op::S_CBRANCH_VCCZ) cond = m_.op_r(OpLogicalNot, tbool_, {bit0(ld(sreg(106), tu_))});
                         else cond = bit0(ld(sreg(106), tu_));
-                        // GCN decides these for the whole wave (SCC / VCC computed from lane
-                        // masks are "any lane"); per-invocation branching would split quads and
-                        // break implicit derivatives. Taken when any invocation's bit says so
-                        // (the *Z / SCC0 forms: when none does).
-                        static const bool lane_branch = std::getenv("D1_NG_LANE_BRANCH") != nullptr;  // (testing)
+                        static const bool lane_branch = std::getenv("D1_NG_LANE_BRANCH") != nullptr;
                         const bool negated = in.op == Op::S_CBRANCH_SCC0 || in.op == Op::S_CBRANCH_VCCZ;
                         if (!lane_branch) {
                             Id lane = negated ? m_.op_r(OpLogicalNot, tbool_, {cond}) : cond;
@@ -1317,7 +1348,6 @@ std::vector<uint32_t> rect_list_gs(uint32_t param_exports) {
             x[k] = m.op_r(OpLoad, tv4, {m.op_r(OpAccessChain, p_in_v, {v.in, m.c_u32(k)})});
         in.push_back(x);
     }
-    // the right-angle corner is opposite the longest edge (the hypotenuse)
     auto xy = [&](Id v) { return m.op_r(OpVectorShuffle, tv2, {v, v, 0, 1}); };
     auto d2 = [&](Id a, Id b) {
         const Id d = m.op_r(OpFSub, tv2, {xy(a), xy(b)});
@@ -1330,7 +1360,6 @@ std::vector<uint32_t> rect_list_gs(uint32_t param_exports) {
     auto pick = [&](Id if0, Id if1, Id if2) {
         return m.op_r(OpSelect, tv4, {c0, if0, m.op_r(OpSelect, tv4, {c1, if1, if2})});
     };
-    // corner C, its neighbours A and B, the opposite corner D = A + B - C; strip A, C, D, B
     std::vector<std::array<Id, 4>> vals;
     for (auto& x : in) {
         const Id C = pick(x[0], x[1], x[2]);

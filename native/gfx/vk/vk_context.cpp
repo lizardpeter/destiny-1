@@ -68,8 +68,6 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     if (!open_loader()) return fail("no Vulkan loader (vulkan-1.dll / libvulkan.so.1)");
     uint32_t loader_version = VK_API_VERSION_1_0;
     if (vkEnumerateInstanceVersion) vkEnumerateInstanceVersion(&loader_version);
-    // An older loader still passes a 1.4 request through to a 1.4 driver; what matters is
-    // the device's version, checked below.
     (void)loader_version;
 
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -137,8 +135,13 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     else if (!f13.shaderDemoteToHelperInvocation) missing = "shaderDemoteToHelperInvocation";
     else if (!f13.maintenance4) missing = "maintenance4";
     else if (!f12.timelineSemaphore) missing = "timelineSemaphore";
+    else if (!f12.descriptorIndexing) missing = "descriptorIndexing";
+    else if (!f12.descriptorBindingPartiallyBound) missing = "descriptorBindingPartiallyBound";
+    else if (!f12.descriptorBindingSampledImageUpdateAfterBind) missing = "descriptorBindingSampledImageUpdateAfterBind";
+    else if (!f12.descriptorBindingUpdateUnusedWhilePending) missing = "descriptorBindingUpdateUnusedWhilePending";
     else if (!f14.maintenance5) missing = "maintenance5";
     else if (!f.features.shaderImageGatherExtended) missing = "shaderImageGatherExtended";
+    else if (!f.features.shaderSampledImageArrayDynamicIndexing) missing = "shaderSampledImageArrayDynamicIndexing";
     if (missing) return fail("%s lacks the Vulkan feature %s", ctx.name, missing);
     ctx.host_image_copy = f14.hostImageCopy;
 
@@ -156,9 +159,17 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     VkPhysicalDeviceVulkan12Features e12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, &e13};
     e12.timelineSemaphore = VK_TRUE;
     e12.scalarBlockLayout = f12.scalarBlockLayout;
+    e12.descriptorIndexing = VK_TRUE;
+    e12.shaderSampledImageArrayNonUniformIndexing = f12.shaderSampledImageArrayNonUniformIndexing;
+    e12.runtimeDescriptorArray = f12.runtimeDescriptorArray;
+    e12.descriptorBindingPartiallyBound = VK_TRUE;
+    e12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    e12.descriptorBindingStorageBufferUpdateAfterBind = f12.descriptorBindingStorageBufferUpdateAfterBind;
+    e12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
     VkPhysicalDeviceVulkan11Features e11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, &e12};
     VkPhysicalDeviceFeatures2 ef{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &e11};
     ef.features.shaderImageGatherExtended = VK_TRUE;
+    ef.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     ef.features.independentBlend = f.features.independentBlend;
     ef.features.samplerAnisotropy = f.features.samplerAnisotropy;
     ef.features.depthClamp = f.features.depthClamp;
@@ -212,8 +223,6 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     dci.enabledExtensionCount = uint32_t(dev_exts.size());
     dci.ppEnabledExtensionNames = dev_exts.data();
     if (vkCreateDevice(pick, &dci, nullptr, &ctx.device) != VK_SUCCESS) return fail("vkCreateDevice failed on %s", ctx.name);
-    // core names first, then the extension names they were promoted from (older loaders and
-    // layers, e.g. Wine's, only know vkCmdPushDescriptorSetKHR)
     auto device_fn = [&](const char* name) {
         PFN_vkVoidFunction f = vkGetDeviceProcAddr(ctx.device, name);
         for (const char* suffix : {"KHR", "EXT"}) {
@@ -255,8 +264,6 @@ uint32_t surface_instance_extensions(WindowSystem ws, const char** out) {
 }
 
 bool create_surface(const Context& ctx, WindowSystem ws, void* display, uint64_t window, VkSurfaceKHR* out) {
-    // The platform create-info structs, declared here so no window-system header is needed
-    // (layouts as in vulkan_win32.h / vulkan_xlib.h).
     struct Win32Info {
         VkStructureType sType;
         const void* pNext;

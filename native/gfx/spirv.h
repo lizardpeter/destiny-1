@@ -69,8 +69,9 @@ enum BuiltIn : uint32_t {
 enum ExecutionModel : uint32_t { ExecVertex = 0, ExecFragment = 4, ExecGLCompute = 5 };
 enum ExecutionMode : uint32_t { ModeOriginUpperLeft = 7, ModeDepthReplacing = 12, ModeLocalSize = 17 };
 enum Capability : uint32_t {
-    CapShader = 1, CapImageGatherExtended = 25, CapImageQuery = 50, CapDerivativeControl = 51, CapGroupNonUniform = 61,
-    CapGroupNonUniformShuffle = 66, CapGroupNonUniformQuad = 68, CapDemoteToHelperInvocation = 5379,
+    CapShader = 1, CapImageGatherExtended = 25, CapSampledImageArrayDynamicIndexing = 29, CapImageQuery = 50,
+    CapDerivativeControl = 51, CapGroupNonUniform = 61, CapGroupNonUniformShuffle = 66, CapGroupNonUniformQuad = 68,
+    CapDemoteToHelperInvocation = 5379,
 };
 enum Dim : uint32_t { Dim1D = 0, Dim2D = 1, Dim3D = 2, DimCube = 3, DimBuffer = 5 };
 
