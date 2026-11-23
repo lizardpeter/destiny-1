@@ -1323,6 +1323,35 @@ D1_SYSV void h_unlock(uint64_t idx) {
     ng::cpu_wrote(ptr, 0);
 }
 
+// The UI glyph cache (findings/gpu_memory_census.md): 0x8BE050 copies the CPU-side glyph
+// bitmap into its texture (512x512 R8) and the glyph table into a second one (512x1), with
+// plain memcpy and no lock / unlock. It is the cache's "update texture": announced like one.
+using GlyphFn = D1_SYSV void (*)(uint64_t);
+GlyphFn o_glyph_upload;
+std::atomic<uint64_t> g_glyph_uploads{0}, g_tiled{0};
+D1_SYSV void h_glyph_upload(uint64_t self) {
+    o_glyph_upload(self);
+    const uint64_t c = field<uint64_t>(self, 0);
+    if (c < 0x10000) return;
+    const int32_t idx = field<int32_t>(c, 0x34);
+    if (idx < 0 || idx > 8) return;
+    for (int k = 0; k < 2; ++k) {
+        const uint64_t t = field<uint64_t>(c, 0x20 + (uint64_t(idx) + k) * 8);
+        if (t >= 0x10000) ng::cpu_wrote(tex_base(reinterpret_cast<const uint32_t*>(t)), 0);
+    }
+    ++g_glyph_uploads;
+}
+// GpuAddress tiling of a CPU surface into texture memory (0xF8A330(out, in, tiling
+// parameters), from the resource builder 0x7D4E20): the destination's contents changed.
+using TileFn = D1_SYSV uint64_t (*)(uint64_t, uint64_t, uint64_t);
+TileFn o_tile;
+D1_SYSV uint64_t h_tile(uint64_t out, uint64_t in, uint64_t tp) {
+    const uint64_t r = o_tile(out, in, tp);
+    if (out >= 0x10000) ng::cpu_wrote(out, 1);
+    ++g_tiled;
+    return r;
+}
+
 // the callbacks are called through the table (0x254EE38 bind, 0x254EE40 re-point, 0x254EE48
 // release): our wrappers go into it once the graphics layer has registered it (0xCFCC0)
 using RegFn = D1_SYSV void (*)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
@@ -1350,6 +1379,8 @@ void install() {
     ok &= hook(0x7D3560, &h_copy, o_copy, "resource_move_copy");
     ok &= hook(0x7D37B0, &h_swap, o_swap, "resource_move_commit");
     ok &= hook(0x7D4480, &h_mips, o_mips, "texture_mips");
+    ok &= hook(0x8BE050, &h_glyph_upload, o_glyph_upload, "glyph_cache_upload");
+    ok &= hook(0xF8A330, &h_tile, o_tile, "tile_surface");
     log("nd: engine resource events %s (D1_ND_RES=0 turns them off)", ok ? "hooked" : "NOT HOOKED - resources stay write-tracked");
     if (!ok) nr::resreg::g_on = false;
 }
@@ -2812,6 +2843,8 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                 faults0 = faults;
                 ng::print_stats();
                 if (wt::g_log_faults) wt::print_census(), faultlog::print();
+                log("nd: texture updates announced at their source: %llu glyph cache uploads, %llu tiled surfaces",
+                    (unsigned long long)resev::g_glyph_uploads.exchange(0), (unsigned long long)resev::g_tiled.exchange(0));
             }
             t0 = now, n0 = n;
             nr::g_exec_ns = nr::g_flip_ns = 0;

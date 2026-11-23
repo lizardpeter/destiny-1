@@ -40,3 +40,22 @@ with the Ghost and the menu opened (about 7 minutes). Both runs show the same si
 | host libc memcpy | (our own threads) | resource memory, small render targets | file reads into resource memory and the renderer's own readbacks |
 
 Still to run: the Tower, the character and inventory screens, the director, a strike.
+
+## What the renderer does with each (2026-11-22)
+
+- **Glyph cache upload `0x8BE050`**: hooked. After it runs, both textures are announced as
+  written (`ng::cpu_wrote`), as a PC engine's texture update would be. In a patrol run with the
+  Ghost opened: 93 / 24 / 127 uploads per 10 s interval when new text appears, and the
+  per-submission content compare reports 0 "changed without an event" (it reported 6 per
+  interval before the hook).
+- **Tiler `0xF8A330(out, in, tiling parameters)`**, called by the resource builder `0x7D4E20`
+  (callback table entry `0x254EE60`): hooked. The destination is announced as written, so a
+  texture copy made before the tiling finished (the loader thread uploads at bind) is made
+  again.
+- **Dynamic textures written after their list ended**: seen here too (2 and 6 per interval),
+  handled by the compare at submission.
+- **Dynamic vertices, indices and constants read from guest memory**: a recorded list's copies
+  are compared with the source and copied again when the list is submitted (`Sub::recopy`),
+  because the console's GPU reads them only after submission. 0 changed in about 3,300 copies
+  per interval here; the log line "dynamic data filled after its list ended" shows the count
+  on a fast machine.

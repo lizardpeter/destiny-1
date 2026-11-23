@@ -431,6 +431,11 @@ struct Sub {
     // them between the list's end and its submission - the console reads them even later)
     struct DynUse { uint32_t t[8]; uint64_t hash; };
     std::vector<DynUse> dyn;
+    // what the list copied from memory the CPU fills itself (dynamic vertices and indices,
+    // constants read from guest memory): source, ring offset, size. Copied again at submission:
+    // the console's GPU reads them after it, so the engine may fill them until then.
+    struct ReCopy { uint64_t src, off, size; uint8_t kind; };
+    std::vector<ReCopy> recopy;
 };
 
 // Copies of guest vertex / index buffers kept on the GPU while the game does not write them.
@@ -623,6 +628,7 @@ struct Renderer {
         // lock (m) instead of the finer locks the worker threads use while it is held
         bool lr = false;
         std::vector<Sub::DynUse> dyn;  // (see Sub::dyn)
+        std::vector<Sub::ReCopy> recopy;  // (see Sub::recopy)
         struct Late { uint64_t off = 0; uint32_t size = 0; };
         Late late[kStages][16];
         std::vector<LateCb> late_list;
@@ -693,6 +699,7 @@ struct Renderer {
         if (verify_late() && rc().lr && size && size <= (1u << 20)) rc().copies.push_back({kind, addr, size, hash_bytes(reinterpret_cast<const void*>(addr), size)});
     }
     uint64_t late_checked[3] = {}, late_changed[3] = {};
+    uint64_t recopy_n[3] = {}, recopy_changed[3] = {};  // constants, vertices, indices
     Recorder up_rec;  // uploads and target set-up for lists recorded on engine threads
     Recorder* pre_for = nullptr;  // the list whose textures pre_pass is preparing (in the upload slot)
     // the loader thread: engine resources prepared when the engine binds or moves them
@@ -1020,6 +1027,7 @@ struct Renderer {
         bool parallel = false;
         uint64_t t_pipe = 0, t_geo = 0, t_desc = 0, t_cmd = 0, draws = 0, bytes_vtx = 0, bytes_idx = 0, bytes_cb = 0, predicated = 0, memo_tl = 0;
         uint64_t chunk_pos = 0, chunk_end = 0;  // (parallel) this worker's slice of the ring
+        std::vector<Sub::ReCopy> recopy;        // (see Sub::recopy)
     };
     std::mutex pipe_m, geo_m, tex_m, set_m, ring_m, skip_m;
     uint64_t rec_ring(Rec& r, uint64_t size, uint64_t align = 256);
@@ -1032,6 +1040,7 @@ struct Renderer {
         st.t_pipe += r.t_pipe, st.t_geo += r.t_geo, st.t_desc += r.t_desc, st.t_cmd += r.t_cmd, st.draws += r.draws;
         st.bytes_vtx += r.bytes_vtx, st.bytes_idx += r.bytes_idx, st.bytes_cb += r.bytes_cb, st.predicated += r.predicated;
         st.memo_hits += r.memo_tl;
+        if (rc().lr && !r.recopy.empty()) rc().recopy.insert(rc().recopy.end(), r.recopy.begin(), r.recopy.end());
     }
     void draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run_depth);
     void draw(const Draw& dr) {
@@ -3650,7 +3659,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         const uint64_t off = rec_ring(r, std::max<uint64_t>(size, 16), 256);
         if (off == UINT64_MAX) return skip("ring full");
         std::memcpy(ring.map + off, reinterpret_cast<const void*>(src), size);
-        if (dr.inline_vertices.empty()) note_copy(1, src, size);
+        if (dr.inline_vertices.empty()) note_copy(1, src, size), r.recopy.push_back({src, off, size, 1});
         r.bytes_vtx += size;
         if (size < 16) std::memset(ring.map + off + size, 0, 16 - size);
         // the binding starts at vertex `vfirst`; a stride-0 stream is one record for every vertex
@@ -3787,7 +3796,10 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
                         rc().late_list.push_back({uint8_t(s), uint8_t(slot), want, L.off});
                     }
                     off = L.off, size = L.size;
-                } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size, note_copy(0, c.addr, c.size);
+                } else if (c.addr >= 0x10000 && !(c.addr & kLateCb)) {
+                    off = rec_copy(r, reinterpret_cast<const void*>(c.addr), c.size), r.bytes_cb += c.size, note_copy(0, c.addr, c.size);
+                    if (off != UINT64_MAX) r.recopy.push_back({c.addr, off, c.size, 0});
+                }
                 else off = rec_ring(r, size), std::memset(ring.map + (off == UINT64_MAX ? 0 : off), 0, size);
                 if (off == UINT64_MAX) return skip("ring full");
                 bufs[s][nw[s]] = {ring.buf, off, size};
@@ -3829,6 +3841,7 @@ void Renderer::draw(const Draw& dr, Rec& r, Image* const* run_colors, Image* run
         note_copy(2, dr.index_addr, uint64_t(count) * (dr.index32 ? 4 : 2));
         r.bytes_idx += uint64_t(count) * (dr.index32 ? 4 : 2);
         if (ioff == UINT64_MAX) return skip("ring full");
+        r.recopy.push_back({dr.index_addr, ioff, uint64_t(count) * (dr.index32 ? 4 : 2), 2});
     }
     if (!count) return;
 
@@ -4424,6 +4437,7 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     R.late_list.clear();
     R.copies.clear();
     R.dyn.clear();
+    R.recopy.clear();
     R.q_on = false;
     R.pred_cur = -1;
     // uploads and new targets into the shared slot
@@ -4497,6 +4511,8 @@ bool Renderer::record_list(const std::vector<Draw*>& items, uint32_t& handle, st
     subs[R.cur].copies.clear();
     subs[R.cur].dyn = std::move(R.dyn);
     R.dyn.clear();
+    subs[R.cur].recopy = std::move(R.recopy);
+    R.recopy.clear();
     for (const auto& c : R.copies) subs[R.cur].copies.push_back({c.kind, c.addr, c.size, c.hash});
     handle = R.cur;
     late = R.late_list;
@@ -4538,6 +4554,19 @@ void Renderer::submit_recorded(const std::vector<uint32_t>& handles) {
         tr = &up_rec;
         submit();
         tr = prev_tr;
+    }
+    // dynamic data as it is now (see Sub::recopy)
+    static const bool recopy_on = [] { const char* e = std::getenv("D1_NG_RECOPY"); return !e || std::atoi(e) != 0; }();
+    for (uint32_t h : handles) {
+        if (h >= subs.size() || subs[h].state != Sub::Recorded) continue;
+        for (const auto& c : subs[h].recopy) {
+            if (!recopy_on || guest_region_extent(c.src) < c.size || c.off + c.size > ring.size) continue;
+            ++recopy_n[c.kind];
+            if (std::memcmp(ring.map + c.off, reinterpret_cast<const void*>(c.src), c.size) == 0) continue;
+            ++recopy_changed[c.kind];
+            std::memcpy(ring.map + c.off, reinterpret_cast<const void*>(c.src), c.size);
+        }
+        subs[h].recopy.clear();
     }
     if (verify_late()) {
         static int told = 0;
@@ -5518,6 +5547,10 @@ void print_stats() {
             (unsigned long long)g->snap_copies, (unsigned long long)g->snap_reused, (unsigned long long)g->dma_stale,
             (unsigned long long)g->readback_stale, (unsigned long long)g->cpu_stale);
         g->snap_copies = g->snap_reused = g->dma_stale = g->readback_stale = g->cpu_stale = 0;
+        log("native renderer: dynamic data filled after its list ended (copied again at submission): constants %llu of %llu, vertices %llu of %llu, indices %llu of %llu",
+            (unsigned long long)g->recopy_changed[0], (unsigned long long)g->recopy_n[0], (unsigned long long)g->recopy_changed[1],
+            (unsigned long long)g->recopy_n[1], (unsigned long long)g->recopy_changed[2], (unsigned long long)g->recopy_n[2]);
+        for (int k = 0; k < 3; ++k) g->recopy_n[k] = g->recopy_changed[k] = 0;
         s.unreg_tex.clear(), s.unreg_geo = s.unreg_geo_bytes = 0;
     }
     if (g->load_on) {
