@@ -2537,21 +2537,36 @@ void print_call_counts() {
 }
 
 
-// ---- first-person camera field of view (eboot+0x8E8240)
-// void camera_set_fov(void* cam, float fov_deg): computes half-angle tangents via tanf (0x12AB9A0)
-// at +0x170/+0x174 on the camera before frustum culling and projection matrix assembly.
-// Scaling fov_deg by settings().fov / 72.0f changes the world camera FOV before culling,
-// preserves proportional ADS zoom (computed upstream at 0x8E4090..0x8E429E on cam+0x340),
-// leaves the weapon model projection untouched, and keeps hip-fire mouse sensitivity unchanged.
-using CameraFovFn = D1_SYSV void (*)(void*, float);
-static CameraFovFn g_camera_fov_orig = nullptr;
-static D1_SYSV void camera_fov_hook(void* cam, float fov_deg) {
+// ---- world camera field of view (eboot+0x526FE0 default_camera_fov_rad, eboot+0x5270E0 fp_base_camera_fov_rad)
+// Both read the camera globals tag (0x526F80 -> +0x18, PS4 default 72.0 deg = 1.25663706 rad;
+// fallback 1.3439035 rad before tag load).
+// - 0xBD3BF0(unit, zoom_slot) computes the first-person target world FOV as 0x5270E0() / 0xBD3740(unit, zoom_slot),
+//   feeding camera +0x30 (0x8E6980) -> director +0x4AC (0x8EFAB0, which builds the visibility culling frustum)
+//   -> "first-person environment view" projection matrix (0x52CE20).
+// - The first-person weapon viewmodel uses a separate FOV from the weapon tag (0x737C80 -> camera +0x34 ->
+//   director +0x554 -> 0x80F730 "first-person player view" / "first-person iron sight view"), so scaling
+//   0x526FE0 and 0x5270E0 widens the world camera before frustum culling, keeps ADS zoom proportional,
+//   leaves the weapon viewmodel projection unchanged, and keeps hip-fire mouse sensitivity unchanged.
+static float read_scaled_world_fov_rad(bool allow_debug_global) {
+    const uint64_t b = rt().modules[0].base;
+    using GetCamGlobalsFn = D1_SYSV const uint8_t* (*)();
+    const uint8_t* g = reinterpret_cast<GetCamGlobalsFn>(b + 0x526F80)();
+    const float dbg_deg = *reinterpret_cast<const float*>(b + 0x18DCA70);
+    float rad = (allow_debug_global && dbg_deg > 0.0f) ? (dbg_deg * 0.017453292f)
+                                                       : (g ? *reinterpret_cast<const float*>(g + 0x18) : 1.3439035f);
+    uint32_t bits = 0;
+    std::memcpy(&bits, &rad, 4);
+    if ((bits & 0x7F800000u) == 0x7F800000u || rad < 0.017453292f || rad > 2.6179938f) rad = 1.3439035f;
     const float cfg_fov = settings().fov;
-    if (cfg_fov > 0.0f && cfg_fov != 72.0f && fov_deg > 1.0f && fov_deg < 160.0f) {
-        fov_deg = std::clamp(fov_deg * (cfg_fov / 72.0f), 10.0f, 150.0f);
+    if (cfg_fov > 0.0f && cfg_fov != 72.0f) {
+        // Scale relative to the PS4 72 deg baseline (or direct radians when tag is at default 72 deg),
+        // clamped to the engine validator 0x5270A0 upper bound (2.6179938 rad = 150 deg).
+        rad = std::clamp(rad * (cfg_fov / 72.0f), 0.17453292f, 2.6179938f);
     }
-    g_camera_fov_orig(cam, fov_deg);
+    return rad;
 }
+static D1_SYSV float camera_default_fov_replacement() { return read_scaled_world_fov_rad(true); }
+static D1_SYSV float camera_fp_base_fov_replacement() { return read_scaled_world_fov_rad(false); }
 
 void install_game_hooks() {
     const Module& exe = rt().modules[0];
@@ -2594,8 +2609,11 @@ void install_game_hooks() {
         g_force_lifetime = v ? std::atoi(v) : 3;
         g_lifetime_orig = reinterpret_cast<LifetimeFn>(hook_function(exe.base + 0x10C500, reinterpret_cast<const void*>(&lifetime_hook)));
     }
-    g_camera_fov_orig = reinterpret_cast<CameraFovFn>(hook_function(exe.base + 0x8E8240, reinterpret_cast<const void*>(&camera_fov_hook)));
-    if (g_camera_fov_orig) log("hooks: camera FOV %.1f deg (default 72.0)", settings().fov);
+    {
+        replace_function(exe.base + 0x526FE0, reinterpret_cast<const void*>(&camera_default_fov_replacement));
+        replace_function(exe.base + 0x5270E0, reinterpret_cast<const void*>(&camera_fp_base_fov_replacement));
+        log("hooks: camera FOV %.1f deg (default 72.0) %s", settings().fov, "installed");
+    }
     if (getenv("D1_TRACE_CAMERA"))
         g_set_camera_orig = reinterpret_cast<SetCameraFn>(hook_function(exe.base + 0x8E4EE0, reinterpret_cast<const void*>(&set_camera_hook)));
     if (getenv("D1_JOIN_TEST"))

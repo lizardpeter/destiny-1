@@ -135,19 +135,25 @@ scratch memory. The registry now stores the handle with each entry and rejects t
 `resolve_handle_safe(handle)` names another address.
 
 
-## Resource Bind/Repoint Dispatch & TFX Technique State (2026-11-23)
+## Resource Bind/Repoint Dispatch, Streaming Mips, Submesh VBs & Camera FOV (2026-11-23)
 
 - **Resource manager bind (`0x7D2E80`, `*0x254EE38`) and repoint (`0x7D3160`, `*0x254EE40`) 18-type switch tables (`0x7D2F84` / `0x7D3258`)**:
-  - Types **1, 2, 3** -> `0x7D4D40` / `0x7D4840`: Texture (`Gnm::Texture`, 32-byte `T#` at tag address).
+  - Types **1, 2, 3** -> `0x7D4D40` / `0x7D4840`: Texture (`Gnm::Texture`, 32-byte `T#` at tag `+0x00`; authored full dimensions at `+0x28` u16 `full_width`, `+0x2A` u16 `full_height`, `+0x2C` u16 `full_depth`, `+0x31` u8 `full_mips`, `+0x34` u8 `has_hi_mip`).
   - Type **4** -> `0x7D4C30` / `0x7D4720`: Vertex Buffer (`+0x0` u32 size, `+0x4` u32 stride, `+0x28` u64 base, `+0x30` u32 vertex count).
   - Type **6** -> `0x7D4CB0` / `0x7D47B0`: Index Buffer (`+0x8` u64 size, `+0x30` u64 base, `+0x38` u32 is_32bit, `+0x3C` u32 index count).
   - Type **7** -> `0x7D4DA0`: Generic `Gnm::Buffer` (`V#` at tag address).
-  - Type **8** -> `0x7D4B90`: Pixel Shader (`Gnm::PsShader` at tag address `rbx`, writes `spiShaderPgmLoPs/HiPs` at `+0x8/+0xC`).
-  - Type **9** -> `0x7D48C0`: Vertex Shader (`VsWrapper` at tag address `rbx`, `Gnm::VsShader` at `+0x14`, writes `spiShaderPgmLoVs/HiVs` at `+0x1C/+0x20` and fetch shader address at `+0x8 = addr + *(uint32_t*)(rbx + 0x4)`).
-  - Type **10** -> `0x7D4AB0`: Geometry Shader; Types **11 & 14** -> `0x7D4970`: LS/ES Shader; Types **12 & 13** -> `0x7D49F0`: HS/CS Shader; Type **18** -> `0x73D50`: Generic data block pointer.
+  - Type **8** -> `0x7D4B90`: Texture with 8-byte header (`Gnm::Texture` 32-byte `T#` at `tag + 0x08`, NOT a pixel shader).
+  - Type **9** -> `0x7D48C0`: Vertex Shader (`VsWrapper` at tag address, `Gnm::VsShader` at `+0x14`, fetch shader at `+0x08`).
+  - Type **10** -> `0x7D4AB0`: Geometry Shader; Types **11 & 14** -> `0x7D4970`: LS/ES Shader.
+  - Types **12 & 13** -> `0x7D49F0`: Pixel Shader (`Gnm::PsShader` at tag `+0x00`, `spiShaderPgmLoPs/HiPs` at `+0x08/+0x0C`).
+  - Type **18** -> `0x73D50`: Generic data block pointer.
+- **Streamed texture mip lifecycle (`0x0CB940` -> `0x0E01E0` -> `0x7D4480` `texture_mips`)**:
+  - When a streamed texture (`*(uint8_t*)(tag + 0x34) != 0`) binds with an active hi-mip block, `0x0CB940` first calls `h_bind` (`0x7D4D40`), which writes `T#.base = hi_mip_addr` while `T#.width/height/last_level` are still at the half-resolution low-mip count (`full_mips - 1`), and then calls `0x7D4480(handle, low_mip_addr, hi_mip_addr)` (`h_mips`) to set `T#.width/height` to `full_w x full_h` and `last_level` to `full_mips - 1`.
+  - When `hi_mip_addr != 0`, only mip `0` resides at `hi_mip_addr`; mips `1..full_mips-1` remain at `low_mip_addr`. The renderer allocates one permanent full-mip `VkImage` (`full_w x full_h`, `full_mips` levels) keyed solely by resource ID (`res >> 32`), uploads mips `1..full_mips-1` from `low_mip_addr` and mip `0` from `hi_mip_addr` in place, and switches the active mip range via `VkImageView` `baseMipLevel` (`0` vs `1`).
+- **Multi-submesh vertex declaration switch (`0x845DE0` -> `0x7DEB70`)**:
+  - In `0x845DE0`, when consecutive submeshes of the same mesh (`uVar24 == local_874`) use different vertex declarations (`uVar8 != local_894`), the engine calls `0x7DEB70` (`set_vertex_decl`), which resets `dev + 0x1D78[0..31] = 0xFFFFFFFF` (the device redundant-bind cache) without unbinding CUE stream 0/1 (`0xF8B600`), and skips re-calling `0x7DEC20` (`set_vertex_buffer`) for stream 0/1. `DevState::vb_handle[32]` preserves the bound stream handles across `0x7DEB70` so submeshes 1+ are not dropped as `"null vertex buffer"`.
 - **TFX technique state application (`0x82B3F0..0x82B830`)**:
-  - TFX techniques store a packed 4-byte default preset word at `technique + 0x20`, a VS tag handle at `technique + 0x28` (`0x82D070`), and a PS tag handle at `technique + 0x2A8` (`0x82D020`).
-  - At draw time, `0x82B3F0..0x82B730` combine `[technique + 0x20]` with per-pass overrides `[tfx_ctx + 0x15D0/0x15D4]` and apply presets dynamically on the device context (`0x7DF1A0` blend, `0x7DF3F0` depth/stencil, `0x7DF310` raster/cull).
-- **First-person camera FOV computation (`0x8E8240..0x8E82A3`, `0x8E4090..0x8E42A5`)**:
-  - `0x8E8240` multiplies the FOV angle in `%xmm0` by `0.5 * pi / 180` (`*(float*)0x166A2E8`) and calls `tanf` (`0x12AB9A0`) at `0x8E825E` and `0x8E8299` to build frustum planes and projection tangents before culling.
-  - `0x8E4090..0x8E429E` computes the first-person ADS zoom factor on the camera state (`+0x340(%r12)`).
+  - TFX techniques store 4 render-state indices at `technique + 0x20`, a VS handle at `technique + 0x28` (`0x82D070`), and a PS handle at `technique + 0x2A8` (`0x82D020`). Hooking `0x82B490`, `0x82B5C0`, and `0x82B730` alongside `resreg` types `9`, `12`, and `13` pre-translates shaders and warm-builds persisted `DiskPipeSpec` pipelines (`native_pipelines.bin.specs`) off the draw path.
+- **First-person world camera vs. weapon viewmodel FOV (`0x526FE0`, `0x5270E0`, `0xBD3BF0`, `0x6BF320`, `0x8EFAB0`)**:
+  - `0x526F80` resolves the camera globals tag (`*(float*)(g + 0x18) = 1.25663706 rad = 72.0 deg`). `0x526FE0` returns the default world camera horizontal FOV in radians, and `0x5270E0` returns the first-person base world horizontal FOV in radians to `0xBD3BF0(unit, zoom_slot)`, which divides `0x5270E0()` by the weapon ADS zoom magnification `0xBD3740()`.
+  - `0x6BF320` stores weapon viewmodel FOV (`param_3[4] = 0x737C80`) separately from world camera FOV (`param_3[5] = 0xBD3BF0`). `0x8EFAB0` writes world FOV to `DAT_0273c3e0 + 0x4ac` (building the visibility culling frustum before culling and `"first-person environment view"` in `0x52CE20`) and weapon viewmodel FOV to `DAT_0273c3e0 + 0x554` (`"first-person player view"` / `"first-person iron sight view"` in `0x80F730`).

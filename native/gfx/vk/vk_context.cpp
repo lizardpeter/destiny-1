@@ -68,6 +68,8 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     if (!open_loader()) return fail("no Vulkan loader (vulkan-1.dll / libvulkan.so.1)");
     uint32_t loader_version = VK_API_VERSION_1_0;
     if (vkEnumerateInstanceVersion) vkEnumerateInstanceVersion(&loader_version);
+    // An older loader still passes a 1.4 request through to a 1.4 driver; what matters is
+    // the device's version, checked below.
     (void)loader_version;
 
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -223,6 +225,8 @@ bool create_context(Context& ctx, int gpu_index, const char** inst_exts, uint32_
     dci.enabledExtensionCount = uint32_t(dev_exts.size());
     dci.ppEnabledExtensionNames = dev_exts.data();
     if (vkCreateDevice(pick, &dci, nullptr, &ctx.device) != VK_SUCCESS) return fail("vkCreateDevice failed on %s", ctx.name);
+    // core names first, then the extension names they were promoted from (older loaders and
+    // layers, e.g. Wine's, only know vkCmdPushDescriptorSetKHR)
     auto device_fn = [&](const char* name) {
         PFN_vkVoidFunction f = vkGetDeviceProcAddr(ctx.device, name);
         for (const char* suffix : {"KHR", "EXT"}) {
@@ -264,6 +268,8 @@ uint32_t surface_instance_extensions(WindowSystem ws, const char** out) {
 }
 
 bool create_surface(const Context& ctx, WindowSystem ws, void* display, uint64_t window, VkSurfaceKHR* out) {
+    // The platform create-info structs, declared here so no window-system header is needed
+    // (layouts as in vulkan_win32.h / vulkan_xlib.h).
     struct Win32Info {
         VkStructureType sType;
         const void* pNext;

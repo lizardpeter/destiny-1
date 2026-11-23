@@ -97,6 +97,13 @@ BuildVsharpFn build_vsharp;
 struct DevState {
     ng::Draw::Cb cb[ng::kStages][16] = {};
     uint32_t vb_count[32] = {};
+    uint32_t vb_handle[32] = {
+        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu};
+    uint32_t vb_offset[32] = {};
+    int32_t vb_raw_count[32] = {};
 };
 
 std::mutex g_m;
@@ -240,21 +247,33 @@ void touch(uint64_t key, bool insert, uint32_t handle = 0xFFFFFFFFu) {
         }
     }
 }
+// the resource object a (type, handle) names, 0 for the types the renderer does not track
 uint64_t object_of(uint32_t type, uint32_t handle) {
-    if (handle == 0xFFFFFFFFu || (!(type >= 1 && type <= 4) && type != 6 && type != 8 && type != 9)) return 0;
+    if (handle == 0xFFFFFFFFu || (!(type >= 1 && type <= 4) && type != 6 && type != 8 && type != 9 && type != 12 && type != 13)) return 0;
     const uint64_t o = resolve_handle_safe(handle);
-    return o >= 0x10000 ? o : 0;
+    return o >= 0x10000 ? (type == 8 ? o + 8 : o) : 0;
 }
+// the renderer prepares the resource's GPU copy now (its loader thread)
 void prefetch(uint32_t type, uint64_t o) {
     if (!o || !ng::active()) return;
     const uint64_t res = get(o);
     if (!res) return;
-    if (type == 8 || type == 9) {
+    if (type == 9 || type == 12 || type == 13) {
         ng::prefetch_shader(reinterpret_cast<const uint8_t*>(o), type == 9, res, o);
         return;
     }
-    if (type >= 1 && type <= 3) ng::prefetch_texture(reinterpret_cast<const uint32_t*>(o), res, o);
-    else if (type == 4) ng::prefetch_buffer(field<uint64_t>(o, 0x28), field<uint32_t>(o, 0), res, o);
+    if ((type >= 1 && type <= 3) || type == 8) {
+        const uint64_t tag = type == 8 ? o - 8 : o;
+        const uint8_t full_mips = field<uint8_t>(tag, 0x31);
+        const uint8_t has_hi = field<uint8_t>(tag, 0x34);
+        const uint32_t* t = reinterpret_cast<const uint32_t*>(o);
+        const uint32_t t_levels = ((t[3] >> 16) & 0xF) + 1;
+        const uint64_t t_base = (uint64_t(t[0]) | uint64_t(t[1] & 0x3F) << 32) << 8;
+        if (type != 8 && has_hi && full_mips > 1 && t_levels == uint32_t(full_mips - 1)) {
+            ng::notify_texture_mips(t, res, tag, t_base, 0);
+        }
+        ng::prefetch_texture(t, res, tag);
+    } else if (type == 4) ng::prefetch_buffer(field<uint64_t>(o, 0x28), field<uint32_t>(o, 0), res, o);
     else if (type == 6) {
         const uint32_t isz = field<uint32_t>(o, 0x38);
         ng::prefetch_buffer(field<uint64_t>(o, 0x30), uint64_t(field<uint32_t>(o, 0x3C)) * (isz ? 4 : 2), res, o);
@@ -296,11 +315,28 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
             const uint32_t fmt = field<uint32_t>(decl, 0x14 + 8 * i);
             const uint32_t off = field<uint8_t>(decl, 0x18 + 8 * i), stream = field<uint8_t>(decl, 0x19 + 8 * i) & 31;
             const uint32_t stride = field<uint32_t>(decl, 4 + 4 * (stream & 3));
-            const uint32_t h = field<uint32_t>(dev, 0x1D78 + 4 * stream);
+            uint32_t h = field<uint32_t>(dev, 0x1D78 + 4 * stream);
+            uint32_t stream_off = field<uint32_t>(dev, 0x1DF8 + 4 * stream);
+            uint32_t vcnt = ds->vb_count[stream];
+            // 0x7DEB70 (set_vertex_decl) resets dev+0x1D78[0..31] to 0xFFFFFFFF without unbinding
+            // the CUE's vertex buffers; submesh loops (0x845DE0) switch vertex declarations between
+            // submeshes of the same mesh without re-calling set_vertex_buffer for stream 0/1.
+            if (h == 0xFFFFFFFFu && ds->vb_handle[stream] != 0xFFFFFFFFu) {
+                h = ds->vb_handle[stream];
+                stream_off = ds->vb_offset[stream];
+                const uint64_t ro = resolve_handle_safe(h);
+                if (ro >= 0x10000) {
+                    uint32_t tot = field<uint32_t>(ro, 0x30);
+                    if (stream_off != 0) tot = ds->vb_raw_count[stream] ? uint32_t(ds->vb_raw_count[stream]) : (stride ? tot - stream_off / stride : tot);
+                    vcnt = tot;
+                } else {
+                    h = 0xFFFFFFFFu;
+                }
+            }
             if (h == 0xFFFFFFFFu || !stride) continue;
             const uint64_t obj = resolve_handle(h);
-            const uint64_t base = field<uint64_t>(obj, 0x28) + off + field<uint32_t>(dev, 0x1DF8 + 4 * stream);
-            build_vsharp(d->vb[i], base, fmt, stride, ds->vb_count[stream]);
+            const uint64_t base = field<uint64_t>(obj, 0x28) + off + stream_off;
+            build_vsharp(d->vb[i], base, fmt, stride, vcnt);
             vbsig = mix(vbsig, uint64_t(i) << 48 | uint64_t(d->vb[i][1] >> 16) | uint64_t(d->vb[i][3]) << 32);
             if (resreg::g_on) d->vres[i] = {resreg::get(obj), field<uint64_t>(obj, 0x28), field<uint32_t>(obj, 0)};
         }
@@ -313,6 +349,7 @@ ng::Draw* capture(uint64_t dev, uint32_t engine_prim, uint64_t caller = 0) {
                 std::memcpy(d->tex[s][i], reinterpret_cast<const void*>(t), 32);
                 d->tex_mask[s] |= uint16_t(1u << i);
                 d->tex_res[s][i] = resreg::g_on ? resreg::get(t) : 0;
+                d->tex_obj[s][i] = t;
             }
             if (const uint64_t p = field<uint64_t>(dev, (s ? 0x2278 : 0x22F8) + i * 8); p >= 0x10000) {
                 std::memcpy(d->smp[s][i], reinterpret_cast<const void*>(p), 16);
@@ -489,11 +526,17 @@ D1_SYSV uint64_t r_alloc_constants(uint64_t dev, uint32_t stage, uint32_t slot, 
 D1_SYSV void r_set_vertex_buffer(uint64_t dev, uint32_t handle, uint32_t stream, uint32_t offset, int32_t count) {
     const uint64_t decl = field<uint64_t>(dev, kVertexDecl);
     const uint32_t s = stream & 0xFFFF;
-    const uint32_t stride = decl && s < 32 ? field<uint32_t>(decl, 4 + 4 * (s & 3)) : 0;
-    if (handle != 0xFFFFFFFFu && s < 32 && stride) {
-        uint32_t n = field<uint32_t>(nr::resolve_handle(handle), 0x30);
-        if (offset != 0) n = count ? uint32_t(count) : n - (stride ? offset / stride : 0);
-        nr::dev_state(dev)->vb_count[s] = n;
+    if (handle != 0xFFFFFFFFu && s < 32) {
+        nr::DevState* ds = nr::dev_state(dev);
+        ds->vb_handle[s] = handle;
+        ds->vb_offset[s] = offset;
+        ds->vb_raw_count[s] = count;
+        const uint32_t stride = decl ? field<uint32_t>(decl, 4 + 4 * (s & 3)) : 0;
+        if (stride) {
+            uint32_t n = field<uint32_t>(nr::resolve_handle(handle), 0x30);
+            if (offset != 0) n = count ? uint32_t(count) : n - (stride ? offset / stride : 0);
+            ds->vb_count[s] = n;
+        }
     }
     o_set_vertex_buffer(dev, handle, stream, offset, count);
 }
@@ -545,9 +588,44 @@ D1_SYSV void h_swap(uint64_t a, uint64_t b) {
 }
 using MipFn = D1_SYSV void (*)(uint32_t, uint64_t, uint64_t);
 MipFn o_mips;
-D1_SYSV void h_mips(uint32_t handle, uint64_t base, uint64_t lo) {
-    o_mips(handle, base, lo);
-    nr::resreg::event(1, handle, false);
+D1_SYSV void h_mips(uint32_t handle, uint64_t low_base, uint64_t hi_base) {
+    o_mips(handle, low_base, hi_base);
+    if (const uint64_t o = nr::resreg::object_of(1, handle)) {
+        nr::resreg::touch(o, true, handle);
+        const uint64_t res = nr::resreg::get(o);
+        if (res && ng::active()) {
+            ng::notify_texture_mips(reinterpret_cast<const uint32_t*>(o), res, o, low_base, hi_base);
+        }
+    }
+}
+using TechFn = D1_SYSV uint64_t (*)(uint64_t, uint64_t);
+using TechVoidFn = D1_SYSV void (*)(uint64_t, uint64_t);
+TechFn o_tech_a, o_tech_b;
+TechVoidFn o_tech_c;
+void note_tfx_technique(uint64_t tech) {
+    if (tech < 0x10000 || !ng::active()) return;
+    const uint32_t vs_h = field<uint32_t>(tech, 0x28);
+    const uint32_t ps_h = field<uint32_t>(tech, 0x2A8);
+    const uint64_t vs_o = vs_h != 0xFFFFFFFFu ? nr::resolve_handle_safe(vs_h) : 0;
+    const uint64_t ps_o = ps_h != 0xFFFFFFFFu ? nr::resolve_handle_safe(ps_h) : 0;
+    if (vs_o >= 0x10000) nr::resreg::touch(vs_o, true, vs_h);
+    if (ps_o >= 0x10000) nr::resreg::touch(ps_o, true, ps_h);
+    if (vs_o >= 0x10000 || ps_o >= 0x10000) {
+        ng::prefetch_shader_pair(vs_o >= 0x10000 ? reinterpret_cast<const uint8_t*>(vs_o) : nullptr,
+                                 ps_o >= 0x10000 ? reinterpret_cast<const uint8_t*>(ps_o) : nullptr);
+    }
+}
+D1_SYSV uint64_t h_tech_a(uint64_t ctx, uint64_t tech) {
+    note_tfx_technique(tech);
+    return o_tech_a(ctx, tech);
+}
+D1_SYSV uint64_t h_tech_b(uint64_t ctx, uint64_t tech) {
+    note_tfx_technique(tech);
+    return o_tech_b(ctx, tech);
+}
+D1_SYSV void h_tech_c(uint64_t ctx, uint64_t tech) {
+    note_tfx_technique(tech);
+    o_tech_c(ctx, tech);
 }
 D1_SYSV void h_unlock(uint64_t idx) {
     const uint64_t e = nr::g_base + 0x26F23B0 + (idx & 0xFFFFFFFFull) * 0xE0;
@@ -603,6 +681,9 @@ void install() {
     ok &= hook(0x7D3560, &h_copy, o_copy, "resource_move_copy");
     ok &= hook(0x7D37B0, &h_swap, o_swap, "resource_move_commit");
     ok &= hook(0x7D4480, &h_mips, o_mips, "texture_mips");
+    ok &= hook(0x82B490, &h_tech_a, o_tech_a, "tfx_technique_apply_a");
+    ok &= hook(0x82B5C0, &h_tech_b, o_tech_b, "tfx_technique_apply_b");
+    ok &= hook(0x82B730, &h_tech_c, o_tech_c, "tfx_technique_apply_c");
     ok &= hook(0x8BE050, &h_glyph_upload, o_glyph_upload, "glyph_cache_upload");
     ok &= hook(0xF8A330, &h_tile, o_tile, "tile_surface");
     log("nd: engine resource events %s", ok ? "hooked" : "NOT HOOKED");
@@ -985,6 +1066,25 @@ struct Chunk {
 std::atomic<Chunk*> g_chunks[kChunks];
 std::mutex g_alloc_m;
 std::atomic<uint64_t> g_faults{0};
+const bool g_log_faults = getenv("D1_NG_LOG_FAULTS") != nullptr || getenv("D1_NG_CENSUS") != nullptr;
+std::mutex g_census_m;
+std::unordered_map<uint64_t, uint64_t> g_census;
+void print_census() {
+    std::vector<std::pair<uint64_t, uint64_t>> v;
+    {
+        std::lock_guard lk(g_census_m);
+        v.assign(g_census.begin(), g_census.end());
+        g_census.clear();
+    }
+    std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.second > b.second; });
+    std::string out;
+    for (size_t i = 0; i < v.size() && i < 16; ++i) {
+        char b[48];
+        std::snprintf(b, sizeof b, " %llx:%llu", (unsigned long long)(v[i].first << 16), (unsigned long long)v[i].second);
+        out += b;
+    }
+    log("native gfx: write faults by 64 KiB region (%zu regions):%s", v.size(), out.c_str());
+}
 
 Chunk* chunk(uint64_t page, bool create) {
     const uint64_t c = page >> (kChunkBits - 12);
@@ -1124,8 +1224,13 @@ bool on_fault(uint64_t addr) {
         for (uint64_t k = 0; k < kBlockPages; ++k)
             if (taken >> k & 1) ch->state[blk + k].store(kOff, std::memory_order_release);
         g_faults.fetch_add(1, std::memory_order_relaxed);
+        if (g_log_faults) {  // D1_NG_LOG_FAULTS: which 64 KiB regions keep faulting
+            std::lock_guard lk(g_census_m);
+            ++g_census[pg >> 4];
+        }
         return true;
     }
+    // another thread is unprotecting it (or just did): retry the access
     if (expect == kUnprotecting) {
         while (ch->state[i].load(std::memory_order_acquire) == kUnprotecting) {}
         return true;
@@ -1134,8 +1239,86 @@ bool on_fault(uint64_t addr) {
 }
 }  // namespace wt
 
-bool native_gfx_on_fault(void*, void* addr) {
-    return nr::g_base && ng::active() && wt::on_fault(uint64_t(addr));
+// D1_NG_LOG_FAULTS: per writing code address, the faults and a sample address (what the
+// renderer keeps there is named in the periodic census)
+namespace faultlog {
+std::mutex m;
+struct Site { uint64_t n = 0, sample = 0, lo = ~0ull, hi = 0; };
+struct Key {
+    uint64_t rip, c1, c2;
+    bool operator<(const Key& o) const { return std::tie(rip, c1, c2) < std::tie(o.rip, o.c1, o.c2); }
+};
+std::map<Key, Site> sites;
+// D1_NG_CENSUS=<file>: every writer since the start (not only the last interval's top 24), with
+// the two guest callers above it (frame pointers) and the range of addresses it wrote
+const char* const g_census = getenv("D1_NG_CENSUS");
+static uint64_t rel(uint64_t a) { return a >= nr::g_base && a < nr::g_base + 0x4000000 ? a - nr::g_base : a | 1ull << 63; }
+void note(void* uc, uint64_t addr) {
+    uint64_t rip = 0, c1 = 0, c2 = 0;
+#if defined(__linux__)
+    const auto& gr = static_cast<ucontext_t*>(uc)->uc_mcontext.gregs;
+    rip = uint64_t(gr[REG_RIP]);
+    if (g_census) {  // the guest's frame chain (the engine keeps frame pointers)
+        uint64_t bp = uint64_t(gr[REG_RBP]);
+        const uint64_t sp = uint64_t(gr[REG_RSP]);
+        uint64_t* out[2] = {&c1, &c2};
+        // (a frame pointer is trusted while it stays on this thread's stack, above the stack
+        // pointer; memcpy keeps none, so the first frame is its caller's)
+        for (int k = 0, got = 0; k < 24 && got < 2 && !(bp & 7) && bp >= sp && bp < sp + (4u << 20); ++k) {
+            const uint64_t ret = reinterpret_cast<const uint64_t*>(bp)[1];
+            const uint64_t next = reinterpret_cast<const uint64_t*>(bp)[0];
+            if (ret >= nr::g_base && ret < nr::g_base + 0x4000000) *out[got++] = ret - nr::g_base;
+            if (next <= bp) break;
+            bp = next;
+        }
+    }
+#else
+    (void)uc;
+#endif
+    std::lock_guard lk(m);
+    Site& s = sites[{rel(rip), c1, c2}];
+    if (!s.n++) s.sample = addr;
+    s.lo = std::min(s.lo, addr), s.hi = std::max(s.hi, addr);
+}
+void print() {
+    std::vector<std::pair<Key, Site>> v;
+    {
+        std::lock_guard lk(m);
+        v.assign(sites.begin(), sites.end());
+        if (!g_census) sites.clear();
+    }
+    std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.second.n > b.second.n; });
+    FILE* f = g_census ? std::fopen(g_census, "w") : nullptr;
+    for (size_t i = 0; i < v.size() && (f || i < 24); ++i) {
+        char owner[160] = "";
+        ng::describe_owner(v[i].second.sample, owner, sizeof owner);
+        char where[200] = "";
+        const uint64_t rip = v[i].first.rip;
+#if defined(__linux__)
+        if (rip >> 63) {
+            Dl_info di{};
+            const uint64_t a = rip & ~(1ull << 63);
+            if (dladdr(reinterpret_cast<void*>(a), &di) && di.dli_fname)
+                std::snprintf(where, sizeof where, " [%s+%#llx %s]", di.dli_fname, (unsigned long long)(a - uint64_t(di.dli_fbase)),
+                              di.dli_sname ? di.dli_sname : "");
+        }
+#endif
+        if (f)
+            std::fprintf(f, "%s%#llx%s <- %#llx <- %#llx | %llu faults | %#llx..%#llx | e.g. %#llx: %s\n", rip >> 63 ? "host " : "eboot+",
+                         (unsigned long long)(rip & ~(1ull << 63)), where, (unsigned long long)v[i].first.c1, (unsigned long long)v[i].first.c2,
+                         (unsigned long long)v[i].second.n, (unsigned long long)v[i].second.lo, (unsigned long long)v[i].second.hi,
+                         (unsigned long long)v[i].second.sample, owner);
+        else
+            log("native gfx: write faults from %s%#llx%s: %llu (e.g. %#llx: %s)", rip >> 63 ? "host " : "eboot+",
+                (unsigned long long)(rip & ~(1ull << 63)), where, (unsigned long long)v[i].second.n, (unsigned long long)v[i].second.sample, owner);
+    }
+    if (f) std::fclose(f);
+}
+}  // namespace faultlog
+bool native_gfx_on_fault(void* uc, void* addr) {
+    if (!nr::g_base || !ng::active() || !wt::on_fault(uint64_t(addr))) return false;
+    if (wt::g_log_faults) faultlog::note(uc, uint64_t(addr));
+    return true;
 }
 bool native_gfx_active() { return nr::g_base && ng::active(); }
 void native_gfx_on_unmap(uint64_t addr, uint64_t size) {
@@ -1448,6 +1631,7 @@ void native_gfx_flip(void* addr, uint32_t width, uint32_t height) {
                 gf0 = gf, gn0 = gn, gw0 = gw, qw0 = qw;
                 faults0 = faults;
                 ng::print_stats();
+                if (wt::g_log_faults) wt::print_census(), faultlog::print();
                 log("nd: texture updates announced at their source: %llu glyph cache uploads, %llu tiled surfaces",
                     (unsigned long long)resev::g_glyph_uploads.exchange(0), (unsigned long long)resev::g_tiled.exchange(0));
             }

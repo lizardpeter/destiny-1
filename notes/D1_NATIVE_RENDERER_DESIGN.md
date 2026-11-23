@@ -323,28 +323,26 @@ glyph cache looks like.
   lets the completion thread and `retire_one` take each submission once, in order.
 
 
-## Status 2026-11-23: native bindless draw path & FOV unlock
+## Status 2026-11-23: native bindless draw path, persistent full-mip streaming, pipeline spec pre-warming & FOV unlock
 
-Replaced the emulator-style per-draw descriptor/register translator path with a finished-object bindless draw path and unlocked the first-person camera FOV:
+Replaced the emulator-style per-draw descriptor/register translator path with a finished-object bindless draw path, eliminated texture streaming `VkImage` churn and submesh VB drops, persisted pipeline specs for zero-miss warm runs, and unlocked the first-person world camera FOV:
 
 - **Global bindless descriptor table (`set = 0`)**:
   - Bindings `0..11`: sampled image arrays (`uint32_t(TexDim) * 3 + tex_kind`, 16,384 views each).
   - Binding `12`: sampler array (1,024 samplers).
   - Binding `13`: upload ring storage buffer (`uint32_t data[]`, clamped to `maxStorageBufferRange`).
   - Push constants (`8` bytes): `{ uint32_t vs_table_off; uint32_t ps_table_off; }` indexing each stage's 32-dword resource table in the ring buffer (`dwords 0..15` = constant buffer dword offsets; `dwords 16..31` = `view_id | (sampler_id << 16)`).
-- **In-place texture streaming & resource-driven pre-pass**:
-  - `tex_key(t, res)` now masks `min_lod` (`t[1]` bits `19:8`) and `base_level` (`t[3]` bits `15:12`) in addition to the base address so `texture_mips` (`0x7D4480`) updates keep the same key.
-  - `load_texture` and `upload_texture` update matching `VkImage` allocations in place (`++st.tex_inplace`, `0` dropped textures during streaming).
-  - `pre_pass` skips per-frame `upload_texture` sweeps for already-uploaded engine resources (`res != 0`) and hashes only CPU-announced dirty dynamic textures.
-- **Target-invariant pipeline memoization & off-thread VS pre-translation**:
-  - `resreg::prefetch` queues bound vertex shaders (type 9, `0x7D48C0`, `Gnm::VsShader` at `+0x14`) to the background loader thread.
-  - `pipe_key` hashes the resolved 4-bit per-slot `(TexDim, tex_kind)` signature (`dr.tex_sig[0..1]`), making `pipe_memo` and thread-local `TlMemo` invariant across render-target rebinds (`0` target-change misses).
-- **Whole-buffer geometry binding, state-diffed command emission & lock-free recording**:
-  - Engine resource vertex/index buffers (`dr.vres`, `dr.ires`) bind the whole cached buffer once and index sub-meshes via `firstIndex` with `vertexOffset = 0`, skipping per-draw `[vfirst, vlast]` index scans.
-  - Dynamic state (`Viewport`, `Scissor`, `DepthBias`, `Stencil*`) and stage resource tables are diffed per recording context (`Rec::ds`).
-  - Removed the hidden `Renderer::m` lock acquisition inside `draw()` and deleted the legacy translator path (`native_gfx_submit`, `dcb_ranges`, `g_pending`, `Observer`).
-- **Measured CPU per draw (Orbit `setup:orbit`, 236 draws/frame on Mesa 25.0.7 lavapipe)**:
-  - Total draw-path CPU dropped from `83,054 ns/draw` (`30,572 ns/draw` warm) to `3,475 ns/draw` (`pipeline 219 ns`, `geometry 416 ns`, `descriptors 1,241 ns`, `commands 1,599 ns`), pre-pass texture checks dropped from `13.77 ms/frame` to `0.05 ms/frame`, and engine-thread lock wait dropped from `53.61 ms/frame` to `0.69 ms/frame`.
-- **First-person camera FOV unlock (`fov` in `d1-native.cfg`, `[D1_FOV]`, default `72`)**:
-  - Hooked `eboot+0x8E8240` (`camera_fov_hook` in `native/src/hooks.cpp`), which converts the camera FOV angle to half-angle tangents via `tanf` (`0x12AB9A0`) at `0x8E825E` and `0x8E8299` before frustum culling and projection matrix assembly.
-  - Scaling `fov_deg` by `settings().fov / 72.0f` updates the world camera before culling, keeps ADS zoom (`0x8E4090..0x8E429E` on `cam+0x340`) proportional, leaves weapon viewmodel projection separate, and keeps hip-fire mouse sensitivity (`0x91B500`) unchanged.
+- **Persistent full-mip texture streaming (`0x7D4480` `texture_mips`) & frame-based eviction**:
+  - Streamed engine textures (`tag + 0x34` `has_hi_mip != 0`) allocate one permanent `VkImage` for their lifetime at authored full dimensions (`tag + 0x28..0x2A` `full_w x full_h`, `tag + 0x31` `full_mips`), keyed solely by engine resource ID (`res >> 32`).
+  - Low-mip chains (`1..full_mips-1`) and streamed hi-mip `0` are uploaded in place into their respective destination mip levels (`dst_lv = 1..full_mips-1` from `low_base`, `dst_lv = 0` from `hi_base`), while `texture_view` switches the visible mip range via `VkImageView` `baseMipLevel` (`img->resident_base_level`, `1` vs `0`).
+  - `evict_textures()` now tracks frame count (`st.frames`) rather than submission count (`submit_seq`, ~28 submissions/frame) and never evicts textures whose handle remains live in `resreg`, fixing the `10,501 / 13,713` (lavapipe) and `22,702 / 31,330` (Intel Arc) streaming drop churn.
+- **Zero-miss warm pipeline cache (`native_pipelines.bin.specs`) & active-slot shader/pipeline keys**:
+  - Fixed `resreg` resource type mapping from `0x7D2E80`: type `8` (`0x7D4B90`) is an 8-byte-header texture (`T#` at `obj + 8`), type `9` (`0x7D48C0`) is Vertex Shader, and types `12 & 13` (`0x7D49F0`) are Pixel Shaders. Hooked TFX technique application (`0x82B490`, `0x82B5C0`, `0x82B730`) alongside `resreg` types `9/12/13`.
+  - `Renderer::shader()` and `pipe_key()` now mask `dims[0..15]`, `kinds[0..15]`, and `dr.tex_sig[0..1]` strictly to the shader's active `res.tex_mask` (and exclude `dr.tex_mask[0..1]`), preventing leftover textures in unused device slots from creating duplicate `Shader*` or `pipe_memo` misses.
+  - Added persistent `DiskPipeSpec` serialization (`native_pipelines.bin.specs` saved alongside `VkPipelineCache`) and `warm_shader_specs()` on the loader thread so all seen pipelines warm-build off the draw path (`0` memo misses on a second run of the same scene).
+- **Submesh vertex declaration preservation (`0x845DE0` / `0x7DEB70`) & lock-free parallel list recording**:
+  - `DevState::vb_handle[32]` preserves bound vertex buffer handles across `0x7DEB70` (`set_vertex_decl`, which resets `dev + 0x1D78[0..31] = 0xFFFFFFFF` between submeshes of the same mesh in `0x845DE0` without re-calling `set_vertex_buffer`), fixing the `1,041` false `"null vertex buffer"` submesh skips per frame in Earth Patrol.
+  - `record_list()` no longer calls `resolve_draw_resources()` twice per draw, `rec_ring()` locks `ring_m` instead of `Renderer::m` on list recorders, and `par_draws` counts parallel list draws.
+- **First-person world camera FOV unlock (`fov` in `d1-native.cfg`, `D1_FOV`, default `72`)**:
+  - Added `key == "fov"` and `D1_FOV` parsing in `native/src/settings.cpp`.
+  - Replaced `0x526FE0` (default world camera horizontal FOV in radians) and `0x5270E0` (first-person base world horizontal FOV in radians before ADS zoom division in `0xBD3BF0`) in `native/src/hooks.cpp`, updating the world camera and visibility culling frustum (`0x8EFAB0` -> `DAT_0273c3e0 + 0x4ac`) before frustum culling while leaving weapon viewmodel FOV (`0x737C80` -> `DAT_0273c3e0 + 0x554`) unchanged and ADS zoom proportional.

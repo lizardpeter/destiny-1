@@ -143,6 +143,7 @@ static void apply_setting(const std::string& key, const std::string& v) {
     else if (key == "vsync") s.vsync = v;
     else if (key == "overlay") s.overlay = truthy(v);
     else if (key == "fps") s.fps = (v == "unlimited" || v == "max") ? 0 : std::atoi(v.c_str());
+    else if (key == "fov") s.fov = static_cast<float>(std::atof(v.c_str()));
     else if (key == "discord") s.discord = truthy(v);
     else if (key == "discord_app_id") s.discord_app_id = v;
     else if (key == "name") s.name = v;
@@ -206,6 +207,7 @@ void load_settings(const std::string& path) {
     if (const char* v = getenv("D1_FULLSCREEN")) s.fullscreen = truthy(v);
     if (const char* v = getenv("D1_VSYNC")) s.vsync = v;
     if (const char* v = getenv("D1_FPS")) s.fps = std::atoi(v);
+    if (const char* v = getenv("D1_FOV")) s.fov = static_cast<float>(std::atof(v));
     if (const char* v = getenv("D1_OVERLAY")) s.overlay = truthy(v);
     if (const char* v = getenv("D1_DISCORD")) s.discord = truthy(v);
     if (const char* v = getenv("D1_DISCORD_APP_ID")) s.discord_app_id = v;
@@ -226,9 +228,9 @@ void load_settings(const std::string& path) {
     }
     log("settings: name %s", s.name.c_str());
     log("settings: render resolution %dx%d", s.render_width, s.render_height);
-    log("settings: %s (game %s, backend %s, window %dx%d%s, vsync %s, fps %s, discord %s)", g_path.c_str(), s.game_dir.c_str(), s.backend.c_str(), s.window_width,
+    log("settings: %s (game %s, backend %s, window %dx%d%s, vsync %s, fps %s, fov %.1f, discord %s)", g_path.c_str(), s.game_dir.c_str(), s.backend.c_str(), s.window_width,
         s.window_height, s.fullscreen ? " fullscreen" : "", s.vsync.c_str(),
-        s.fps ? std::to_string(s.fps).c_str() : "unlimited",
+        s.fps ? std::to_string(s.fps).c_str() : "unlimited", s.fov,
         !s.discord ? "off" : s.discord_app_id.empty() ? "no app id" : "on");
 }
 

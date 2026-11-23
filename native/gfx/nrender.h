@@ -41,6 +41,7 @@ struct Draw {
     struct Cb { uint64_t addr; uint32_t size; } cb[kStages][16] = {};
     // Engine resources: identity id << 32 | epoch, 0 when not a registered resource.
     uint64_t tex_res[kStages][16] = {};
+    uint64_t tex_obj[kStages][16] = {};
     struct Res { uint64_t id = 0, base = 0, size = 0; } vres[16], ires;
     // Resolved bindless descriptor table indices and pipeline signature words (populated once before draw):
     uint16_t tex_view[kStages][16] = {};  // bindless view_id in global descriptor table
@@ -50,6 +51,7 @@ struct Draw {
     uint16_t smp_near[kStages][16] = {};  // bindless sampler_id (forced nearest for non-filterable textures)
     uint64_t tex_sig[kStages] = {};       // 4 bits per slot: (dim | kind << 2) << (slot * 4)
     uint64_t vb_sig = 0;                  // pre-mixed hash of vertex buffer strides & formats
+    bool samples_target = false;          // true if any active texture slot references a render target
     // registers
     uint32_t blend = 0, target_mask = 0xF, su_sc_mode = 0, clip = 0, depth_ctl = 0, stencil_ctl = 0, stencil_ref = 0;
     float poly_offset = 0, poly_scale = 0;
@@ -97,8 +99,10 @@ bool record_list(const std::vector<Draw*>& items, uint32_t& handle, std::vector<
 void fill_late(const LateCb& l, uint64_t src, uint32_t size);
 void submit_recorded(const std::vector<uint32_t>& handles);
 void prefetch_texture(const uint32_t* tsharp, uint64_t res, uint64_t obj);
+void notify_texture_mips(const uint32_t* tsharp, uint64_t res, uint64_t obj, uint64_t low_base, uint64_t hi_base);
 void prefetch_buffer(uint64_t base, uint64_t size, uint64_t res, uint64_t obj);
 void prefetch_shader(const uint8_t* obj, bool is_vs, uint64_t res = 0, uint64_t tag = 0);
+void prefetch_shader_pair(const uint8_t* vs_obj, const uint8_t* ps_obj);
 void cpu_wrote(uint64_t addr, uint64_t size);
 void discard_recorded(uint32_t handle);
 void after_gpu(std::function<void()> fn);

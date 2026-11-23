@@ -159,7 +159,6 @@ Native renderer (`native/gfx`, the default without shadPS4):
 | `D1_NG_RECORD_THREADS=<n>` | threads recording runs of draws in one render pass in parallel (secondary command buffers); default up to 6 (hardware threads - 4), 0 = one thread. `D1_NG_RECORD_RUN=<n>`: fewest draws split (default 64) |
 | `D1_NG_GNM_DRAWS=1` | also run the engine's Gnm draw code (constant update engine, draw packets) for captured draws (default: capture only) |
 | `D1_NG_ASYNC=0` | record and submit on the game's submitting thread (default: a separate GPU queue thread, at most 2 flips ahead) |
-| `D1_NG_PUSH_DESCRIPTORS=0` | allocate a descriptor set per draw instead of pushing descriptors |
 | `D1_NG_RING_SYSMEM=1` | keep the upload ring in system memory (default: device-local host-visible memory when the GPU offers it) |
 | `D1_NG_PENDING_STATS=1` | log the pending draw / constant event lookups per submission |
 | `D1_NG_FRAMES_IN_FLIGHT=<n>` | frames the CPU may record ahead of the GPU (default 2) |
