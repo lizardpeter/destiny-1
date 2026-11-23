@@ -1,0 +1,26 @@
+# What this repo reverses. Originals are never committed; they live in R2 under these keys
+# and every tool verifies the sha256 before use.
+
+project = "d1"
+title = "Destiny (PS4, CUSA00219)"
+graph = "uregraph"
+r2_public = "https://r2.houseofkublai.com/"
+ghidra = "12.1.4"
+compiler = "clang (PS4 SDK toolchain), x86-64, System V ABI"
+# Addresses everywhere in this repo are image-relative: the executable's first segment has virtual address 0,
+# and Ghidra loads it at image base 0, so an address in analysis/ is the same number the runtime hooks and
+# notes use. Format in generated tables: 8 lowercase hex digits (003527d0), as in Ghidra's FUN_003527d0.
+
+# kind: "retail" = the target. There is no build with symbols; names come from strings, RTTI, imports and behaviour.
+# `analyze = true` puts a build in the next Ghidra pipeline run (.github/workflows/ghidra.yml); a manual run can
+# name any builds instead.
+
+# Patch 01.33 main executable, decrypted (plain ELF, type 0xfe10). Imports are resolved by NID
+# (tools/ghidra/imports.py), since Ghidra does not read the SCE dynamic tables.
+[[build]]
+id = "ps4-0133"
+kind = "retail"
+analyze = true
+title_id = "CUSA00219"
+version = "01.33"
+exe = { key = "destiny/CUSA00219_01.33/eboot.bin", sha256 = "672f03411c0503dfbcda804cbb9fb27cdd9a8d73a8bcb71bf0c4f688073b0833" }
