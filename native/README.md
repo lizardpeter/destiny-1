@@ -108,6 +108,7 @@ engine-side patch (not done yet).
 | `D1_CALL_STATS=1` | route every implemented import through the logging entry (call counts at exit, the last calls in crash reports); off by default, implemented imports jump straight to their code |
 | `D1_TRACE_CALLS=off[:n][/a[+bytes]],...` | (research) log the first n calls (default 20) of up to 16 eboot functions (hex offsets): six integer arguments, return value and caller; `/a` also dumps the memory argument a (0-5) points at before the call (default 0x80 bytes). Only for functions with at most six integer / pointer arguments |
 | `D1_GAME_LOG=1` or `=<substring>` | re-enable the engine's own logging (stripped thresholds in release) and print it |
+| `D1_FOV=<degrees>` (`fov` in `d1-native.cfg`) | field of view; 72 is the console's. Applied at the game camera before culling, so the wider view is filled in; aiming down sights zooms by the same ratio as before |
 | `D1_AUTOPRESS=<s>` | tap Cross for 100 ms every `<s>` seconds (no host input yet) |
 | `D1_WATCHDOG=<s>` | after `<s>` seconds dump every guest thread's call stack, call counts and GPU stats, then exit |
 | `D1_ABORT_ON_UNIMPL=1` | stop at the first call to an unimplemented firmware function |
